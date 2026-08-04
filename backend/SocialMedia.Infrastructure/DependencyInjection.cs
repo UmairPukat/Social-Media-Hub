@@ -22,7 +22,7 @@ public static class DependencyInjection
         services.Configure<MetaSettings>(configuration.GetSection(MetaSettings.SectionName));
 
         services.AddDbContext<AppDbContext>(options =>
-            options.UseSqlServer(configuration.GetConnectionString("DefaultConnection")));
+            options.UseNpgsql(configuration.GetConnectionString("DefaultConnection")));
 
         services.AddScoped<IUserRepository, UserRepository>();
         services.AddScoped<IAccessTokenRepository, AccessTokenRepository>();
