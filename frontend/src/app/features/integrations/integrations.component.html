@@ -3,20 +3,28 @@
     <div>
       <p class="eyebrow">Workspace</p>
       <h1>Integrations</h1>
-      <p>
+      <p class="lede">
         Connect social, communication, commerce, CRM, calendar, storage, payment, and AI tools.
         Facebook, Instagram, and WhatsApp Business support live Meta login today.
       </p>
     </div>
-    <div class="head-stats">
-      <div>
-        <strong>{{ connectedCount() }}</strong>
-        <span>Connected</span>
-      </div>
-      <div>
-        <strong>{{ cards().length }}</strong>
-        <span>Available</span>
-      </div>
+    <div class="stats summary-stats">
+      <article class="stat" data-tone="green">
+        <div class="stat-top">
+          <span class="stat-ico"><mat-icon>check_circle</mat-icon></span>
+          <span class="stat-label">Connected</span>
+        </div>
+        <strong class="stat-value">{{ connectedCount() }}</strong>
+        <p class="stat-hint">Active linked accounts</p>
+      </article>
+      <article class="stat" data-tone="blue">
+        <div class="stat-top">
+          <span class="stat-ico"><mat-icon>hub</mat-icon></span>
+          <span class="stat-label">Available</span>
+        </div>
+        <strong class="stat-value">{{ cards().length }}</strong>
+        <p class="stat-hint">Integrations in catalog</p>
+      </article>
     </div>
   </header>
 
@@ -48,60 +56,40 @@
 
   <div class="catalog">
     @for (cat of visibleCategories(); track cat.id) {
-      <section class="category" [style.--accent]="cat.accent">
-        <div class="category-head">
-          <span class="category-ico"><mat-icon>{{ cat.icon }}</mat-icon></span>
+      <section class="panel category">
+        <div class="panel-head">
           <div>
             <h2>{{ cat.label }}</h2>
-            <p>{{ cat.items.length }} integrations</p>
+            <p>{{ cat.items.length }} integrations in this category</p>
           </div>
         </div>
 
-        <div class="tile-grid">
-          @for (card of cat.items; track card.platformId) {
+        <div class="stats tile-grid">
+          @for (card of cat.items; track card.platformId; let i = $index) {
             <article
-              class="tile"
+              class="stat tile"
+              [attr.data-tone]="toneFor(card, i)"
               [class.live]="card.isConnected"
-              [class.connectable]="card.canConnect"
-              [class.soon]="!card.canConnect && !card.isConnected">
-              <div class="tile-wash" aria-hidden="true"></div>
-
-              <div class="tile-top">
-                <span class="logo">
-                  <mat-icon>{{ platformIcon(card.code) }}</mat-icon>
-                </span>
+              [class.connectable]="card.canConnect">
+              <div class="stat-top">
+                <span class="stat-ico"><mat-icon>{{ platformIcon(card.code) }}</mat-icon></span>
                 <span
-                  class="status"
+                  class="stat-label"
                   [class.on]="card.isConnected"
                   [class.ready]="card.canConnect && !card.isConnected">
-                  <i></i>
                   {{ card.isConnected ? 'Connected' : card.canConnect ? 'Ready' : 'Soon' }}
                 </span>
               </div>
 
-              <h3>{{ card.displayName }}</h3>
-              <p class="desc">
+              <strong class="stat-value name">{{ card.displayName }}</strong>
+
+              <p class="stat-hint">
                 @if (card.accountName) {
                   Linked as {{ card.accountName }}
                 } @else {
                   {{ card.description }}
                 }
               </p>
-
-              <div class="caps">
-                @if (card.supportsPosts) {
-                  <span>Posts</span>
-                }
-                @if (card.supportsComments) {
-                  <span>Comments</span>
-                }
-                @if (card.supportsMessages) {
-                  <span>Messages</span>
-                }
-                @if (!card.supportsPosts && !card.supportsComments && !card.supportsMessages) {
-                  <span class="muted">Preview</span>
-                }
-              </div>
 
               <div class="tile-actions">
                 @if (card.isConnected) {
@@ -113,7 +101,6 @@
                     mat-flat-button
                     color="primary"
                     type="button"
-                    class="btn-connect"
                     [disabled]="connecting() === card.code.toLowerCase()"
                     (click)="connect(card)">
                     {{ connecting() === card.code.toLowerCase() ? 'Connecting…' : 'Connect' }}

@@ -188,4 +188,11 @@ export class IntegrationsComponent implements OnInit {
     };
     return map[code.toLowerCase()] || 'extension';
   }
+
+  toneFor(card: PlatformCard, index: number): string {
+    if (card.isConnected) return 'green';
+    if (card.canConnect) return 'blue';
+    const tones = ['blue', 'cyan', 'violet', 'amber', 'rose', 'slate', 'green'];
+    return tones[index % tones.length];
+  }
 }
