@@ -58,22 +58,25 @@ var app = builder.Build();
 // retries, log the error and let the application start anyway rather than crashing -
 // requests that depend on seeded data will surface their own errors, and the app can
 // be restarted or the seed re-attempted later.
-using (var scope = app.Services.CreateScope())
+if (Environment.GetEnvironmentVariable("SEED_ON_STARTUP")?.ToLower() == "true")
 {
-    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-    var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+    using (var scope = app.Services.CreateScope())
+    {
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
 
-    try
-    {
-        await DbSeeder.SeedWithRetryAsync(
-            db,
-            maxAttempts: 8,
-            delayBetweenAttempts: TimeSpan.FromSeconds(3),
-            logger: logger);
-    }
-    catch (Exception ex)
-    {
-        logger.LogError(ex, "Database seeding failed after all retry attempts. Continuing startup without seeded data.");
+        try
+        {
+            await DbSeeder.SeedWithRetryAsync(
+                db,
+                maxAttempts: 8,
+                delayBetweenAttempts: TimeSpan.FromSeconds(3),
+                logger: logger);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Database seeding failed after all retry attempts. Continuing startup without seeded data.");
+        }
     }
 }
 
