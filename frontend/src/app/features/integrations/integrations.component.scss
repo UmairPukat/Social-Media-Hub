@@ -8,7 +8,7 @@
 }
 
 /* Same hero language as Dashboard */
-.head {
+.int-hero {
   display: flex;
   justify-content: space-between;
   align-items: flex-end;
@@ -33,7 +33,7 @@
   color: #2563eb;
 }
 
-.head h1 {
+.int-hero h1 {
   margin: 0 0 8px;
   font-family: "Sora", "Space Grotesk", sans-serif;
   font-size: clamp(1.7rem, 2.4vw, 2.1rem);
@@ -47,10 +47,10 @@
   line-height: 1.55;
 }
 
-.summary-stats {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(120px, 148px));
-  gap: 12px;
+.hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
 }
 
 .banner {
@@ -82,7 +82,7 @@
   font-size: 0.82rem;
   font-weight: 700;
   cursor: pointer;
-  transition: background 150ms ease, border-color 150ms ease, color 150ms ease, transform 150ms ease;
+  transition: background 150ms ease, border-color 150ms ease, color 150ms ease;
 }
 
 .chip mat-icon {
@@ -103,20 +103,11 @@
   font-size: 0.7rem;
 }
 
-.chip:hover {
-  transform: translateY(-1px);
-  border-color: color-mix(in srgb, var(--accent, #2563eb) 35%, transparent);
-}
-
+.chip:hover,
 .chip.active {
   background: color-mix(in srgb, var(--accent, #2563eb) 12%, #fff);
   border-color: color-mix(in srgb, var(--accent, #2563eb) 35%, transparent);
   color: color-mix(in srgb, var(--accent, #2563eb) 80%, #0f172a);
-}
-
-.chip.active span {
-  background: color-mix(in srgb, var(--accent, #2563eb) 18%, #fff);
-  color: inherit;
 }
 
 .catalog {
@@ -125,8 +116,7 @@
   gap: 18px;
 }
 
-/* Same panel language as Dashboard */
-.panel {
+.category {
   background: #fff;
   border: 1px solid rgba(15, 23, 42, 0.06);
   border-radius: 20px;
@@ -134,25 +124,25 @@
   box-shadow: 0 10px 28px rgba(15, 23, 42, 0.04);
 }
 
-.panel-head h2 {
+.category-head h2 {
   margin: 0 0 4px;
   font-family: "Sora", "Space Grotesk", sans-serif;
   font-size: 1.1rem;
 }
 
-.panel-head p {
-  margin: 0 0 18px;
+.category-head p {
+  margin: 0 0 16px;
   color: #64748b;
   font-size: 0.9rem;
 }
 
-.tile-grid {
+/* Exact Dashboard stat-card DNA for Facebook, Instagram, and all platforms */
+.stats {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
   gap: 14px;
 }
 
-/* Exact Dashboard .stat DNA */
 .stat {
   position: relative;
   overflow: hidden;
@@ -161,7 +151,7 @@
   background: #fff;
   border: 1px solid rgba(15, 23, 42, 0.06);
   box-shadow: 0 10px 24px rgba(15, 23, 42, 0.04);
-  min-height: 148px;
+  min-height: 188px;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -185,6 +175,10 @@
   box-shadow: 0 16px 34px rgba(15, 23, 42, 0.08);
 }
 
+.stat.live {
+  border-color: color-mix(in srgb, var(--tone) 28%, transparent);
+}
+
 .stat[data-tone='blue'] { --tone: #2563eb; }
 .stat[data-tone='green'] { --tone: #16a34a; }
 .stat[data-tone='amber'] { --tone: #d97706; }
@@ -192,6 +186,9 @@
 .stat[data-tone='slate'] { --tone: #475569; }
 .stat[data-tone='cyan'] { --tone: #0891b2; }
 .stat[data-tone='violet'] { --tone: #7c3aed; }
+.stat[data-tone='orange'] { --tone: #ea580c; }
+.stat[data-tone='teal'] { --tone: #0f766e; }
+.stat[data-tone='pink'] { --tone: #db2777; }
 
 .stat-top {
   display: flex;
@@ -223,32 +220,22 @@
   text-align: right;
 }
 
-.stat-label.ready {
-  color: #2563eb;
-}
-
-.stat-label.on {
+.stat.live .stat-label {
   color: #16a34a;
 }
 
 .stat-value {
   font-family: "Sora", "Space Grotesk", sans-serif;
-  font-size: 2rem;
+  font-size: 1.35rem;
   font-weight: 700;
-  letter-spacing: -0.04em;
-  color: #0b1220;
-  line-height: 1;
-}
-
-.stat-value.name {
-  font-size: 1.15rem;
   letter-spacing: -0.03em;
-  line-height: 1.2;
+  color: #0b1220;
+  line-height: 1.15;
+  word-break: break-word;
 }
 
 .stat-hint {
   margin: 0;
-  margin-top: auto;
   color: #94a3b8;
   font-size: 0.8rem;
   line-height: 1.35;
@@ -256,47 +243,28 @@
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+  flex: 1;
 }
 
-.tile {
-  min-height: 196px;
-}
-
-.tile.live {
-  border-color: color-mix(in srgb, var(--tone) 28%, transparent);
-}
-
-.tile.connectable:not(.live) {
-  border-color: color-mix(in srgb, var(--tone) 18%, transparent);
-}
-
-.tile-actions {
+.stat-action {
   position: relative;
   z-index: 1;
-  margin-top: 4px;
+  margin-top: auto;
+  padding-top: 4px;
 }
 
-.tile-actions button {
+.stat-action button {
   width: 100%;
   border-radius: 10px !important;
 }
 
-.btn-soon {
-  color: #94a3b8 !important;
-}
-
-.btn-disconnect {
+.danger {
   color: #be123c !important;
   border-color: rgba(190, 18, 60, 0.22) !important;
 }
 
 @media (max-width: 700px) {
-  .head {
+  .int-hero {
     align-items: flex-start;
-  }
-
-  .summary-stats {
-    width: 100%;
-    grid-template-columns: 1fr 1fr;
   }
 }

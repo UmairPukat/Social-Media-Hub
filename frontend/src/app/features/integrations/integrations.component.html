@@ -1,5 +1,5 @@
 <section class="page integrations">
-  <header class="head">
+  <header class="int-hero">
     <div>
       <p class="eyebrow">Workspace</p>
       <h1>Integrations</h1>
@@ -8,23 +8,15 @@
         Facebook, Instagram, and WhatsApp Business support live Meta login today.
       </p>
     </div>
-    <div class="stats summary-stats">
-      <article class="stat" data-tone="green">
-        <div class="stat-top">
-          <span class="stat-ico"><mat-icon>check_circle</mat-icon></span>
-          <span class="stat-label">Connected</span>
-        </div>
-        <strong class="stat-value">{{ connectedCount() }}</strong>
-        <p class="stat-hint">Active linked accounts</p>
-      </article>
-      <article class="stat" data-tone="blue">
-        <div class="stat-top">
-          <span class="stat-ico"><mat-icon>hub</mat-icon></span>
-          <span class="stat-label">Available</span>
-        </div>
-        <strong class="stat-value">{{ cards().length }}</strong>
-        <p class="stat-hint">Integrations in catalog</p>
-      </article>
+    <div class="hero-actions">
+      <button mat-stroked-button type="button" (click)="setCategory('social')">
+        <mat-icon>share</mat-icon>
+        Social
+      </button>
+      <button mat-flat-button color="primary" type="button" (click)="setCategory('all')">
+        <mat-icon>hub</mat-icon>
+        All platforms
+      </button>
     </div>
   </header>
 
@@ -56,44 +48,42 @@
 
   <div class="catalog">
     @for (cat of visibleCategories(); track cat.id) {
-      <section class="panel category">
-        <div class="panel-head">
+      <section class="category">
+        <div class="category-head">
           <div>
             <h2>{{ cat.label }}</h2>
-            <p>{{ cat.items.length }} integrations in this category</p>
+            <p>{{ cat.items.length }} platforms in this category</p>
           </div>
         </div>
 
-        <div class="stats tile-grid">
-          @for (card of cat.items; track card.platformId; let i = $index) {
+        <div class="stats">
+          @for (card of cat.items; track card.platformId) {
             <article
-              class="stat tile"
-              [attr.data-tone]="toneFor(card, i)"
-              [class.live]="card.isConnected"
-              [class.connectable]="card.canConnect">
+              class="stat"
+              [attr.data-tone]="tone(card.code)"
+              [class.live]="card.isConnected">
               <div class="stat-top">
-                <span class="stat-ico"><mat-icon>{{ platformIcon(card.code) }}</mat-icon></span>
-                <span
-                  class="stat-label"
-                  [class.on]="card.isConnected"
-                  [class.ready]="card.canConnect && !card.isConnected">
+                <span class="stat-ico">
+                  <mat-icon>{{ platformIcon(card.code) }}</mat-icon>
+                </span>
+                <span class="stat-label">
                   {{ card.isConnected ? 'Connected' : card.canConnect ? 'Ready' : 'Soon' }}
                 </span>
               </div>
 
-              <strong class="stat-value name">{{ card.displayName }}</strong>
+              <strong class="stat-value">{{ card.displayName }}</strong>
 
               <p class="stat-hint">
                 @if (card.accountName) {
                   Linked as {{ card.accountName }}
                 } @else {
-                  {{ card.description }}
+                  {{ shortDesc(card.description) }}
                 }
               </p>
 
-              <div class="tile-actions">
+              <div class="stat-action">
                 @if (card.isConnected) {
-                  <button mat-stroked-button type="button" class="btn-disconnect" (click)="disconnect(card)">
+                  <button mat-stroked-button type="button" class="danger" (click)="disconnect(card)">
                     Disconnect
                   </button>
                 } @else if (card.canConnect) {
@@ -106,7 +96,7 @@
                     {{ connecting() === card.code.toLowerCase() ? 'Connecting…' : 'Connect' }}
                   </button>
                 } @else {
-                  <button mat-button type="button" class="btn-soon" disabled>Coming soon</button>
+                  <button mat-button type="button" disabled>Coming soon</button>
                 }
               </div>
             </article>
