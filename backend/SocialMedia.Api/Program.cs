@@ -52,11 +52,29 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
-// Create DB + seed demo admin / invite token
+// Create DB + seed demo admin / invite token.
+// SQL Server may not be ready yet if services start in parallel (e.g. on Railway), so
+// retry with a delay a few times before giving up. If seeding still fails after all
+// retries, log the error and let the application start anyway rather than crashing -
+// requests that depend on seeded data will surface their own errors, and the app can
+// be restarted or the seed re-attempted later.
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-    await DbSeeder.SeedAsync(db);
+    var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+
+    try
+    {
+        await DbSeeder.SeedWithRetryAsync(
+            db,
+            maxAttempts: 8,
+            delayBetweenAttempts: TimeSpan.FromSeconds(3),
+            logger: logger);
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "Database seeding failed after all retry attempts. Continuing startup without seeded data.");
+    }
 }
 
 if (app.Environment.IsDevelopment())
@@ -70,3 +88,4 @@ app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
 app.Run();
+
