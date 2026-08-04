@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using SocialMedia.Application.Catalog;
 using SocialMedia.Domain.Entities;
 
@@ -11,6 +12,51 @@ public static class DbSeeder
     public static readonly Guid FacebookPlatformId = PlatformCatalog.FacebookId;
     public static readonly Guid InstagramPlatformId = PlatformCatalog.InstagramId;
     public static readonly Guid WhatsAppPlatformId = PlatformCatalog.WhatsAppId;
+
+    /// <summary>
+    /// Seeds the database, retrying on transient connection failures. This is useful in
+    /// containerized environments (e.g. Railway) where the SQL Server service may not be
+    /// ready yet when the API container starts.
+    /// </summary>
+    /// <param name="db">The database context.</param>
+    /// <param name="maxAttempts">Maximum number of attempts before giving up.</param>
+    /// <param name="delayBetweenAttempts">Delay to wait between failed attempts.</param>
+    /// <param name="logger">Optional logger for retry diagnostics.</param>
+    public static async Task SeedWithRetryAsync(
+        AppDbContext db,
+        int maxAttempts = 8,
+        TimeSpan? delayBetweenAttempts = null,
+        ILogger? logger = null)
+    {
+        var delay = delayBetweenAttempts ?? TimeSpan.FromSeconds(3);
+
+        for (var attempt = 1; attempt <= maxAttempts; attempt++)
+        {
+            try
+            {
+                await SeedAsync(db);
+                if (attempt > 1)
+                {
+                    logger?.LogInformation("Database seeding succeeded on attempt {Attempt}.", attempt);
+                }
+                return;
+            }
+            catch (Exception ex) when (attempt < maxAttempts)
+            {
+                logger?.LogWarning(
+                    ex,
+                    "Database seeding attempt {Attempt}/{MaxAttempts} failed. Retrying in {Delay}s...",
+                    attempt,
+                    maxAttempts,
+                    delay.TotalSeconds);
+
+                await Task.Delay(delay);
+            }
+        }
+
+        // Final attempt: let any exception propagate so the caller can decide how to handle it.
+        await SeedAsync(db);
+    }
 
     public static async Task SeedAsync(AppDbContext db)
     {
