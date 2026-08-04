@@ -46,9 +46,18 @@ builder.Services.AddCors(options =>
 {
     options.AddPolicy("Frontend", policy =>
     {
-        var origins = builder.Configuration["corsOrigins"]?
+        var fromConfig = builder.Configuration.GetSection("Cors:Origins").Get<string[]>() ?? Array.Empty<string>();
+        var fromEnv = builder.Configuration["corsOrigins"]?
             .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            ?? new[] { "http://localhost:4200" };
+            ?? Array.Empty<string>();
+
+        var origins = fromConfig
+            .Concat(fromEnv)
+            .Select(o => o.TrimEnd('/'))
+            .Where(o => !string.IsNullOrWhiteSpace(o))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .DefaultIfEmpty("http://localhost:4200")
+            .ToArray();
 
         policy
             .WithOrigins(origins)

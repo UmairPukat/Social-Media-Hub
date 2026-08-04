@@ -23,12 +23,28 @@ public static class DependencyInjection
 
         services.AddDbContext<AppDbContext>(options =>
         {
-            var host = Environment.GetEnvironmentVariable("PGHOST") ?? "localhost";
-            var port = Environment.GetEnvironmentVariable("PGPORT") ?? "5432";
-            var user = Environment.GetEnvironmentVariable("PGUSER") ?? "postgres";
-            var password = Environment.GetEnvironmentVariable("PGPASSWORD") ?? "";
-            var database = Environment.GetEnvironmentVariable("PGDATABASE") ?? "postgres";
-            var connectionString = $"Host={host};Port={port};Username={user};Password={password};Database={database};SSL Mode=Require;";
+            // Prefer DATABASE_URL when Railway (or other hosts) provide it.
+            var databaseUrl = Environment.GetEnvironmentVariable("DATABASE_URL");
+            string connectionString;
+
+            if (!string.IsNullOrWhiteSpace(databaseUrl))
+            {
+                connectionString = BuildNpgsqlFromUrl(databaseUrl);
+            }
+            else
+            {
+                var host = Environment.GetEnvironmentVariable("PGHOST") ?? "localhost";
+                var port = Environment.GetEnvironmentVariable("PGPORT") ?? "5432";
+                var user = Environment.GetEnvironmentVariable("PGUSER") ?? "postgres";
+                var password = Environment.GetEnvironmentVariable("PGPASSWORD") ?? "";
+                var database = Environment.GetEnvironmentVariable("PGDATABASE") ?? "postgres";
+                // Prefer = try SSL, fall back if server has no SSL (fixes local / some Railway setups).
+                // Override with PGSSLMODE=Require|Disable|VerifyFull as needed.
+                var sslMode = Environment.GetEnvironmentVariable("PGSSLMODE") ?? "Prefer";
+                connectionString =
+                    $"Host={host};Port={port};Username={user};Password={password};Database={database};SSL Mode={sslMode};Trust Server Certificate=true";
+            }
+
             options.UseNpgsql(connectionString);
         });
 
@@ -74,5 +90,21 @@ public static class DependencyInjection
 
         services.AddAuthorization();
         return services;
+    }
+
+    /// <summary>
+    /// Converts a postgres:// URL into an Npgsql connection string with flexible SSL.
+    /// </summary>
+    private static string BuildNpgsqlFromUrl(string databaseUrl)
+    {
+        var uri = new Uri(databaseUrl);
+        var userInfo = uri.UserInfo.Split(':', 2);
+        var user = Uri.UnescapeDataString(userInfo[0]);
+        var password = userInfo.Length > 1 ? Uri.UnescapeDataString(userInfo[1]) : "";
+        var database = uri.AbsolutePath.Trim('/');
+        var sslMode = Environment.GetEnvironmentVariable("PGSSLMODE") ?? "Prefer";
+
+        return
+            $"Host={uri.Host};Port={(uri.Port > 0 ? uri.Port : 5432)};Username={user};Password={password};Database={database};SSL Mode={sslMode};Trust Server Certificate=true";
     }
 }

@@ -19,21 +19,31 @@ export interface ComposerProfile {
   isDemo: boolean;
 }
 
-export const CREATE_PLATFORMS: {
+export interface CreatePlatformMeta {
   code: CreatePlatform;
   label: string;
   icon: string;
   color: string;
+  /** Real Graph publish is wired later; UI always works in local/demo mode. */
   supportsPublish: boolean;
+  supportsFiles: boolean;
+  requiresMedia: boolean;
+  /** HTML accept attribute for file picker */
+  accept: string;
   hint: string;
-}[] = [
+}
+
+export const CREATE_PLATFORMS: CreatePlatformMeta[] = [
   {
     code: 'facebook',
     label: 'Facebook',
     icon: 'facebook',
     color: PLATFORM_COLORS['facebook'],
     supportsPublish: true,
-    hint: 'Page post · text, photo/link'
+    supportsFiles: true,
+    requiresMedia: false,
+    accept: 'image/*,video/*',
+    hint: 'Page post · text, photo or video'
   },
   {
     code: 'instagram',
@@ -41,7 +51,10 @@ export const CREATE_PLATFORMS: {
     icon: 'photo_camera',
     color: PLATFORM_COLORS['instagram'],
     supportsPublish: true,
-    hint: 'Feed post · image required'
+    supportsFiles: true,
+    requiresMedia: true,
+    accept: 'image/*,video/*',
+    hint: 'Feed post · image or video required'
   },
   {
     code: 'whatsapp',
@@ -49,7 +62,10 @@ export const CREATE_PLATFORMS: {
     icon: 'chat',
     color: PLATFORM_COLORS['whatsapp'],
     supportsPublish: false,
-    hint: 'Broadcast / status-style message'
+    supportsFiles: true,
+    requiresMedia: false,
+    accept: 'image/*,video/*,.pdf,.doc,.docx',
+    hint: 'Broadcast / status · text + optional file'
   },
   {
     code: 'tiktok',
@@ -57,6 +73,9 @@ export const CREATE_PLATFORMS: {
     icon: 'music_note',
     color: PLATFORM_COLORS['tiktok'],
     supportsPublish: false,
+    supportsFiles: true,
+    requiresMedia: true,
+    accept: 'video/*,image/*',
     hint: 'Vertical clip + caption'
   },
   {
@@ -65,7 +84,10 @@ export const CREATE_PLATFORMS: {
     icon: 'smart_display',
     color: PLATFORM_COLORS['youtube'],
     supportsPublish: false,
-    hint: 'Video title & description'
+    supportsFiles: true,
+    requiresMedia: true,
+    accept: 'video/*,image/*',
+    hint: 'Video title, description & file'
   },
   {
     code: 'linkedin',
@@ -73,7 +95,10 @@ export const CREATE_PLATFORMS: {
     icon: 'work',
     color: PLATFORM_COLORS['linkedin'],
     supportsPublish: false,
-    hint: 'Professional update'
+    supportsFiles: true,
+    requiresMedia: false,
+    accept: 'image/*,video/*,.pdf',
+    hint: 'Professional update · text + optional media'
   },
   {
     code: 'twitter',
@@ -81,7 +106,10 @@ export const CREATE_PLATFORMS: {
     icon: 'tag',
     color: PLATFORM_COLORS['twitter'],
     supportsPublish: false,
-    hint: 'Short post / thread'
+    supportsFiles: true,
+    requiresMedia: false,
+    accept: 'image/*,video/*',
+    hint: 'Short post · text + optional media'
   }
 ];
 

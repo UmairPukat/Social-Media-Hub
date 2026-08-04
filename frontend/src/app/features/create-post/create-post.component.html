@@ -3,7 +3,7 @@
     <div class="studio-title">
       <p class="eyebrow">Publishing studio</p>
       <h1>Create Post</h1>
-      <p class="lede">Compose once in the native layout for the platform you select.</p>
+      <p class="lede">Compose in the native layout for each platform. Attach files where supported — API publish can be wired later.</p>
     </div>
   </header>
 
@@ -49,7 +49,7 @@
             <button
               type="button"
               class="account"
-              [class.active]="form.controls.profileId.value === prof.id"
+              [class.active]="selectedProfileId() === prof.id"
               (click)="selectProfile(prof.id)">
               <span class="av" [style.background]="activeMeta().color">{{ initials(prof.name) }}</span>
               <span class="account-copy">
@@ -68,7 +68,12 @@
         <mat-icon>lightbulb</mat-icon>
         <div>
           <strong>Tip</strong>
-          <p>{{ activeMeta().hint }}. Keep media URLs publicly reachable for Instagram and TikTok.</p>
+          <p>
+            {{ activeMeta().hint }}.
+            @if (activeMeta().supportsFiles) {
+              You can attach files or paste a media URL.
+            }
+          </p>
         </div>
       </section>
     </aside>
@@ -108,15 +113,36 @@
                 [attr.maxlength]="charLimit()"
                 placeholder="What's on your mind?"
               ></textarea>
+
+              <div class="attach-row">
+                <label class="file-btn">
+                  <mat-icon>attach_file</mat-icon>
+                  Attach photo / video
+                  <input type="file" hidden [attr.accept]="activeMeta().accept" (change)="onFilePicked($event)" />
+                </label>
+                @if (selectedFileName()) {
+                  <span class="file-chip">
+                    {{ selectedFileName() }}
+                    <button type="button" (click)="clearAttachment()" aria-label="Remove file"><mat-icon>close</mat-icon></button>
+                  </span>
+                }
+              </div>
               <div class="media-field">
-                <mat-icon>photo_library</mat-icon>
-                <input formControlName="mediaUrl" placeholder="Photo / video URL (optional)" />
+                <mat-icon>link</mat-icon>
+                <input formControlName="mediaUrl" placeholder="Or paste photo / video URL (optional)" />
               </div>
               @if (form.controls.mediaUrl.value) {
                 <div class="media-preview">
-                  <img [src]="form.controls.mediaUrl.value" alt="Preview" />
+                  @if (isVideoPreview()) {
+                    <video [src]="form.controls.mediaUrl.value" controls></video>
+                  } @else if (isImagePreview()) {
+                    <img [src]="form.controls.mediaUrl.value" alt="Preview" />
+                  } @else {
+                    <div class="file-preview"><mat-icon>description</mat-icon><span>{{ selectedFileName() || 'Attached file' }}</span></div>
+                  }
                 </div>
               }
+
               <div class="fb-add">
                 <span>Add to your post</span>
                 <div class="icons">
@@ -152,11 +178,20 @@
               <div class="ig-body">
                 <div class="ig-media">
                   @if (form.controls.mediaUrl.value) {
-                    <img [src]="form.controls.mediaUrl.value" alt="Preview" />
+                    @if (isVideoPreview()) {
+                      <video [src]="form.controls.mediaUrl.value" controls></video>
+                    } @else {
+                      <img [src]="form.controls.mediaUrl.value" alt="Preview" />
+                    }
                   } @else {
                     <div class="ig-empty">
                       <mat-icon>photo_camera</mat-icon>
-                      <p>Add an image URL to preview your post</p>
+                      <p>Attach an image/video or paste a URL</p>
+                      <label class="file-btn light">
+                        <mat-icon>upload</mat-icon>
+                        Choose file
+                        <input type="file" hidden [attr.accept]="activeMeta().accept" (change)="onFilePicked($event)" />
+                      </label>
                     </div>
                   }
                 </div>
@@ -173,9 +208,22 @@
                     [attr.maxlength]="charLimit()"
                     placeholder="Write a caption…"
                   ></textarea>
+                  <div class="attach-row compact">
+                    <label class="file-btn">
+                      <mat-icon>attach_file</mat-icon>
+                      Attach media
+                      <input type="file" hidden [attr.accept]="activeMeta().accept" (change)="onFilePicked($event)" />
+                    </label>
+                    @if (selectedFileName()) {
+                      <span class="file-chip">
+                        {{ selectedFileName() }}
+                        <button type="button" (click)="clearAttachment()" aria-label="Remove file"><mat-icon>close</mat-icon></button>
+                      </span>
+                    }
+                  </div>
                   <div class="ig-field">
-                    <mat-icon>image</mat-icon>
-                    <input formControlName="mediaUrl" placeholder="Image URL (required)" />
+                    <mat-icon>link</mat-icon>
+                    <input formControlName="mediaUrl" placeholder="Or image / video URL" />
                   </div>
                   <div class="ig-field">
                     <mat-icon>location_on</mat-icon>
@@ -204,7 +252,13 @@
               <div class="wa-canvas">
                 <div class="wa-bubble">
                   @if (form.controls.mediaUrl.value) {
-                    <img [src]="form.controls.mediaUrl.value" alt="Media" />
+                    @if (isVideoPreview()) {
+                      <video [src]="form.controls.mediaUrl.value" controls></video>
+                    } @else if (isImagePreview()) {
+                      <img [src]="form.controls.mediaUrl.value" alt="Media" />
+                    } @else {
+                      <div class="file-preview dark"><mat-icon>attach_file</mat-icon><span>{{ selectedFileName() || 'File' }}</span></div>
+                    }
                   }
                   <p>{{ form.controls.content.value || 'Type a message…' }}</p>
                   <time>now</time>
@@ -218,7 +272,10 @@
                   [attr.maxlength]="charLimit()"
                   placeholder="Type a message"
                 ></textarea>
-                <button type="button" class="round"><mat-icon>attach_file</mat-icon></button>
+                <label class="round file-round" matTooltip="Attach file">
+                  <mat-icon>attach_file</mat-icon>
+                  <input type="file" hidden [attr.accept]="activeMeta().accept" (change)="onFilePicked($event)" />
+                </label>
                 <input class="wa-url" formControlName="mediaUrl" placeholder="Optional media URL" />
                 <button
                   type="button"
@@ -228,6 +285,12 @@
                   <mat-icon>send</mat-icon>
                 </button>
               </div>
+              @if (selectedFileName()) {
+                <div class="wa-file">
+                  <span>{{ selectedFileName() }}</span>
+                  <button type="button" (click)="clearAttachment()">Remove</button>
+                </div>
+              }
             </div>
           }
 
@@ -246,12 +309,21 @@
               <div class="yt-grid">
                 <div class="yt-thumb">
                   @if (form.controls.mediaUrl.value) {
-                    <img [src]="form.controls.mediaUrl.value" alt="Thumbnail" />
-                    <span class="play"><mat-icon>play_arrow</mat-icon></span>
+                    @if (isVideoPreview()) {
+                      <video [src]="form.controls.mediaUrl.value" controls></video>
+                    } @else {
+                      <img [src]="form.controls.mediaUrl.value" alt="Thumbnail" />
+                      <span class="play"><mat-icon>play_arrow</mat-icon></span>
+                    }
                   } @else {
                     <div class="yt-empty">
                       <mat-icon>smart_display</mat-icon>
-                      <p>Paste a video / thumbnail URL</p>
+                      <p>Attach a video or thumbnail</p>
+                      <label class="file-btn light">
+                        <mat-icon>upload</mat-icon>
+                        Choose file
+                        <input type="file" hidden [attr.accept]="activeMeta().accept" (change)="onFilePicked($event)" />
+                      </label>
                     </div>
                   }
                 </div>
@@ -260,7 +332,20 @@
                   <input formControlName="title" maxlength="100" placeholder="Add a title that describes your video" />
                   <label>Description</label>
                   <textarea rows="6" formControlName="content" placeholder="Tell viewers about your video"></textarea>
-                  <label>Video / thumbnail URL</label>
+                  <div class="attach-row compact">
+                    <label class="file-btn">
+                      <mat-icon>attach_file</mat-icon>
+                      Attach video / thumbnail
+                      <input type="file" hidden [attr.accept]="activeMeta().accept" (change)="onFilePicked($event)" />
+                    </label>
+                    @if (selectedFileName()) {
+                      <span class="file-chip">
+                        {{ selectedFileName() }}
+                        <button type="button" (click)="clearAttachment()" aria-label="Remove file"><mat-icon>close</mat-icon></button>
+                      </span>
+                    }
+                  </div>
+                  <label>Or media URL</label>
                   <input formControlName="mediaUrl" placeholder="https://…" />
                   <label>Visibility</label>
                   <div class="seg">
@@ -278,11 +363,15 @@
               <div class="tt-stage">
                 <div class="tt-phone">
                   @if (form.controls.mediaUrl.value) {
-                    <img [src]="form.controls.mediaUrl.value" alt="Clip" />
+                    @if (isVideoPreview()) {
+                      <video [src]="form.controls.mediaUrl.value" controls></video>
+                    } @else {
+                      <img [src]="form.controls.mediaUrl.value" alt="Clip" />
+                    }
                   } @else {
                     <div class="tt-empty">
                       <mat-icon>videocam</mat-icon>
-                      <p>Add a vertical video / image URL</p>
+                      <p>Attach a vertical video / image</p>
                     </div>
                   }
                   <div class="tt-overlay">
@@ -305,7 +394,20 @@
                     [attr.maxlength]="charLimit()"
                     placeholder="Describe your video with hashtags"
                   ></textarea>
-                  <label>Media URL (required)</label>
+                  <div class="attach-row compact">
+                    <label class="file-btn">
+                      <mat-icon>attach_file</mat-icon>
+                      Attach clip
+                      <input type="file" hidden [attr.accept]="activeMeta().accept" (change)="onFilePicked($event)" />
+                    </label>
+                    @if (selectedFileName()) {
+                      <span class="file-chip">
+                        {{ selectedFileName() }}
+                        <button type="button" (click)="clearAttachment()" aria-label="Remove file"><mat-icon>close</mat-icon></button>
+                      </span>
+                    }
+                  </div>
+                  <label>Or media URL</label>
                   <input formControlName="mediaUrl" placeholder="https://…" />
                   <button
                     type="button"
@@ -343,13 +445,32 @@
                 [attr.maxlength]="charLimit()"
                 placeholder="What do you want to talk about?"
               ></textarea>
+              <div class="attach-row">
+                <label class="file-btn">
+                  <mat-icon>attach_file</mat-icon>
+                  Attach image / PDF
+                  <input type="file" hidden [attr.accept]="activeMeta().accept" (change)="onFilePicked($event)" />
+                </label>
+                @if (selectedFileName()) {
+                  <span class="file-chip">
+                    {{ selectedFileName() }}
+                    <button type="button" (click)="clearAttachment()" aria-label="Remove file"><mat-icon>close</mat-icon></button>
+                  </span>
+                }
+              </div>
               <div class="media-field">
-                <mat-icon>image</mat-icon>
-                <input formControlName="mediaUrl" placeholder="Image URL (optional)" />
+                <mat-icon>link</mat-icon>
+                <input formControlName="mediaUrl" placeholder="Or media URL (optional)" />
               </div>
               @if (form.controls.mediaUrl.value) {
                 <div class="media-preview">
-                  <img [src]="form.controls.mediaUrl.value" alt="Preview" />
+                  @if (isVideoPreview()) {
+                    <video [src]="form.controls.mediaUrl.value" controls></video>
+                  } @else if (isImagePreview()) {
+                    <img [src]="form.controls.mediaUrl.value" alt="Preview" />
+                  } @else {
+                    <div class="file-preview"><mat-icon>description</mat-icon><span>{{ selectedFileName() || 'Attached file' }}</span></div>
+                  }
                 </div>
               }
               <div class="li-tools">
@@ -395,10 +516,28 @@
                 [attr.maxlength]="charLimit()"
                 placeholder="What’s happening?"
               ></textarea>
-              <div class="media-field">
-                <mat-icon>image</mat-icon>
-                <input formControlName="mediaUrl" placeholder="Image URL (optional)" />
+              <div class="attach-row">
+                <label class="file-btn">
+                  <mat-icon>attach_file</mat-icon>
+                  Attach media
+                  <input type="file" hidden [attr.accept]="activeMeta().accept" (change)="onFilePicked($event)" />
+                </label>
+                @if (selectedFileName()) {
+                  <span class="file-chip">
+                    {{ selectedFileName() }}
+                    <button type="button" (click)="clearAttachment()" aria-label="Remove file"><mat-icon>close</mat-icon></button>
+                  </span>
+                }
               </div>
+              <div class="media-field">
+                <mat-icon>link</mat-icon>
+                <input formControlName="mediaUrl" placeholder="Or media URL (optional)" />
+              </div>
+              @if (form.controls.mediaUrl.value && isImagePreview()) {
+                <div class="media-preview">
+                  <img [src]="form.controls.mediaUrl.value" alt="Preview" />
+                </div>
+              }
               <div class="x-meta">
                 <span>{{ form.controls.content.value.length }}/{{ charLimit() }}</span>
               </div>
