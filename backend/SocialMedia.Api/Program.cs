@@ -45,9 +45,16 @@ builder.Services.AddSwaggerGen(c =>
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("Frontend", policy =>
-        policy.WithOrigins(builder.Configuration.GetSection("Cors:Origins").Get<string[]>() ?? ["http://localhost:4200"])
+    {
+        var origins = builder.Configuration["corsOrigins"]?
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            ?? new[] { "http://localhost:4200" };
+
+        policy
+            .WithOrigins(origins)
             .AllowAnyHeader()
-            .AllowAnyMethod());
+            .AllowAnyMethod();
+    });
 });
 
 var app = builder.Build();
@@ -80,11 +87,8 @@ if (Environment.GetEnvironmentVariable("SEED_ON_STARTUP")?.ToLower() == "true")
     }
 }
 
-if (app.Environment.IsDevelopment())
-{
-    app.UseSwagger();
-    app.UseSwaggerUI();
-}
+app.UseSwagger();
+app.UseSwaggerUI();
 
 app.UseCors("Frontend");
 app.UseAuthentication();
