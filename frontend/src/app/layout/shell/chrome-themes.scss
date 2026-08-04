@@ -1,0 +1,238 @@
+/* Chrome themes for navbar + sidebar (applied via data-chrome-theme on .shell) */
+
+.shell {
+  /* Shared structural defaults — colors come from theme blocks below */
+  --chrome-nav-bg: #ffffff;
+  --chrome-nav-bg-2: #f8fbff;
+  --chrome-nav-border: rgba(37, 99, 235, 0.1);
+  --chrome-nav-text: #0f172a;
+  --chrome-nav-muted: #64748b;
+  --chrome-nav-soft: #eef4ff;
+  --chrome-nav-soft-border: rgba(37, 99, 235, 0.14);
+  --chrome-accent: #2563eb;
+  --chrome-accent-2: #1d4ed8;
+  --chrome-accent-soft: rgba(37, 99, 235, 0.12);
+  --chrome-glow: rgba(59, 130, 246, 0.18);
+  --chrome-mark-from: #60a5fa;
+  --chrome-mark-mid: #2563eb;
+  --chrome-mark-to: #1d4ed8;
+  --chrome-search-bg: #eef4ff;
+  --chrome-search-border: rgba(37, 99, 235, 0.14);
+  --chrome-search-text: #0f172a;
+  --chrome-search-placeholder: #94a3b8;
+  --chrome-icon-bg: #eef4ff;
+  --chrome-icon-color: #334155;
+  --chrome-chip-bg: #ffffff;
+  --chrome-chip-border: rgba(37, 99, 235, 0.14);
+  --chrome-logout-bg: linear-gradient(145deg, #2563eb, #1d4ed8);
+  --chrome-logout-text: #fff;
+  --chrome-logout-border: rgba(37, 99, 235, 0.2);
+  --chrome-notif-ring: #eef4ff;
+
+  --chrome-side-bg: linear-gradient(180deg, #ffffff 0%, #f8fafc 55%, #f1f5f9 100%);
+  --chrome-side-text: #0f172a;
+  --chrome-side-muted: #64748b;
+  --chrome-side-label: #94a3b8;
+  --chrome-side-border: rgba(37, 99, 235, 0.1);
+  --chrome-side-brand-bg: #eef4ff;
+  --chrome-side-brand-border: rgba(37, 99, 235, 0.14);
+  --chrome-side-link: #475569;
+  --chrome-side-link-hover-bg: #f8fafc;
+  --chrome-side-link-hover: #1e293b;
+  --chrome-side-ico-bg: #f1f5f9;
+  --chrome-side-ico: #64748b;
+  --chrome-side-ico-hover-bg: #e0eaff;
+  --chrome-side-ico-hover: #2563eb;
+  --chrome-side-active-bg: linear-gradient(90deg, rgba(37, 99, 235, 0.12), rgba(37, 99, 235, 0.04));
+  --chrome-side-active-text: #1e40af;
+  --chrome-side-active-bar: #2563eb;
+  --chrome-side-active-ico-bg: linear-gradient(145deg, #60a5fa, #2563eb);
+  --chrome-side-active-ico: #fff;
+  --chrome-side-card-bg: #ffffff;
+  --chrome-side-card-border: rgba(37, 99, 235, 0.12);
+  --chrome-side-card-text: #0f172a;
+  --chrome-side-card-muted: #64748b;
+  --chrome-pulse: #22c55e;
+}
+
+/* 1) Azure Clean */
+.shell[data-chrome-theme='azure'] {
+  /* defaults above */
+}
+
+/* 2) Graphite Pro — light nav, dark sidebar */
+.shell[data-chrome-theme='graphite'] {
+  --chrome-side-bg: linear-gradient(185deg, #2a2522 0%, #1c1917 45%, #0c0a09 100%);
+  --chrome-side-text: #f5f5f4;
+  --chrome-side-muted: #a8a29e;
+  --chrome-side-label: #a8a29e;
+  --chrome-side-border: rgba(255, 255, 255, 0.06);
+  --chrome-side-brand-bg: rgba(255, 255, 255, 0.05);
+  --chrome-side-brand-border: rgba(37, 99, 235, 0.25);
+  --chrome-side-link: #d6d3d1;
+  --chrome-side-link-hover-bg: rgba(255, 255, 255, 0.06);
+  --chrome-side-link-hover: #fafaf9;
+  --chrome-side-ico-bg: rgba(255, 255, 255, 0.06);
+  --chrome-side-ico: #a8a29e;
+  --chrome-side-ico-hover-bg: rgba(37, 99, 235, 0.2);
+  --chrome-side-ico-hover: #93c5fd;
+  --chrome-side-active-bg: linear-gradient(90deg, rgba(37, 99, 235, 0.28), rgba(37, 99, 235, 0.06));
+  --chrome-side-active-text: #eff6ff;
+  --chrome-side-active-bar: #3b82f6;
+  --chrome-side-active-ico-bg: linear-gradient(145deg, #60a5fa, #2563eb);
+  --chrome-side-active-ico: #fff;
+  --chrome-side-card-bg: rgba(255, 255, 255, 0.05);
+  --chrome-side-card-border: rgba(255, 255, 255, 0.1);
+  --chrome-side-card-text: #fafaf9;
+  --chrome-side-card-muted: #a8a29e;
+}
+
+/* 3) Ocean Depth */
+.shell[data-chrome-theme='ocean'] {
+  --chrome-nav-bg: #f0f9ff;
+  --chrome-nav-bg-2: #e0f2fe;
+  --chrome-nav-border: rgba(13, 148, 136, 0.18);
+  --chrome-accent: #0d9488;
+  --chrome-accent-2: #0f766e;
+  --chrome-accent-soft: rgba(13, 148, 136, 0.12);
+  --chrome-glow: rgba(45, 212, 191, 0.22);
+  --chrome-mark-from: #5eead4;
+  --chrome-mark-mid: #14b8a6;
+  --chrome-mark-to: #0f766e;
+  --chrome-nav-soft: #ccfbf1;
+  --chrome-nav-soft-border: rgba(13, 148, 136, 0.2);
+  --chrome-search-bg: #ecfeff;
+  --chrome-search-border: rgba(13, 148, 136, 0.2);
+  --chrome-icon-bg: #ccfbf1;
+  --chrome-chip-border: rgba(13, 148, 136, 0.2);
+  --chrome-logout-bg: linear-gradient(145deg, #14b8a6, #0f766e);
+  --chrome-logout-border: rgba(13, 148, 136, 0.25);
+  --chrome-notif-ring: #ccfbf1;
+
+  --chrome-side-bg: linear-gradient(180deg, #115e59 0%, #0f4c4a 50%, #042f2e 100%);
+  --chrome-side-text: #ecfdf5;
+  --chrome-side-muted: #99f6e4;
+  --chrome-side-label: #5eead4;
+  --chrome-side-border: rgba(94, 234, 212, 0.15);
+  --chrome-side-brand-bg: rgba(255, 255, 255, 0.08);
+  --chrome-side-brand-border: rgba(94, 234, 212, 0.22);
+  --chrome-side-link: #ccfbf1;
+  --chrome-side-link-hover-bg: rgba(255, 255, 255, 0.08);
+  --chrome-side-link-hover: #fff;
+  --chrome-side-ico-bg: rgba(255, 255, 255, 0.08);
+  --chrome-side-ico: #99f6e4;
+  --chrome-side-ico-hover-bg: rgba(45, 212, 191, 0.22);
+  --chrome-side-ico-hover: #5eead4;
+  --chrome-side-active-bg: linear-gradient(90deg, rgba(45, 212, 191, 0.28), rgba(45, 212, 191, 0.06));
+  --chrome-side-active-text: #fff;
+  --chrome-side-active-bar: #2dd4bf;
+  --chrome-side-active-ico-bg: linear-gradient(145deg, #5eead4, #14b8a6);
+  --chrome-side-active-ico: #042f2e;
+  --chrome-side-card-bg: rgba(255, 255, 255, 0.08);
+  --chrome-side-card-border: rgba(94, 234, 212, 0.2);
+  --chrome-side-card-text: #f0fdfa;
+  --chrome-side-card-muted: #99f6e4;
+  --chrome-pulse: #34d399;
+}
+
+/* 4) Executive Navy */
+.shell[data-chrome-theme='navy'] {
+  --chrome-nav-bg: #0f172a;
+  --chrome-nav-bg-2: #1e293b;
+  --chrome-nav-border: rgba(148, 163, 184, 0.16);
+  --chrome-nav-text: #f8fafc;
+  --chrome-nav-muted: #94a3b8;
+  --chrome-nav-soft: rgba(255, 255, 255, 0.08);
+  --chrome-nav-soft-border: rgba(255, 255, 255, 0.12);
+  --chrome-accent: #38bdf8;
+  --chrome-accent-2: #0ea5e9;
+  --chrome-accent-soft: rgba(56, 189, 248, 0.16);
+  --chrome-glow: rgba(56, 189, 248, 0.2);
+  --chrome-mark-from: #7dd3fc;
+  --chrome-mark-mid: #38bdf8;
+  --chrome-mark-to: #0284c7;
+  --chrome-search-bg: rgba(255, 255, 255, 0.08);
+  --chrome-search-border: rgba(255, 255, 255, 0.12);
+  --chrome-search-text: #f1f5f9;
+  --chrome-search-placeholder: #94a3b8;
+  --chrome-icon-bg: rgba(255, 255, 255, 0.08);
+  --chrome-icon-color: #e2e8f0;
+  --chrome-chip-bg: rgba(255, 255, 255, 0.08);
+  --chrome-chip-border: rgba(255, 255, 255, 0.12);
+  --chrome-logout-bg: linear-gradient(145deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.06));
+  --chrome-logout-text: #f8fafc;
+  --chrome-logout-border: rgba(255, 255, 255, 0.16);
+  --chrome-notif-ring: #1e293b;
+
+  --chrome-side-bg: linear-gradient(180deg, #111827 0%, #0b1220 55%, #020617 100%);
+  --chrome-side-text: #e2e8f0;
+  --chrome-side-muted: #94a3b8;
+  --chrome-side-label: #64748b;
+  --chrome-side-border: rgba(255, 255, 255, 0.06);
+  --chrome-side-brand-bg: rgba(255, 255, 255, 0.05);
+  --chrome-side-brand-border: rgba(56, 189, 248, 0.2);
+  --chrome-side-link: #cbd5e1;
+  --chrome-side-link-hover-bg: rgba(255, 255, 255, 0.05);
+  --chrome-side-link-hover: #fff;
+  --chrome-side-ico-bg: rgba(255, 255, 255, 0.05);
+  --chrome-side-ico: #94a3b8;
+  --chrome-side-ico-hover-bg: rgba(56, 189, 248, 0.15);
+  --chrome-side-ico-hover: #7dd3fc;
+  --chrome-side-active-bg: linear-gradient(90deg, rgba(56, 189, 248, 0.22), rgba(56, 189, 248, 0.05));
+  --chrome-side-active-text: #fff;
+  --chrome-side-active-bar: #38bdf8;
+  --chrome-side-active-ico-bg: linear-gradient(145deg, #38bdf8, #0284c7);
+  --chrome-side-active-ico: #fff;
+  --chrome-side-card-bg: rgba(255, 255, 255, 0.05);
+  --chrome-side-card-border: rgba(255, 255, 255, 0.08);
+  --chrome-side-card-text: #f8fafc;
+  --chrome-side-card-muted: #94a3b8;
+}
+
+/* 5) Emerald Soft */
+.shell[data-chrome-theme='emerald'] {
+  --chrome-nav-bg: #ffffff;
+  --chrome-nav-bg-2: #f3faf6;
+  --chrome-nav-border: rgba(5, 150, 105, 0.12);
+  --chrome-accent: #059669;
+  --chrome-accent-2: #047857;
+  --chrome-accent-soft: rgba(5, 150, 105, 0.12);
+  --chrome-glow: rgba(16, 185, 129, 0.16);
+  --chrome-mark-from: #34d399;
+  --chrome-mark-mid: #10b981;
+  --chrome-mark-to: #047857;
+  --chrome-nav-soft: #ecfdf5;
+  --chrome-nav-soft-border: rgba(5, 150, 105, 0.16);
+  --chrome-search-bg: #ecfdf5;
+  --chrome-search-border: rgba(5, 150, 105, 0.18);
+  --chrome-icon-bg: #ecfdf5;
+  --chrome-chip-border: rgba(5, 150, 105, 0.16);
+  --chrome-logout-bg: linear-gradient(145deg, #10b981, #047857);
+  --chrome-logout-border: rgba(5, 150, 105, 0.25);
+  --chrome-notif-ring: #ecfdf5;
+
+  --chrome-side-bg: linear-gradient(180deg, #ffffff 0%, #f3faf6 55%, #ecfdf5 100%);
+  --chrome-side-text: #064e3b;
+  --chrome-side-muted: #64748b;
+  --chrome-side-label: #6b7280;
+  --chrome-side-border: rgba(5, 150, 105, 0.12);
+  --chrome-side-brand-bg: #ecfdf5;
+  --chrome-side-brand-border: rgba(5, 150, 105, 0.16);
+  --chrome-side-link: #334155;
+  --chrome-side-link-hover-bg: #f8fafc;
+  --chrome-side-link-hover: #064e3b;
+  --chrome-side-ico-bg: #ecfdf5;
+  --chrome-side-ico: #64748b;
+  --chrome-side-ico-hover-bg: #d1fae5;
+  --chrome-side-ico-hover: #059669;
+  --chrome-side-active-bg: linear-gradient(90deg, rgba(5, 150, 105, 0.12), rgba(5, 150, 105, 0.04));
+  --chrome-side-active-text: #065f46;
+  --chrome-side-active-bar: #059669;
+  --chrome-side-active-ico-bg: linear-gradient(145deg, #34d399, #059669);
+  --chrome-side-active-ico: #fff;
+  --chrome-side-card-bg: #ffffff;
+  --chrome-side-card-border: rgba(5, 150, 105, 0.14);
+  --chrome-side-card-text: #064e3b;
+  --chrome-side-card-muted: #64748b;
+  --chrome-pulse: #10b981;
+}

@@ -1,0 +1,50 @@
+<div class="page">
+  <div class="page-header">
+    <h1>Integrations</h1>
+    <p>
+      Connect your social platforms once, then publish content and manage conversations from Social Hub.
+      Facebook, Instagram, and WhatsApp are live with Meta OAuth and webhooks.
+    </p>
+  </div>
+
+  @if (loading()) {
+    <div class="loading"><mat-spinner diameter="36"></mat-spinner></div>
+  } @else {
+    <div class="grid-cards">
+      @for (card of platforms(); track card.platform) {
+        <article class="platform-card">
+          <div class="icon-wrap" [style.background]="color(card.icon)">
+            {{ card.name.charAt(0) }}
+          </div>
+
+          <div class="flex-between">
+            <h3>{{ card.name }}</h3>
+            @if (!card.isImplemented) {
+              <span class="badge coming">Coming soon</span>
+            } @else if (card.isConnected) {
+              <span class="badge">Connected</span>
+            } @else {
+              <span class="badge disconnected">Not connected</span>
+            }
+          </div>
+
+          <p>{{ card.description }}</p>
+
+          @if (card.isConnected && card.accountName) {
+            <small class="account">{{ card.accountName }}</small>
+          }
+
+          <div class="actions">
+            @if (card.isConnected) {
+              <button mat-stroked-button color="warn" (click)="disconnect(card)">Disconnect</button>
+            } @else {
+              <button mat-flat-button color="primary" (click)="connect(card)" [disabled]="!card.isImplemented">
+                Connect
+              </button>
+            }
+          </div>
+        </article>
+      }
+    </div>
+  }
+</div>

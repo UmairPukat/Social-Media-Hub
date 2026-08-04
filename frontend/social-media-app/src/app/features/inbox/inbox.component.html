@@ -1,0 +1,76 @@
+<div class="page">
+  <div class="page-header">
+    <h1>Inbox</h1>
+    <p>Manage comments and messages across connected platforms. Filter by network as needed.</p>
+  </div>
+
+  <div class="filters">
+    <mat-form-field appearance="outline">
+      <mat-label>Platform</mat-label>
+      <mat-select [ngModel]="platformFilter" (ngModelChange)="onPlatformChange($event)">
+        <mat-option [value]="null">All platforms</mat-option>
+        <mat-option [value]="SocialPlatform.Facebook">Facebook</mat-option>
+        <mat-option [value]="SocialPlatform.Instagram">Instagram</mat-option>
+        <mat-option [value]="SocialPlatform.WhatsApp">WhatsApp</mat-option>
+        <mat-option [value]="SocialPlatform.YouTube">YouTube</mat-option>
+        <mat-option [value]="SocialPlatform.LinkedIn">LinkedIn</mat-option>
+        <mat-option [value]="SocialPlatform.TikTok">TikTok</mat-option>
+      </mat-select>
+    </mat-form-field>
+  </div>
+
+  @if (showCommentsTab()) {
+    <mat-tab-group [selectedIndex]="selectedTab" (selectedIndexChange)="onTabChange($event)">
+      <mat-tab label="Comments"></mat-tab>
+      <mat-tab label="Messages"></mat-tab>
+    </mat-tab-group>
+  } @else {
+    <div class="wa-note">WhatsApp supports Messages only — Comments are hidden for this platform.</div>
+  }
+
+  <div class="inbox-grid">
+    <aside class="list-pane">
+      @for (item of items(); track item.id) {
+        <button class="inbox-row" [class.active]="selected?.id === item.id" (click)="select(item)">
+          <div class="row-top">
+            <strong>{{ item.senderName }}</strong>
+            <span class="platform-pill">{{ item.platformName }}</span>
+          </div>
+          <p>{{ item.message }}</p>
+          <small>{{ item.receivedAt | date: 'medium' }}</small>
+        </button>
+      } @empty {
+        <div class="empty">No items yet. Connected webhooks will appear here.</div>
+      }
+    </aside>
+
+    <section class="detail-pane">
+      @if (selected) {
+        <div class="detail-header">
+          <div>
+            <h3>{{ selected.senderName }}</h3>
+            <small>{{ selected.platformName }} · {{ selected.itemType === InboxItemType.Comment ? 'Comment' : 'Message' }}</small>
+          </div>
+          <div class="detail-actions">
+            @if (selected.itemType === InboxItemType.Comment && selected.platform !== SocialPlatform.WhatsApp) {
+              <button mat-stroked-button (click)="hide()">Hide</button>
+            }
+            <button mat-stroked-button color="warn" (click)="remove()">Delete</button>
+          </div>
+        </div>
+
+        <div class="message-bubble">{{ selected.message }}</div>
+
+        <div class="reply-box">
+          <mat-form-field appearance="outline" class="full-width">
+            <mat-label>Reply</mat-label>
+            <textarea matInput rows="3" [(ngModel)]="replyText"></textarea>
+          </mat-form-field>
+          <button mat-flat-button color="primary" (click)="sendReply()">Send reply</button>
+        </div>
+      } @else {
+        <div class="empty detail-empty">Select an item to view and reply.</div>
+      }
+    </section>
+  </div>
+</div>

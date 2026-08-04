@@ -1,0 +1,36 @@
+.posts-list {
+  display: grid;
+  gap: 12px;
+  max-width: 820px;
+}
+
+.post-item {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 16px;
+  box-shadow: var(--shadow);
+}
+
+.post-item p {
+  margin: 10px 0;
+  white-space: pre-wrap;
+}
+
+.status {
+  font-size: 0.8rem;
+  color: var(--brand-dark);
+  background: var(--brand-soft);
+  padding: 3px 8px;
+  border-radius: 999px;
+}
+
+.err {
+  color: var(--danger);
+  margin-top: 8px;
+  font-size: 0.85rem;
+}
+
+.empty {
+  color: var(--muted);
+}

@@ -1,0 +1,131 @@
+<section class="page integrations">
+  <header class="head">
+    <div>
+      <p class="eyebrow">Workspace</p>
+      <h1>Integrations</h1>
+      <p>
+        Connect social, communication, commerce, CRM, calendar, storage, payment, and AI tools.
+        Facebook, Instagram, and WhatsApp Business support live Meta login today.
+      </p>
+    </div>
+    <div class="head-stats">
+      <div>
+        <strong>{{ connectedCount() }}</strong>
+        <span>Connected</span>
+      </div>
+      <div>
+        <strong>{{ cards().length }}</strong>
+        <span>Available</span>
+      </div>
+    </div>
+  </header>
+
+  @if (message()) {
+    <p class="banner">{{ message() }}</p>
+  }
+
+  <div class="filters">
+    <button
+      type="button"
+      class="chip"
+      [class.active]="activeCategory() === 'all'"
+      (click)="setCategory('all')">
+      All
+    </button>
+    @for (cat of categories(); track cat.id) {
+      <button
+        type="button"
+        class="chip"
+        [class.active]="activeCategory() === cat.id"
+        [style.--accent]="cat.accent"
+        (click)="setCategory(cat.id)">
+        <mat-icon>{{ cat.icon }}</mat-icon>
+        {{ cat.label }}
+        <span>{{ cat.items.length }}</span>
+      </button>
+    }
+  </div>
+
+  <div class="catalog">
+    @for (cat of visibleCategories(); track cat.id) {
+      <section class="category" [style.--accent]="cat.accent">
+        <div class="category-head">
+          <span class="category-ico"><mat-icon>{{ cat.icon }}</mat-icon></span>
+          <div>
+            <h2>{{ cat.label }}</h2>
+            <p>{{ cat.items.length }} integrations</p>
+          </div>
+        </div>
+
+        <div class="tile-grid">
+          @for (card of cat.items; track card.platformId) {
+            <article
+              class="tile"
+              [class.live]="card.isConnected"
+              [class.connectable]="card.canConnect"
+              [class.soon]="!card.canConnect && !card.isConnected">
+              <div class="tile-wash" aria-hidden="true"></div>
+
+              <div class="tile-top">
+                <span class="logo">
+                  <mat-icon>{{ platformIcon(card.code) }}</mat-icon>
+                </span>
+                <span
+                  class="status"
+                  [class.on]="card.isConnected"
+                  [class.ready]="card.canConnect && !card.isConnected">
+                  <i></i>
+                  {{ card.isConnected ? 'Connected' : card.canConnect ? 'Ready' : 'Soon' }}
+                </span>
+              </div>
+
+              <h3>{{ card.displayName }}</h3>
+              <p class="desc">
+                @if (card.accountName) {
+                  Linked as {{ card.accountName }}
+                } @else {
+                  {{ card.description }}
+                }
+              </p>
+
+              <div class="caps">
+                @if (card.supportsPosts) {
+                  <span>Posts</span>
+                }
+                @if (card.supportsComments) {
+                  <span>Comments</span>
+                }
+                @if (card.supportsMessages) {
+                  <span>Messages</span>
+                }
+                @if (!card.supportsPosts && !card.supportsComments && !card.supportsMessages) {
+                  <span class="muted">Preview</span>
+                }
+              </div>
+
+              <div class="tile-actions">
+                @if (card.isConnected) {
+                  <button mat-stroked-button type="button" class="btn-disconnect" (click)="disconnect(card)">
+                    Disconnect
+                  </button>
+                } @else if (card.canConnect) {
+                  <button
+                    mat-flat-button
+                    color="primary"
+                    type="button"
+                    class="btn-connect"
+                    [disabled]="connecting() === card.code.toLowerCase()"
+                    (click)="connect(card)">
+                    {{ connecting() === card.code.toLowerCase() ? 'Connecting…' : 'Connect' }}
+                  </button>
+                } @else {
+                  <button mat-button type="button" class="btn-soon" disabled>Coming soon</button>
+                }
+              </div>
+            </article>
+          }
+        </div>
+      </section>
+    }
+  </div>
+</section>

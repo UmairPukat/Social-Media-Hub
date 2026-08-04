@@ -1,0 +1,57 @@
+@use '@angular/material' as mat;
+
+:root {
+  --sh-ink: #0b1220;
+  --sh-muted: #64748b;
+  --sh-line: rgba(15, 23, 42, 0.08);
+  --sh-brand: #1d6fe8;
+  --sh-surface: #ffffff;
+  --sh-soft: #f3f6fb;
+}
+
+html {
+  @include mat.theme((
+    color: (
+      theme-type: light,
+      primary: mat.$azure-palette,
+      tertiary: mat.$blue-palette,
+    ),
+    typography: Manrope,
+    density: 0,
+  ));
+}
+
+html, body {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: Manrope, "Segoe UI", sans-serif;
+  color: var(--sh-ink);
+  background: #eef2f7;
+  -webkit-font-smoothing: antialiased;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+button[mat-flat-button],
+button[mat-stroked-button],
+button[mat-button] {
+  letter-spacing: 0.01em;
+}
+
+/* Shared page surface polish used across feature screens */
+.page {
+  .page-header h1 {
+    font-family: "Sora", "Space Grotesk", sans-serif;
+    letter-spacing: -0.03em;
+  }
+
+  .page-header p {
+    color: var(--sh-muted);
+    line-height: 1.55;
+  }
+}

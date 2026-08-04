@@ -1,0 +1,255 @@
+<section class="inbox">
+  <header class="inbox-bar">
+    <div class="titles">
+      <h1>Inbox</h1>
+      <p>Comments with post engagement · Messenger & WhatsApp chats</p>
+
+      <div class="mode-switch">
+        @if (showCommentsMode()) {
+          <button type="button" [class.active]="mode() === 'comments'" (click)="setMode('comments')">
+            <mat-icon>mode_comment</mat-icon>
+            Comments
+          </button>
+        }
+        <button type="button" [class.active]="mode() === 'messages'" (click)="setMode('messages')">
+          <mat-icon>forum</mat-icon>
+          Messages
+        </button>
+      </div>
+    </div>
+
+    <div class="platform-chips">
+      @for (f of platformFilters; track f.label) {
+        <button
+          type="button"
+          class="chip"
+          [class.active]="platformCode() === f.code"
+          [style.--accent]="f.code ? color(f.code) : '#475569'"
+          (click)="setPlatform(f.code)">
+          <mat-icon>{{ f.icon }}</mat-icon>
+          {{ f.label }}
+        </button>
+      }
+    </div>
+  </header>
+
+  @if (banner()) {
+    <p class="banner">{{ banner() }}</p>
+  }
+
+  <div class="workspace">
+    <aside class="list-pane">
+      <div class="search">
+        <mat-icon>search</mat-icon>
+        <input
+          type="search"
+          [placeholder]="mode() === 'comments' ? 'Search posts & comments' : 'Search conversations'"
+          [value]="listQuery()"
+          (input)="listQuery.set($any($event.target).value)"
+        />
+      </div>
+
+      @if (mode() === 'comments') {
+        <div class="list-scroll">
+          @for (thread of commentThreads(); track thread.key) {
+            <button
+              type="button"
+              class="list-row"
+              [class.active]="selectedKey() === thread.key"
+              (click)="selectCommentThread(thread)">
+              <div class="thumb" [style.background-image]="'url(' + (thread.post.postImageUrl || '') + ')'">
+                @if (!thread.post.postImageUrl) {
+                  <mat-icon>image</mat-icon>
+                }
+              </div>
+              <div class="row-body">
+                <div class="row-top">
+                  <strong>{{ thread.post.pageName }}</strong>
+                  <span class="plat" [style.color]="color(thread.platformCode)">
+                    <mat-icon>{{ platformIcon(thread.platformCode) }}</mat-icon>
+                  </span>
+                </div>
+                <p class="snippet">{{ thread.post.postText }}</p>
+                <div class="eng-mini">
+                  <span><mat-icon>thumb_up</mat-icon> {{ formatCount(thread.post.likesCount) }}</span>
+                  <span><mat-icon>chat_bubble</mat-icon> {{ formatCount(thread.post.commentsCount) }}</span>
+                  <span><mat-icon>share</mat-icon> {{ formatCount(thread.post.sharesCount) }}</span>
+                </div>
+              </div>
+              @if (thread.unreadCount > 0) {
+                <span class="badge">{{ thread.unreadCount }}</span>
+              }
+            </button>
+          } @empty {
+            <div class="empty-side">No comment posts for this filter.</div>
+          }
+        </div>
+      } @else {
+        <div class="list-scroll">
+          @for (conv of messageConversations(); track conv.key) {
+            <button
+              type="button"
+              class="list-row msg"
+              [class.active]="selectedKey() === conv.key"
+              (click)="selectMessage(conv)">
+              <div class="avatar" [style.background]="color(conv.platformCode)">
+                {{ initials(conv.authorName) }}
+                <span class="plat-dot">
+                  <mat-icon>{{ platformIcon(conv.platformCode) }}</mat-icon>
+                </span>
+              </div>
+              <div class="row-body">
+                <div class="row-top">
+                  <strong>{{ conv.authorName }}</strong>
+                  <time>{{ conv.lastAt | date: 'dd.MM.yyyy HH:mm' }}</time>
+                </div>
+                <p class="snippet">{{ conv.lastContent }}</p>
+              </div>
+              @if (conv.unreadCount > 0) {
+                <span class="badge">{{ conv.unreadCount }}</span>
+              }
+            </button>
+          } @empty {
+            <div class="empty-side">No conversations for this filter.</div>
+          }
+        </div>
+      }
+    </aside>
+
+    <section class="detail-pane" [class.wa]="selectedMessage()?.platformCode === 'whatsapp'">
+      @if (mode() === 'comments' && selectedCommentThread(); as thread) {
+        <div class="post-view" [class.ig]="thread.platformCode === 'instagram'" [class.fb]="thread.platformCode === 'facebook'">
+          <article class="post-card">
+            <header class="post-head">
+              <div class="avatar sm" [style.background]="color(thread.platformCode)">
+                {{ initials(thread.post.pageName) }}
+              </div>
+              <div>
+                <strong>{{ thread.post.pageName }}</strong>
+                <small>{{ thread.post.postedAt | date: 'd MMM y · h:mm a' }}</small>
+              </div>
+              <mat-icon class="plat-top" [style.color]="color(thread.platformCode)">
+                {{ platformIcon(thread.platformCode) }}
+              </mat-icon>
+            </header>
+
+            <p class="post-text">{{ thread.post.postText }}</p>
+
+            @if (thread.post.postImageUrl) {
+              <div class="post-media">
+                <img [src]="thread.post.postImageUrl" [alt]="thread.post.pageName" />
+              </div>
+            }
+
+            <div class="stats-row">
+              <span class="likes">
+                <span class="react-stack">
+                  <i class="r like"></i>
+                  <i class="r love"></i>
+                </span>
+                {{ thread.post.likesCount | number }}
+              </span>
+              <span class="right-stats">
+                {{ thread.post.commentsCount | number }} comments · {{ thread.post.sharesCount | number }} shares
+              </span>
+            </div>
+
+            <div class="action-row">
+              <button type="button"><mat-icon>thumb_up_off_alt</mat-icon> Like</button>
+              <button type="button"><mat-icon>mode_comment</mat-icon> Comment</button>
+              <button type="button"><mat-icon>share</mat-icon> Share</button>
+            </div>
+          </article>
+
+          <div class="comments-block">
+            <h3>Comments · {{ thread.comments.length }}</h3>
+            @for (c of thread.comments; track c.id) {
+              <div class="comment">
+                <div class="avatar sm" [style.background]="color(thread.platformCode)">
+                  {{ initials(c.authorName) }}
+                </div>
+                <div class="comment-body">
+                  <div class="bubble-card">
+                    <strong>{{ c.authorName }}</strong>
+                    <p>{{ c.content }}</p>
+                  </div>
+                  <div class="comment-meta">
+                    <button type="button">Like</button>
+                    <button type="button">Reply</button>
+                    <span>{{ c.commentLikes || 0 }} likes</span>
+                    <time>{{ c.receivedAt | date: 'd MMM · HH:mm' }}</time>
+                  </div>
+                </div>
+              </div>
+            }
+
+            <div class="composer light">
+              <div class="avatar sm you">You</div>
+              <textarea
+                rows="2"
+                placeholder="Write a comment…"
+                [ngModel]="replyText()"
+                (ngModelChange)="replyText.set($event)"
+                (keydown)="onComposerKeydown($event)"
+              ></textarea>
+              <button type="button" class="send-btn" [disabled]="!replyText().trim()" (click)="sendReply()">
+                <mat-icon>send</mat-icon>
+              </button>
+            </div>
+          </div>
+        </div>
+      } @else if (mode() === 'messages') {
+        @if (selectedMessage(); as conv) {
+          <header class="chat-head">
+            <div class="avatar" [style.background]="color(conv.platformCode)">
+              {{ initials(conv.authorName) }}
+            </div>
+            <div>
+              <h2>{{ conv.authorName }}</h2>
+              <small>
+                <mat-icon>{{ platformIcon(conv.platformCode) }}</mat-icon>
+                {{ conv.platformCode }}
+              </small>
+            </div>
+          </header>
+
+          <div class="chat-scroll" [class.wa-bg]="conv.platformCode === 'whatsapp'">
+            @for (bubble of messageThread(); track bubble.id) {
+              <div class="bubble-row" [class.out]="bubble.outgoing">
+                <div class="bubble" [class.wa]="conv.platformCode === 'whatsapp'">
+                  <p>{{ bubble.content }}</p>
+                  <time>{{ bubble.at | date: 'HH:mm' }}</time>
+                </div>
+              </div>
+            }
+          </div>
+
+          <footer class="composer chat">
+            <textarea
+              rows="2"
+              placeholder="Write a reply… (Ctrl/⌘+Enter to send)"
+              [ngModel]="replyText()"
+              (ngModelChange)="replyText.set($event)"
+              (keydown)="onComposerKeydown($event)"
+            ></textarea>
+            <button type="button" class="send-btn" [disabled]="!replyText().trim()" (click)="sendReply()">
+              <mat-icon>send</mat-icon>
+            </button>
+          </footer>
+        } @else {
+          <div class="empty-detail">
+            <mat-icon>inbox</mat-icon>
+            <h3>Select an item</h3>
+            <p>Pick a post or conversation from the list.</p>
+          </div>
+        }
+      } @else {
+        <div class="empty-detail">
+          <mat-icon>inbox</mat-icon>
+          <h3>Select an item</h3>
+          <p>Pick a post or conversation from the list.</p>
+        </div>
+      }
+    </section>
+  </div>
+</section>

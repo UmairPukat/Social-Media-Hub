@@ -1,0 +1,122 @@
+<div class="page">
+  <div class="page-header">
+    <h1>Create Post</h1>
+    <p>Compose in a familiar UI for each platform, then publish to the connected account.</p>
+  </div>
+
+  <div class="composer-layout">
+    <mat-form-field appearance="outline" class="platform-select">
+      <mat-label>Platform</mat-label>
+      <mat-select [ngModel]="platform" (ngModelChange)="onPlatformChange($event)">
+        <mat-option [value]="SocialPlatform.Facebook">Facebook</mat-option>
+        <mat-option [value]="SocialPlatform.Instagram">Instagram</mat-option>
+        <mat-option [value]="SocialPlatform.TikTok">TikTok</mat-option>
+        <mat-option [value]="SocialPlatform.LinkedIn">LinkedIn</mat-option>
+        <mat-option [value]="SocialPlatform.YouTube">YouTube</mat-option>
+        <mat-option [value]="SocialPlatform.WhatsApp">WhatsApp (messages only)</mat-option>
+      </mat-select>
+    </mat-form-field>
+
+    <!-- Facebook-like composer -->
+    @if (platform === SocialPlatform.Facebook) {
+      <section class="fb-composer">
+        <header>
+          <div class="avatar">You</div>
+          <div>
+            <strong>Create post</strong>
+            <small>Public · Facebook Page</small>
+          </div>
+        </header>
+        <textarea
+          [(ngModel)]="content"
+          placeholder="What's on your mind?"
+          rows="6"
+        ></textarea>
+        <mat-form-field appearance="outline" class="full-width">
+          <mat-label>Link / media URL (optional)</mat-label>
+          <input matInput [(ngModel)]="mediaUrl" />
+        </mat-form-field>
+        <div class="fb-toolbar">
+          <span><mat-icon>photo</mat-icon> Photo/video</span>
+          <span><mat-icon>tag_faces</mat-icon> Feeling</span>
+          <button mat-flat-button class="fb-btn" (click)="publish()" [disabled]="publishing">Post</button>
+        </div>
+      </section>
+    }
+
+    <!-- Instagram-like composer -->
+    @if (platform === SocialPlatform.Instagram) {
+      <section class="ig-composer">
+        <header>Create new post</header>
+        <div class="ig-body">
+          <div class="ig-media">
+            @if (mediaUrl) {
+              <img [src]="mediaUrl" alt="Preview" />
+            } @else {
+              <div class="ig-placeholder">
+                <mat-icon>image</mat-icon>
+                <p>Paste an image URL to preview</p>
+              </div>
+            }
+          </div>
+          <div class="ig-side">
+            <div class="ig-user">your_account</div>
+            <textarea [(ngModel)]="content" placeholder="Write a caption..." rows="8"></textarea>
+            <mat-form-field appearance="outline" class="full-width">
+              <mat-label>Image URL (required)</mat-label>
+              <input matInput [(ngModel)]="mediaUrl" />
+            </mat-form-field>
+            <button mat-flat-button class="ig-btn" (click)="publish()" [disabled]="publishing">Share</button>
+          </div>
+        </div>
+      </section>
+    }
+
+    <!-- TikTok-like composer -->
+    @if (platform === SocialPlatform.TikTok) {
+      <section class="tt-composer">
+        <header>Upload</header>
+        <div class="tt-frame">
+          <div class="tt-phone">
+            <div class="tt-preview">
+              @if (mediaUrl) {
+                <img [src]="mediaUrl" alt="TikTok preview" />
+              } @else {
+                <span>Video / cover preview</span>
+              }
+            </div>
+            <div class="tt-caption">{{ content || 'Add a caption...' }}</div>
+          </div>
+          <div class="tt-form">
+            <textarea [(ngModel)]="content" placeholder="Describe your video" rows="5"></textarea>
+            <mat-form-field appearance="outline" class="full-width">
+              <mat-label>Media URL</mat-label>
+              <input matInput [(ngModel)]="mediaUrl" />
+            </mat-form-field>
+            <button mat-flat-button class="tt-btn" (click)="publish()" [disabled]="publishing">Post</button>
+            <p class="note">TikTok API publishing is marked coming soon on Integrations — UI is ready.</p>
+          </div>
+        </div>
+      </section>
+    }
+
+    <!-- LinkedIn / YouTube / WhatsApp fallback composers -->
+    @if (
+      platform === SocialPlatform.LinkedIn ||
+      platform === SocialPlatform.YouTube ||
+      platform === SocialPlatform.WhatsApp
+    ) {
+      <section class="generic-composer">
+        <h3>{{ platformName() }} composer</h3>
+        <textarea [(ngModel)]="content" rows="6" placeholder="Write your update..."></textarea>
+        <mat-form-field appearance="outline" class="full-width mt-8">
+          <mat-label>Media URL (optional)</mat-label>
+          <input matInput [(ngModel)]="mediaUrl" />
+        </mat-form-field>
+        <button mat-flat-button color="primary" class="mt-8" (click)="publish()" [disabled]="publishing">
+          Publish
+        </button>
+      </section>
+    }
+  </div>
+</div>

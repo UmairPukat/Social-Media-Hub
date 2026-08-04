@@ -1,0 +1,116 @@
+<section class="page dash">
+  <header class="dash-hero">
+    <div>
+      <p class="eyebrow">Overview</p>
+      <h1>Dashboard</h1>
+      <p class="lede">Monitor connected channels, publishing performance, and inbox volume in one place.</p>
+    </div>
+    <div class="hero-actions">
+      <a mat-stroked-button routerLink="/app/create-post">
+        <mat-icon>post_add</mat-icon>
+        Create post
+      </a>
+      <a mat-flat-button color="primary" routerLink="/app/integrations">
+        <mat-icon>hub</mat-icon>
+        Manage integrations
+      </a>
+    </div>
+  </header>
+
+  @if (error()) {
+    <p class="error">{{ error() }}</p>
+  }
+
+  @if (summary(); as s) {
+    <div class="stats">
+      @for (card of cards; track card.key) {
+        <article class="stat" [attr.data-tone]="card.tone">
+          <div class="stat-top">
+            <span class="stat-ico"><mat-icon>{{ card.icon }}</mat-icon></span>
+            <span class="stat-label">{{ card.label }}</span>
+          </div>
+          <strong class="stat-value">{{ value(card.key) }}</strong>
+          <p class="stat-hint">{{ card.hint }}</p>
+        </article>
+      }
+    </div>
+
+    <div class="lower">
+      <section class="panel health">
+        <div class="panel-head">
+          <div>
+            <h2>Publishing health</h2>
+            <p>Quick read on how posts are performing across connected profiles.</p>
+          </div>
+        </div>
+        @if (health(); as h) {
+          <div class="health-grid">
+            <div class="meter">
+              <div class="meter-ring" [style.--pct]="h.okRate">
+                <span>{{ h.okRate }}%</span>
+              </div>
+              <label>Success rate</label>
+            </div>
+            <div class="health-stats">
+              <div>
+                <strong>{{ s.totalPostsCount }}</strong>
+                <span>Total posts</span>
+              </div>
+              <div>
+                <strong>{{ s.publishedPostsCount }}</strong>
+                <span>Published</span>
+              </div>
+              <div>
+                <strong>{{ h.scheduled }}</strong>
+                <span>Scheduled</span>
+              </div>
+              <div>
+                <strong>{{ s.failedPostsCount }}</strong>
+                <span>Failed</span>
+              </div>
+            </div>
+          </div>
+        }
+      </section>
+
+      <section class="panel shortcuts">
+        <div class="panel-head">
+          <div>
+            <h2>Quick actions</h2>
+            <p>Jump into the workflows you use most.</p>
+          </div>
+        </div>
+        <div class="shortcut-grid">
+          <a routerLink="/app/inbox" class="shortcut">
+            <mat-icon>inbox</mat-icon>
+            <div>
+              <strong>Open inbox</strong>
+              <small>{{ s.unreadInboxCount }} unread</small>
+            </div>
+          </a>
+          <a routerLink="/app/posts" class="shortcut">
+            <mat-icon>dynamic_feed</mat-icon>
+            <div>
+              <strong>View posts</strong>
+              <small>{{ s.totalPostsCount }} total</small>
+            </div>
+          </a>
+          <a routerLink="/app/accounts" class="shortcut">
+            <mat-icon>manage_accounts</mat-icon>
+            <div>
+              <strong>Accounts</strong>
+              <small>{{ s.connectedAccountsCount }} connected</small>
+            </div>
+          </a>
+          <a routerLink="/app/analytics" class="shortcut">
+            <mat-icon>insights</mat-icon>
+            <div>
+              <strong>Analytics</strong>
+              <small>Performance snapshot</small>
+            </div>
+          </a>
+        </div>
+      </section>
+    </div>
+  }
+</section>

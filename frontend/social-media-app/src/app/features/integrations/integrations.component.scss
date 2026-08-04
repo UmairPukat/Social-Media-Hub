@@ -1,0 +1,15 @@
+.loading {
+  display: grid;
+  place-items: center;
+  min-height: 200px;
+}
+
+.account {
+  color: var(--brand-dark);
+  font-weight: 600;
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+}

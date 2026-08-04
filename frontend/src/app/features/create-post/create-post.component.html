@@ -1,0 +1,411 @@
+<section class="studio" [formGroup]="form" [attr.data-platform]="platform()" [style.--accent]="activeMeta().color">
+  <header class="studio-top">
+    <div class="studio-title">
+      <p class="eyebrow">Publishing studio</p>
+      <h1>Create Post</h1>
+      <p class="lede">Compose once in the native layout for the platform you select.</p>
+    </div>
+  </header>
+
+  @if (message()) {
+    <div class="toast" [class.ok]="messageOk()">
+      <mat-icon>{{ messageOk() ? 'check_circle' : 'info' }}</mat-icon>
+      <span>{{ message() }}</span>
+    </div>
+  }
+
+  <div class="studio-body">
+    <aside class="rail">
+      <section class="rail-block">
+        <h2>1. Platform</h2>
+        <div class="plat-list" role="tablist" aria-label="Platform">
+          @for (p of platforms; track p.code) {
+            <button
+              type="button"
+              class="plat"
+              role="tab"
+              [class.active]="platform() === p.code"
+              [style.--plat]="p.color"
+              (click)="selectPlatform(p.code)">
+              <span class="plat-icon" [style.background]="p.color">
+                <mat-icon>{{ p.icon }}</mat-icon>
+              </span>
+              <span class="plat-copy">
+                <strong>{{ p.label }}</strong>
+                <small>{{ p.hint }}</small>
+              </span>
+              @if (platform() === p.code) {
+                <mat-icon class="check">check_circle</mat-icon>
+              }
+            </button>
+          }
+        </div>
+      </section>
+
+      <section class="rail-block">
+        <h2>2. Account</h2>
+        <div class="account-list">
+          @for (prof of platformProfiles(); track prof.id) {
+            <button
+              type="button"
+              class="account"
+              [class.active]="form.controls.profileId.value === prof.id"
+              (click)="selectProfile(prof.id)">
+              <span class="av" [style.background]="activeMeta().color">{{ initials(prof.name) }}</span>
+              <span class="account-copy">
+                <strong>{{ prof.name }}</strong>
+                <small>{{ prof.isDemo ? 'Demo profile' : (prof.username || prof.profileType) }}</small>
+              </span>
+              <span class="pill" [class.demo]="prof.isDemo">{{ prof.isDemo ? 'Demo' : 'Live' }}</span>
+            </button>
+          } @empty {
+            <p class="empty-rail">No profile available for this platform.</p>
+          }
+        </div>
+      </section>
+
+      <section class="rail-tips">
+        <mat-icon>lightbulb</mat-icon>
+        <div>
+          <strong>Tip</strong>
+          <p>{{ activeMeta().hint }}. Keep media URLs publicly reachable for Instagram and TikTok.</p>
+        </div>
+      </section>
+    </aside>
+
+    <main class="canvas">
+      <div class="canvas-head">
+        <div>
+          <h2>3. Compose</h2>
+          <p>Native {{ activeMeta().label }} experience</p>
+        </div>
+        <span class="char" [class.warn]="remaining() < 40">{{ remaining() | number }} left</span>
+      </div>
+
+      <div class="canvas-frame">
+        @switch (platform()) {
+          @case ('facebook') {
+            <div class="sheet fb">
+              <header class="sheet-head">
+                <h3>Create post</h3>
+              </header>
+              <div class="fb-user">
+                <div class="av lg" [style.background]="activeMeta().color">
+                  {{ initials(selectedProfile()?.name) }}
+                </div>
+                <div>
+                  <strong>{{ selectedProfile()?.name || 'Page' }}</strong>
+                  <button type="button" class="audience" (click)="setAudience(audience() === 'Public' ? 'Friends' : 'Public')">
+                    <mat-icon>public</mat-icon>
+                    {{ audience() }}
+                    <mat-icon>arrow_drop_down</mat-icon>
+                  </button>
+                </div>
+              </div>
+              <textarea
+                rows="6"
+                formControlName="content"
+                [attr.maxlength]="charLimit()"
+                placeholder="What's on your mind?"
+              ></textarea>
+              <div class="media-field">
+                <mat-icon>photo_library</mat-icon>
+                <input formControlName="mediaUrl" placeholder="Photo / video URL (optional)" />
+              </div>
+              @if (form.controls.mediaUrl.value) {
+                <div class="media-preview">
+                  <img [src]="form.controls.mediaUrl.value" alt="Preview" />
+                </div>
+              }
+              <div class="fb-add">
+                <span>Add to your post</span>
+                <div class="icons">
+                  <mat-icon style="color:#45bd62">photo_library</mat-icon>
+                  <mat-icon style="color:#1877f2">person_add</mat-icon>
+                  <mat-icon style="color:#f7b928">sentiment_satisfied</mat-icon>
+                  <mat-icon style="color:#f5533d">location_on</mat-icon>
+                </div>
+              </div>
+              <button
+                type="button"
+                class="cta fb"
+                [disabled]="!canPublish() || publishing()"
+                (click)="publish()">
+                {{ publishing() ? 'Posting…' : ctaLabel() }}
+              </button>
+            </div>
+          }
+
+          @case ('instagram') {
+            <div class="sheet ig">
+              <header class="sheet-head ig">
+                <span class="ghost"><mat-icon>arrow_back</mat-icon></span>
+                <h3>New post</h3>
+                <button
+                  type="button"
+                  class="link-cta"
+                  [disabled]="!canPublish() || publishing()"
+                  (click)="publish()">
+                  {{ publishing() ? 'Sharing…' : ctaLabel() }}
+                </button>
+              </header>
+              <div class="ig-body">
+                <div class="ig-media">
+                  @if (form.controls.mediaUrl.value) {
+                    <img [src]="form.controls.mediaUrl.value" alt="Preview" />
+                  } @else {
+                    <div class="ig-empty">
+                      <mat-icon>photo_camera</mat-icon>
+                      <p>Add an image URL to preview your post</p>
+                    </div>
+                  }
+                </div>
+                <div class="ig-side">
+                  <div class="ig-user">
+                    <div class="av" [style.background]="activeMeta().color">
+                      {{ initials(selectedProfile()?.name) }}
+                    </div>
+                    <strong>{{ selectedProfile()?.username || selectedProfile()?.name }}</strong>
+                  </div>
+                  <textarea
+                    rows="8"
+                    formControlName="content"
+                    [attr.maxlength]="charLimit()"
+                    placeholder="Write a caption…"
+                  ></textarea>
+                  <div class="ig-field">
+                    <mat-icon>image</mat-icon>
+                    <input formControlName="mediaUrl" placeholder="Image URL (required)" />
+                  </div>
+                  <div class="ig-field">
+                    <mat-icon>location_on</mat-icon>
+                    <input formControlName="location" placeholder="Add location" />
+                  </div>
+                </div>
+              </div>
+            </div>
+          }
+
+          @case ('whatsapp') {
+            <div class="sheet wa">
+              <header class="wa-head">
+                <div class="av" [style.background]="activeMeta().color">
+                  {{ initials(selectedProfile()?.name) }}
+                </div>
+                <div>
+                  <strong>{{ selectedProfile()?.name }}</strong>
+                  <small>{{ selectedProfile()?.username || 'Business account' }}</small>
+                </div>
+                <div class="wa-mode">
+                  <button type="button" [class.active]="waAudience() === 'Status'" (click)="waAudience.set('Status')">Status</button>
+                  <button type="button" [class.active]="waAudience() === 'Broadcast'" (click)="waAudience.set('Broadcast')">Broadcast</button>
+                </div>
+              </header>
+              <div class="wa-canvas">
+                <div class="wa-bubble">
+                  @if (form.controls.mediaUrl.value) {
+                    <img [src]="form.controls.mediaUrl.value" alt="Media" />
+                  }
+                  <p>{{ form.controls.content.value || 'Type a message…' }}</p>
+                  <time>now</time>
+                </div>
+              </div>
+              <div class="wa-composer">
+                <button type="button" class="round"><mat-icon>mood</mat-icon></button>
+                <textarea
+                  rows="2"
+                  formControlName="content"
+                  [attr.maxlength]="charLimit()"
+                  placeholder="Type a message"
+                ></textarea>
+                <button type="button" class="round"><mat-icon>attach_file</mat-icon></button>
+                <input class="wa-url" formControlName="mediaUrl" placeholder="Optional media URL" />
+                <button
+                  type="button"
+                  class="send wa"
+                  [disabled]="!canPublish() || publishing()"
+                  (click)="publish()">
+                  <mat-icon>send</mat-icon>
+                </button>
+              </div>
+            </div>
+          }
+
+          @case ('youtube') {
+            <div class="sheet yt">
+              <header class="sheet-head">
+                <h3>Upload video</h3>
+                <button
+                  type="button"
+                  class="cta yt"
+                  [disabled]="!canPublish() || publishing()"
+                  (click)="publish()">
+                  {{ publishing() ? 'Uploading…' : ctaLabel() }}
+                </button>
+              </header>
+              <div class="yt-grid">
+                <div class="yt-thumb">
+                  @if (form.controls.mediaUrl.value) {
+                    <img [src]="form.controls.mediaUrl.value" alt="Thumbnail" />
+                    <span class="play"><mat-icon>play_arrow</mat-icon></span>
+                  } @else {
+                    <div class="yt-empty">
+                      <mat-icon>smart_display</mat-icon>
+                      <p>Paste a video / thumbnail URL</p>
+                    </div>
+                  }
+                </div>
+                <div class="yt-fields">
+                  <label>Title (required)</label>
+                  <input formControlName="title" maxlength="100" placeholder="Add a title that describes your video" />
+                  <label>Description</label>
+                  <textarea rows="6" formControlName="content" placeholder="Tell viewers about your video"></textarea>
+                  <label>Video / thumbnail URL</label>
+                  <input formControlName="mediaUrl" placeholder="https://…" />
+                  <label>Visibility</label>
+                  <div class="seg">
+                    @for (v of ['Public', 'Unlisted', 'Private']; track v) {
+                      <button type="button" [class.active]="ytVisibility() === v" (click)="ytVisibility.set($any(v))">{{ v }}</button>
+                    }
+                  </div>
+                </div>
+              </div>
+            </div>
+          }
+
+          @case ('tiktok') {
+            <div class="sheet tt">
+              <div class="tt-stage">
+                <div class="tt-phone">
+                  @if (form.controls.mediaUrl.value) {
+                    <img [src]="form.controls.mediaUrl.value" alt="Clip" />
+                  } @else {
+                    <div class="tt-empty">
+                      <mat-icon>videocam</mat-icon>
+                      <p>Add a vertical video / image URL</p>
+                    </div>
+                  }
+                  <div class="tt-overlay">
+                    <div class="tt-user">{{ '@' }}{{ selectedProfile()?.username || 'you' }}</div>
+                    <p>{{ form.controls.content.value || 'Write a caption…' }}</p>
+                  </div>
+                  <div class="tt-rail">
+                    <span><mat-icon>favorite</mat-icon></span>
+                    <span><mat-icon>mode_comment</mat-icon></span>
+                    <span><mat-icon>bookmark</mat-icon></span>
+                    <span><mat-icon>share</mat-icon></span>
+                  </div>
+                </div>
+                <div class="tt-form">
+                  <h3>Upload to TikTok</h3>
+                  <label>Caption</label>
+                  <textarea
+                    rows="5"
+                    formControlName="content"
+                    [attr.maxlength]="charLimit()"
+                    placeholder="Describe your video with hashtags"
+                  ></textarea>
+                  <label>Media URL (required)</label>
+                  <input formControlName="mediaUrl" placeholder="https://…" />
+                  <button
+                    type="button"
+                    class="cta tt"
+                    [disabled]="!canPublish() || publishing()"
+                    (click)="publish()">
+                    {{ publishing() ? 'Posting…' : ctaLabel() }}
+                  </button>
+                </div>
+              </div>
+            </div>
+          }
+
+          @case ('linkedin') {
+            <div class="sheet li">
+              <header class="sheet-head">
+                <h3>Create a post</h3>
+              </header>
+              <div class="li-user">
+                <div class="av lg" [style.background]="activeMeta().color">
+                  {{ initials(selectedProfile()?.name) }}
+                </div>
+                <div>
+                  <strong>{{ selectedProfile()?.name }}</strong>
+                  <button type="button" class="audience" (click)="liAudience.set(liAudience() === 'Anyone' ? 'Connections' : 'Anyone')">
+                    <mat-icon>public</mat-icon>
+                    {{ liAudience() }}
+                    <mat-icon>arrow_drop_down</mat-icon>
+                  </button>
+                </div>
+              </div>
+              <textarea
+                rows="7"
+                formControlName="content"
+                [attr.maxlength]="charLimit()"
+                placeholder="What do you want to talk about?"
+              ></textarea>
+              <div class="media-field">
+                <mat-icon>image</mat-icon>
+                <input formControlName="mediaUrl" placeholder="Image URL (optional)" />
+              </div>
+              @if (form.controls.mediaUrl.value) {
+                <div class="media-preview">
+                  <img [src]="form.controls.mediaUrl.value" alt="Preview" />
+                </div>
+              }
+              <div class="li-tools">
+                <mat-icon>image</mat-icon>
+                <mat-icon>videocam</mat-icon>
+                <mat-icon>celebration</mat-icon>
+                <mat-icon>more_horiz</mat-icon>
+                <button
+                  type="button"
+                  class="cta li"
+                  [disabled]="!canPublish() || publishing()"
+                  (click)="publish()">
+                  {{ publishing() ? 'Posting…' : ctaLabel() }}
+                </button>
+              </div>
+            </div>
+          }
+
+          @case ('twitter') {
+            <div class="sheet x">
+              <header class="sheet-head">
+                <h3>Post on X</h3>
+                <button
+                  type="button"
+                  class="cta x"
+                  [disabled]="!canPublish() || publishing()"
+                  (click)="publish()">
+                  {{ publishing() ? 'Posting…' : ctaLabel() }}
+                </button>
+              </header>
+              <div class="x-user">
+                <div class="av" [style.background]="activeMeta().color">
+                  {{ initials(selectedProfile()?.name) }}
+                </div>
+                <div>
+                  <strong>{{ selectedProfile()?.name }}</strong>
+                  <small>{{ '@' }}{{ selectedProfile()?.username || 'you' }}</small>
+                </div>
+              </div>
+              <textarea
+                rows="5"
+                formControlName="content"
+                [attr.maxlength]="charLimit()"
+                placeholder="What’s happening?"
+              ></textarea>
+              <div class="media-field">
+                <mat-icon>image</mat-icon>
+                <input formControlName="mediaUrl" placeholder="Image URL (optional)" />
+              </div>
+              <div class="x-meta">
+                <span>{{ form.controls.content.value.length }}/{{ charLimit() }}</span>
+              </div>
+            </div>
+          }
+        }
+      </div>
+    </main>
+  </div>
+</section>
