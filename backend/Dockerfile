@@ -31,14 +31,14 @@ WORKDIR /app
 COPY --from=publish /app/publish .
 
 # Expose port
-EXPOSE 5000
+EXPOSE 8080
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-  CMD curl -f http://localhost:5000/health || exit 1
+  CMD curl -f http://localhost:8080/health || exit 1
 
 # Set ASP.NET Core to listen on all interfaces
-ENV ASPNETCORE_URLS=http://+:5000
+ENV ASPNETCORE_URLS=http://+:${PORT:-8080}
 
 # Run the application
 ENTRYPOINT ["dotnet", "SocialMedia.Api.dll"]
