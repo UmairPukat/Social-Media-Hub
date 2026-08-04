@@ -58,7 +58,7 @@ import { ChromeThemeId } from '../../core/theme/chrome-themes';
 
       <section class="panel">
         <h2>Environment</h2>
-        <p>API base URL is configured in <code>environment.ts</code> (default <code>http://localhost:5080/api</code>).</p>
+        <p>API base URL comes from <code>environment.ts</code> (local) or <code>environment.prod.ts</code> / Railway <code>API_URL</code> (production).</p>
         <h2>Meta apps</h2>
         <p>Facebook, Instagram, and WhatsApp credentials live in backend <code>appsettings.json</code> under <code>MetaSettings</code>.</p>
         <h2>Default admin</h2>
