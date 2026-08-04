@@ -22,7 +22,15 @@ public static class DependencyInjection
         services.Configure<MetaSettings>(configuration.GetSection(MetaSettings.SectionName));
 
         services.AddDbContext<AppDbContext>(options =>
-            options.UseNpgsql(configuration.GetConnectionString("DefaultConnection")));
+        {
+            var host = Environment.GetEnvironmentVariable("PGHOST") ?? "localhost";
+            var port = Environment.GetEnvironmentVariable("PGPORT") ?? "5432";
+            var user = Environment.GetEnvironmentVariable("PGUSER") ?? "postgres";
+            var password = Environment.GetEnvironmentVariable("PGPASSWORD") ?? "";
+            var database = Environment.GetEnvironmentVariable("PGDATABASE") ?? "postgres";
+            var connectionString = $"Host={host};Port={port};Username={user};Password={password};Database={database};SSL Mode=Require;";
+            options.UseNpgsql(connectionString);
+        });
 
         services.AddScoped<IUserRepository, UserRepository>();
         services.AddScoped<IAccessTokenRepository, AccessTokenRepository>();
