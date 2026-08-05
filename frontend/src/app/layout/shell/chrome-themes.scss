@@ -2,6 +2,14 @@
 
 .shell {
   /* Shared structural defaults — colors come from theme blocks below */
+  --app-page-bg: linear-gradient(165deg, #f4f7fb 0%, #e9eef6 50%, #f7f9fc 100%);
+  --app-surface: #ffffff;
+  --app-surface-soft: #f8fafc;
+  --app-ink: #0f172a;
+  --app-muted: #64748b;
+  --app-border: rgba(15, 23, 42, 0.08);
+  --app-shadow: rgba(15, 23, 42, 0.05);
+
   --chrome-nav-bg: #ffffff;
   --chrome-nav-bg-2: #f8fbff;
   --chrome-nav-border: rgba(37, 99, 235, 0.1);
@@ -62,6 +70,13 @@
 
 /* 2) Graphite Pro — light nav, dark sidebar */
 .shell[data-chrome-theme='graphite'] {
+  --app-page-bg: linear-gradient(160deg, #f5f5f4 0%, #e7e5e4 52%, #fafaf9 100%);
+  --app-surface: #ffffff;
+  --app-surface-soft: #f5f5f4;
+  --app-ink: #1c1917;
+  --app-muted: #78716c;
+  --app-border: rgba(28, 25, 23, 0.1);
+
   --chrome-side-bg: linear-gradient(185deg, #2a2522 0%, #1c1917 45%, #0c0a09 100%);
   --chrome-side-text: #f5f5f4;
   --chrome-side-muted: #a8a29e;
@@ -89,6 +104,13 @@
 
 /* 3) Ocean Depth */
 .shell[data-chrome-theme='ocean'] {
+  --app-page-bg: linear-gradient(160deg, #f0fdfa 0%, #e0f2f1 50%, #f0f9ff 100%);
+  --app-surface: #fbfffe;
+  --app-surface-soft: #ecfdf5;
+  --app-ink: #123c3a;
+  --app-muted: #52706e;
+  --app-border: rgba(13, 148, 136, 0.13);
+
   --chrome-nav-bg: #f0f9ff;
   --chrome-nav-bg-2: #e0f2fe;
   --chrome-nav-border: rgba(13, 148, 136, 0.18);
@@ -137,6 +159,14 @@
 
 /* 4) Executive Navy */
 .shell[data-chrome-theme='navy'] {
+  --app-page-bg: linear-gradient(155deg, #111827 0%, #0b1220 50%, #020617 100%);
+  --app-surface: #172033;
+  --app-surface-soft: #1e293b;
+  --app-ink: #f1f5f9;
+  --app-muted: #94a3b8;
+  --app-border: rgba(148, 163, 184, 0.14);
+  --app-shadow: rgba(0, 0, 0, 0.2);
+
   --chrome-nav-bg: #0f172a;
   --chrome-nav-bg-2: #1e293b;
   --chrome-nav-border: rgba(148, 163, 184, 0.16);
@@ -191,6 +221,13 @@
 
 /* 5) Emerald Soft */
 .shell[data-chrome-theme='emerald'] {
+  --app-page-bg: linear-gradient(160deg, #f0fdf4 0%, #e8f5ed 52%, #f8fafc 100%);
+  --app-surface: #ffffff;
+  --app-surface-soft: #f0fdf4;
+  --app-ink: #12372c;
+  --app-muted: #5f746c;
+  --app-border: rgba(5, 150, 105, 0.12);
+
   --chrome-nav-bg: #ffffff;
   --chrome-nav-bg-2: #f3faf6;
   --chrome-nav-border: rgba(5, 150, 105, 0.12);
@@ -235,4 +272,302 @@
   --chrome-side-card-text: #064e3b;
   --chrome-side-card-muted: #64748b;
   --chrome-pulse: #10b981;
+}
+
+/* 6) Royal Amethyst — pearl navbar, deep plum sidebar */
+.shell[data-chrome-theme='royal'] {
+  --app-page-bg: linear-gradient(155deg, #faf7ff 0%, #eee8ff 52%, #fdfcff 100%);
+  --app-surface: #fefcff;
+  --app-surface-soft: #f5f3ff;
+  --app-ink: #261447;
+  --app-muted: #75658d;
+  --app-border: rgba(124, 58, 237, 0.12);
+
+  --chrome-nav-bg: #fdfcff;
+  --chrome-nav-bg-2: #f5f3ff;
+  --chrome-nav-border: rgba(124, 58, 237, 0.14);
+  --chrome-accent: #7c3aed;
+  --chrome-accent-2: #6d28d9;
+  --chrome-accent-soft: rgba(124, 58, 237, 0.12);
+  --chrome-glow: rgba(167, 139, 250, 0.22);
+  --chrome-mark-from: #c4b5fd;
+  --chrome-mark-mid: #8b5cf6;
+  --chrome-mark-to: #6d28d9;
+  --chrome-nav-soft: #f3e8ff;
+  --chrome-nav-soft-border: rgba(124, 58, 237, 0.16);
+  --chrome-search-bg: #f5f3ff;
+  --chrome-search-border: rgba(124, 58, 237, 0.17);
+  --chrome-icon-bg: #f3e8ff;
+  --chrome-chip-border: rgba(124, 58, 237, 0.16);
+  --chrome-logout-bg: linear-gradient(145deg, #8b5cf6, #6d28d9);
+  --chrome-logout-border: rgba(109, 40, 217, 0.25);
+  --chrome-notif-ring: #f5f3ff;
+
+  --chrome-side-bg: linear-gradient(180deg, #3b0764 0%, #2e1065 52%, #1e0a3c 100%);
+  --chrome-side-text: #faf5ff;
+  --chrome-side-muted: #d8b4fe;
+  --chrome-side-label: #c4b5fd;
+  --chrome-side-border: rgba(216, 180, 254, 0.12);
+  --chrome-side-brand-bg: rgba(255, 255, 255, 0.07);
+  --chrome-side-brand-border: rgba(196, 181, 253, 0.2);
+  --chrome-side-link: #ede9fe;
+  --chrome-side-link-hover-bg: rgba(255, 255, 255, 0.08);
+  --chrome-side-link-hover: #fff;
+  --chrome-side-ico-bg: rgba(255, 255, 255, 0.07);
+  --chrome-side-ico: #d8b4fe;
+  --chrome-side-ico-hover-bg: rgba(167, 139, 250, 0.22);
+  --chrome-side-ico-hover: #e9d5ff;
+  --chrome-side-active-bg: linear-gradient(90deg, rgba(167, 139, 250, 0.3), rgba(167, 139, 250, 0.06));
+  --chrome-side-active-text: #fff;
+  --chrome-side-active-bar: #a78bfa;
+  --chrome-side-active-ico-bg: linear-gradient(145deg, #a78bfa, #7c3aed);
+  --chrome-side-active-ico: #fff;
+  --chrome-side-card-bg: rgba(255, 255, 255, 0.07);
+  --chrome-side-card-border: rgba(216, 180, 254, 0.16);
+  --chrome-side-card-text: #faf5ff;
+  --chrome-side-card-muted: #d8b4fe;
+  --chrome-pulse: #c4b5fd;
+}
+
+/* 7) Burgundy Reserve — warm ivory and executive wine */
+.shell[data-chrome-theme='burgundy'] {
+  --app-page-bg: linear-gradient(155deg, #fff8f5 0%, #fbe9e9 52%, #fffbf7 100%);
+  --app-surface: #fffdfb;
+  --app-surface-soft: #fff1f2;
+  --app-ink: #3f0713;
+  --app-muted: #85616a;
+  --app-border: rgba(190, 18, 60, 0.12);
+
+  --chrome-nav-bg: #fffbf7;
+  --chrome-nav-bg-2: #fff1f2;
+  --chrome-nav-border: rgba(190, 18, 60, 0.13);
+  --chrome-nav-text: #3f0713;
+  --chrome-nav-muted: #7f5962;
+  --chrome-accent: #be123c;
+  --chrome-accent-2: #9f1239;
+  --chrome-accent-soft: rgba(190, 18, 60, 0.11);
+  --chrome-glow: rgba(244, 63, 94, 0.18);
+  --chrome-mark-from: #fb7185;
+  --chrome-mark-mid: #e11d48;
+  --chrome-mark-to: #9f1239;
+  --chrome-nav-soft: #ffe4e6;
+  --chrome-nav-soft-border: rgba(190, 18, 60, 0.15);
+  --chrome-search-bg: #fff1f2;
+  --chrome-search-border: rgba(190, 18, 60, 0.16);
+  --chrome-search-text: #3f0713;
+  --chrome-search-placeholder: #9f7a82;
+  --chrome-icon-bg: #ffe4e6;
+  --chrome-chip-bg: #fffafa;
+  --chrome-chip-border: rgba(190, 18, 60, 0.15);
+  --chrome-logout-bg: linear-gradient(145deg, #e11d48, #9f1239);
+  --chrome-logout-border: rgba(159, 18, 57, 0.25);
+  --chrome-notif-ring: #fff1f2;
+
+  --chrome-side-bg: linear-gradient(180deg, #5f0f25 0%, #4c0519 52%, #2d0611 100%);
+  --chrome-side-text: #fff1f2;
+  --chrome-side-muted: #fda4af;
+  --chrome-side-label: #fb7185;
+  --chrome-side-border: rgba(253, 164, 175, 0.12);
+  --chrome-side-brand-bg: rgba(255, 255, 255, 0.07);
+  --chrome-side-brand-border: rgba(251, 113, 133, 0.22);
+  --chrome-side-link: #ffe4e6;
+  --chrome-side-link-hover-bg: rgba(255, 255, 255, 0.08);
+  --chrome-side-link-hover: #fff;
+  --chrome-side-ico-bg: rgba(255, 255, 255, 0.07);
+  --chrome-side-ico: #fda4af;
+  --chrome-side-ico-hover-bg: rgba(251, 113, 133, 0.2);
+  --chrome-side-ico-hover: #fecdd3;
+  --chrome-side-active-bg: linear-gradient(90deg, rgba(251, 113, 133, 0.28), rgba(251, 113, 133, 0.06));
+  --chrome-side-active-text: #fff;
+  --chrome-side-active-bar: #fb7185;
+  --chrome-side-active-ico-bg: linear-gradient(145deg, #fb7185, #be123c);
+  --chrome-side-active-ico: #fff;
+  --chrome-side-card-bg: rgba(255, 255, 255, 0.07);
+  --chrome-side-card-border: rgba(253, 164, 175, 0.16);
+  --chrome-side-card-text: #fff1f2;
+  --chrome-side-card-muted: #fda4af;
+  --chrome-pulse: #fb7185;
+}
+
+/* 8) Midnight Indigo — fully dark, cool and focused */
+.shell[data-chrome-theme='midnight'] {
+  --app-page-bg: linear-gradient(155deg, #17152b 0%, #0e0d1b 55%, #080712 100%);
+  --app-surface: #201d38;
+  --app-surface-soft: #292546;
+  --app-ink: #f5f3ff;
+  --app-muted: #aaa8c5;
+  --app-border: rgba(165, 180, 252, 0.14);
+  --app-shadow: rgba(0, 0, 0, 0.22);
+
+  --chrome-nav-bg: #17152b;
+  --chrome-nav-bg-2: #201d3a;
+  --chrome-nav-border: rgba(165, 180, 252, 0.14);
+  --chrome-nav-text: #f5f3ff;
+  --chrome-nav-muted: #a5b4fc;
+  --chrome-nav-soft: rgba(255, 255, 255, 0.07);
+  --chrome-nav-soft-border: rgba(165, 180, 252, 0.13);
+  --chrome-accent: #818cf8;
+  --chrome-accent-2: #a5b4fc;
+  --chrome-accent-soft: rgba(129, 140, 248, 0.17);
+  --chrome-glow: rgba(129, 140, 248, 0.24);
+  --chrome-mark-from: #c4b5fd;
+  --chrome-mark-mid: #818cf8;
+  --chrome-mark-to: #4f46e5;
+  --chrome-search-bg: rgba(255, 255, 255, 0.07);
+  --chrome-search-border: rgba(165, 180, 252, 0.14);
+  --chrome-search-text: #f5f3ff;
+  --chrome-search-placeholder: #8b8aaa;
+  --chrome-icon-bg: rgba(255, 255, 255, 0.07);
+  --chrome-icon-color: #e0e7ff;
+  --chrome-chip-bg: rgba(255, 255, 255, 0.07);
+  --chrome-chip-border: rgba(165, 180, 252, 0.14);
+  --chrome-logout-bg: linear-gradient(145deg, #6366f1, #4338ca);
+  --chrome-logout-border: rgba(165, 180, 252, 0.18);
+  --chrome-notif-ring: #201d3a;
+
+  --chrome-side-bg: linear-gradient(180deg, #18162c 0%, #11101f 55%, #090812 100%);
+  --chrome-side-text: #f5f3ff;
+  --chrome-side-muted: #9896b8;
+  --chrome-side-label: #818cf8;
+  --chrome-side-border: rgba(255, 255, 255, 0.06);
+  --chrome-side-brand-bg: rgba(255, 255, 255, 0.05);
+  --chrome-side-brand-border: rgba(129, 140, 248, 0.2);
+  --chrome-side-link: #d8d7eb;
+  --chrome-side-link-hover-bg: rgba(255, 255, 255, 0.06);
+  --chrome-side-link-hover: #fff;
+  --chrome-side-ico-bg: rgba(255, 255, 255, 0.06);
+  --chrome-side-ico: #9896b8;
+  --chrome-side-ico-hover-bg: rgba(129, 140, 248, 0.17);
+  --chrome-side-ico-hover: #c7d2fe;
+  --chrome-side-active-bg: linear-gradient(90deg, rgba(129, 140, 248, 0.25), rgba(129, 140, 248, 0.05));
+  --chrome-side-active-text: #fff;
+  --chrome-side-active-bar: #818cf8;
+  --chrome-side-active-ico-bg: linear-gradient(145deg, #818cf8, #4f46e5);
+  --chrome-side-active-ico: #fff;
+  --chrome-side-card-bg: rgba(255, 255, 255, 0.05);
+  --chrome-side-card-border: rgba(165, 180, 252, 0.11);
+  --chrome-side-card-text: #f5f3ff;
+  --chrome-side-card-muted: #9896b8;
+  --chrome-pulse: #a5b4fc;
+}
+
+/* 9) Slate & Copper — dark neutral with restrained warmth */
+.shell[data-chrome-theme='copper'] {
+  --app-page-bg: linear-gradient(155deg, #1e293b 0%, #111827 52%, #0b101c 100%);
+  --app-surface: #253247;
+  --app-surface-soft: #2d3b50;
+  --app-ink: #f8fafc;
+  --app-muted: #b4c0cf;
+  --app-border: rgba(245, 158, 11, 0.15);
+  --app-shadow: rgba(0, 0, 0, 0.22);
+
+  --chrome-nav-bg: #1e293b;
+  --chrome-nav-bg-2: #273549;
+  --chrome-nav-border: rgba(245, 158, 11, 0.15);
+  --chrome-nav-text: #f8fafc;
+  --chrome-nav-muted: #cbd5e1;
+  --chrome-nav-soft: rgba(255, 255, 255, 0.07);
+  --chrome-nav-soft-border: rgba(245, 158, 11, 0.15);
+  --chrome-accent: #f59e0b;
+  --chrome-accent-2: #fbbf24;
+  --chrome-accent-soft: rgba(245, 158, 11, 0.15);
+  --chrome-glow: rgba(245, 158, 11, 0.2);
+  --chrome-mark-from: #fcd34d;
+  --chrome-mark-mid: #f59e0b;
+  --chrome-mark-to: #b45309;
+  --chrome-search-bg: rgba(255, 255, 255, 0.07);
+  --chrome-search-border: rgba(245, 158, 11, 0.16);
+  --chrome-search-text: #f8fafc;
+  --chrome-search-placeholder: #94a3b8;
+  --chrome-icon-bg: rgba(255, 255, 255, 0.07);
+  --chrome-icon-color: #e2e8f0;
+  --chrome-chip-bg: rgba(255, 255, 255, 0.07);
+  --chrome-chip-border: rgba(245, 158, 11, 0.16);
+  --chrome-logout-bg: linear-gradient(145deg, #f59e0b, #b45309);
+  --chrome-logout-text: #fff;
+  --chrome-logout-border: rgba(251, 191, 36, 0.2);
+  --chrome-notif-ring: #273549;
+
+  --chrome-side-bg: linear-gradient(180deg, #172033 0%, #0f172a 55%, #080d18 100%);
+  --chrome-side-text: #f8fafc;
+  --chrome-side-muted: #94a3b8;
+  --chrome-side-label: #d6a34a;
+  --chrome-side-border: rgba(245, 158, 11, 0.1);
+  --chrome-side-brand-bg: rgba(255, 255, 255, 0.05);
+  --chrome-side-brand-border: rgba(245, 158, 11, 0.2);
+  --chrome-side-link: #cbd5e1;
+  --chrome-side-link-hover-bg: rgba(255, 255, 255, 0.06);
+  --chrome-side-link-hover: #fff;
+  --chrome-side-ico-bg: rgba(255, 255, 255, 0.06);
+  --chrome-side-ico: #94a3b8;
+  --chrome-side-ico-hover-bg: rgba(245, 158, 11, 0.16);
+  --chrome-side-ico-hover: #fcd34d;
+  --chrome-side-active-bg: linear-gradient(90deg, rgba(245, 158, 11, 0.23), rgba(245, 158, 11, 0.04));
+  --chrome-side-active-text: #fff;
+  --chrome-side-active-bar: #f59e0b;
+  --chrome-side-active-ico-bg: linear-gradient(145deg, #fbbf24, #d97706);
+  --chrome-side-active-ico: #422006;
+  --chrome-side-card-bg: rgba(255, 255, 255, 0.05);
+  --chrome-side-card-border: rgba(245, 158, 11, 0.13);
+  --chrome-side-card-text: #f8fafc;
+  --chrome-side-card-muted: #94a3b8;
+  --chrome-pulse: #fbbf24;
+}
+
+/* 10) Nordic Frost — quiet light blue-gray chrome */
+.shell[data-chrome-theme='frost'] {
+  --app-page-bg: linear-gradient(155deg, #f4f8fb 0%, #e5edf4 52%, #f8fafc 100%);
+  --app-surface: #fbfdff;
+  --app-surface-soft: #edf3f8;
+  --app-ink: #172033;
+  --app-muted: #64748b;
+  --app-border: rgba(2, 132, 199, 0.11);
+
+  --chrome-nav-bg: #f8fafc;
+  --chrome-nav-bg-2: #eef4f8;
+  --chrome-nav-border: rgba(2, 132, 199, 0.12);
+  --chrome-nav-text: #172033;
+  --chrome-nav-muted: #64748b;
+  --chrome-nav-soft: #e0f2fe;
+  --chrome-nav-soft-border: rgba(2, 132, 199, 0.14);
+  --chrome-accent: #0284c7;
+  --chrome-accent-2: #0369a1;
+  --chrome-accent-soft: rgba(2, 132, 199, 0.11);
+  --chrome-glow: rgba(56, 189, 248, 0.17);
+  --chrome-mark-from: #7dd3fc;
+  --chrome-mark-mid: #0ea5e9;
+  --chrome-mark-to: #0369a1;
+  --chrome-search-bg: #eaf2f8;
+  --chrome-search-border: rgba(2, 132, 199, 0.15);
+  --chrome-icon-bg: #e0f2fe;
+  --chrome-chip-bg: #f8fafc;
+  --chrome-chip-border: rgba(2, 132, 199, 0.14);
+  --chrome-logout-bg: linear-gradient(145deg, #0ea5e9, #0369a1);
+  --chrome-logout-border: rgba(2, 132, 199, 0.22);
+  --chrome-notif-ring: #e0f2fe;
+
+  --chrome-side-bg: linear-gradient(180deg, #f1f5f9 0%, #e8eef5 55%, #dfe8f1 100%);
+  --chrome-side-text: #172033;
+  --chrome-side-muted: #64748b;
+  --chrome-side-label: #64748b;
+  --chrome-side-border: rgba(2, 132, 199, 0.11);
+  --chrome-side-brand-bg: rgba(255, 255, 255, 0.62);
+  --chrome-side-brand-border: rgba(2, 132, 199, 0.14);
+  --chrome-side-link: #475569;
+  --chrome-side-link-hover-bg: rgba(255, 255, 255, 0.7);
+  --chrome-side-link-hover: #0c4a6e;
+  --chrome-side-ico-bg: rgba(255, 255, 255, 0.65);
+  --chrome-side-ico: #64748b;
+  --chrome-side-ico-hover-bg: #dbeafe;
+  --chrome-side-ico-hover: #0284c7;
+  --chrome-side-active-bg: linear-gradient(90deg, rgba(2, 132, 199, 0.13), rgba(2, 132, 199, 0.03));
+  --chrome-side-active-text: #075985;
+  --chrome-side-active-bar: #0284c7;
+  --chrome-side-active-ico-bg: linear-gradient(145deg, #38bdf8, #0284c7);
+  --chrome-side-active-ico: #fff;
+  --chrome-side-card-bg: rgba(255, 255, 255, 0.68);
+  --chrome-side-card-border: rgba(2, 132, 199, 0.13);
+  --chrome-side-card-text: #172033;
+  --chrome-side-card-muted: #64748b;
+  --chrome-pulse: #0ea5e9;
 }

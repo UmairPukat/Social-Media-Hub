@@ -491,55 +491,92 @@
 
           @case ('twitter') {
             <div class="sheet x">
-              <header class="sheet-head">
-                <h3>Post on X</h3>
-                <button
-                  type="button"
-                  class="cta x"
-                  [disabled]="!canPublish() || publishing()"
-                  (click)="publish()">
-                  {{ publishing() ? 'Posting…' : ctaLabel() }}
+              <header class="x-head">
+                <button type="button" class="x-close" aria-label="Close composer">
+                  <mat-icon>close</mat-icon>
                 </button>
+                <span class="x-mark" aria-label="X">𝕏</span>
+                <button type="button" class="x-drafts">Drafts</button>
               </header>
-              <div class="x-user">
-                <div class="av" [style.background]="activeMeta().color">
+
+              <div class="x-compose">
+                <div class="av x-avatar" [style.background]="activeMeta().color">
                   {{ initials(selectedProfile()?.name) }}
                 </div>
-                <div>
-                  <strong>{{ selectedProfile()?.name }}</strong>
-                  <small>{{ '@' }}{{ selectedProfile()?.username || 'you' }}</small>
+
+                <div class="x-editor">
+                  <button type="button" class="x-audience">
+                    Everyone
+                    <mat-icon>keyboard_arrow_down</mat-icon>
+                  </button>
+
+                  <textarea
+                    rows="7"
+                    formControlName="content"
+                    [attr.maxlength]="charLimit()"
+                    placeholder="What is happening?!"
+                  ></textarea>
+
+                  @if (form.controls.mediaUrl.value && (isImagePreview() || isVideoPreview())) {
+                    <div class="x-preview">
+                      @if (isVideoPreview()) {
+                        <video [src]="form.controls.mediaUrl.value" controls></video>
+                      } @else {
+                        <img [src]="form.controls.mediaUrl.value" alt="Post media preview" />
+                      }
+                      <button type="button" (click)="clearAttachment()" aria-label="Remove media">
+                        <mat-icon>close</mat-icon>
+                      </button>
+                    </div>
+                  }
+
+                  @if (selectedFileName()) {
+                    <span class="file-chip x-file">
+                      {{ selectedFileName() }}
+                      <button type="button" (click)="clearAttachment()" aria-label="Remove file"><mat-icon>close</mat-icon></button>
+                    </span>
+                  }
+
+                  <button type="button" class="x-replies">
+                    <mat-icon>public</mat-icon>
+                    Everyone can reply
+                  </button>
+
+                  <div class="x-divider"></div>
+
+                  <div class="x-actions">
+                    <div class="x-tools" aria-label="Post tools">
+                      <label matTooltip="Media">
+                        <mat-icon>image</mat-icon>
+                        <input type="file" hidden [attr.accept]="activeMeta().accept" (change)="onFilePicked($event)" />
+                      </label>
+                      <button type="button" matTooltip="GIF"><mat-icon>gif_box</mat-icon></button>
+                      <button type="button" matTooltip="Poll"><mat-icon>ballot</mat-icon></button>
+                      <button type="button" matTooltip="Emoji"><mat-icon>sentiment_satisfied</mat-icon></button>
+                      <button type="button" matTooltip="Schedule"><mat-icon>calendar_clock</mat-icon></button>
+                      <button type="button" matTooltip="Location"><mat-icon>location_on</mat-icon></button>
+                    </div>
+
+                    <div class="x-submit">
+                      @if (form.controls.content.value.length > 0) {
+                        <span
+                          class="x-counter"
+                          [class.warn]="remaining() < 40"
+                          [style.--x-progress]="((form.controls.content.value.length / charLimit()) * 360) + 'deg'">
+                          {{ remaining() }}
+                        </span>
+                        <span class="x-submit-divider"></span>
+                      }
+                      <button
+                        type="button"
+                        class="cta x"
+                        [disabled]="!canPublish() || publishing()"
+                        (click)="publish()">
+                        {{ publishing() ? 'Posting…' : ctaLabel() }}
+                      </button>
+                    </div>
+                  </div>
                 </div>
-              </div>
-              <textarea
-                rows="5"
-                formControlName="content"
-                [attr.maxlength]="charLimit()"
-                placeholder="What’s happening?"
-              ></textarea>
-              <div class="attach-row">
-                <label class="file-btn">
-                  <mat-icon>attach_file</mat-icon>
-                  Attach media
-                  <input type="file" hidden [attr.accept]="activeMeta().accept" (change)="onFilePicked($event)" />
-                </label>
-                @if (selectedFileName()) {
-                  <span class="file-chip">
-                    {{ selectedFileName() }}
-                    <button type="button" (click)="clearAttachment()" aria-label="Remove file"><mat-icon>close</mat-icon></button>
-                  </span>
-                }
-              </div>
-              <div class="media-field">
-                <mat-icon>link</mat-icon>
-                <input formControlName="mediaUrl" placeholder="Or media URL (optional)" />
-              </div>
-              @if (form.controls.mediaUrl.value && isImagePreview()) {
-                <div class="media-preview">
-                  <img [src]="form.controls.mediaUrl.value" alt="Preview" />
-                </div>
-              }
-              <div class="x-meta">
-                <span>{{ form.controls.content.value.length }}/{{ charLimit() }}</span>
               </div>
             </div>
           }

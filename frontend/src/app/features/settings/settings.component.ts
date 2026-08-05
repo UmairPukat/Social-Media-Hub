@@ -41,7 +41,10 @@ import { ChromeThemeId } from '../../core/theme/chrome-themes';
                 <div class="mini-nav" [style.background]="item.preview.navbar" [style.border-color]="item.preview.accent"></div>
                 <div class="mini-body">
                   <div class="mini-side" [style.background]="item.preview.sidebar"></div>
-                  <div class="mini-main"></div>
+                  <div class="mini-main" [style.background]="item.preview.main">
+                    <span [style.border-color]="item.preview.accent"></span>
+                    <span [style.border-color]="item.preview.accent"></span>
+                  </div>
                 </div>
               </div>
               <div class="theme-copy">
@@ -200,7 +203,19 @@ import { ChromeThemeId } from '../../core/theme/chrome-themes';
     }
 
     .mini-side { border-right: 1px solid rgba(15, 23, 42, 0.06); }
-    .mini-main { background: #f1f5f9; }
+    .mini-main {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 5px;
+      padding: 8px;
+    }
+
+    .mini-main span {
+      display: block;
+      border: 1px solid;
+      border-radius: 4px;
+      background: rgba(255, 255, 255, 0.55);
+    }
 
     .theme-copy strong {
       display: block;

@@ -4,9 +4,9 @@
   height: 100vh;
   display: grid;
   grid-template-rows: 72px 1fr;
-  background:
-    radial-gradient(ellipse 70% 45% at 100% 0%, color-mix(in srgb, var(--chrome-accent) 12%, transparent), transparent 55%),
-    linear-gradient(165deg, #f4f7fb 0%, #e9eef6 50%, #f7f9fc 100%);
+  background: var(--app-page-bg);
+  color: var(--app-ink);
+  transition: background 240ms ease, color 240ms ease;
 }
 
 .top-nav {
@@ -464,6 +464,11 @@
   min-height: 0;
   overflow: auto;
   height: 100%;
+  color: var(--app-ink);
+  background:
+    radial-gradient(ellipse 70% 45% at 100% 0%, color-mix(in srgb, var(--chrome-accent) 10%, transparent), transparent 55%),
+    var(--app-page-bg);
+  transition: background 240ms ease, color 240ms ease;
 }
 
 :host ::ng-deep .page {
@@ -471,7 +476,34 @@
   max-width: none;
   padding: 24px 28px 36px;
   box-sizing: border-box;
+  color: var(--app-ink);
   animation: fadeUp 320ms ease both;
+}
+
+/* Theme the reusable content surfaces across routed feature components. */
+:host ::ng-deep .page :is(.panel, .category, .stat, .theme-card),
+:host ::ng-deep .inbox :is(.inbox-bar, .post-card, .bubble-card) {
+  color: var(--app-ink);
+  background-color: var(--app-surface) !important;
+  border-color: var(--app-border) !important;
+  box-shadow: 0 10px 28px var(--app-shadow);
+}
+
+:host ::ng-deep .page :is(.dash-hero, .int-hero) {
+  color: var(--app-ink);
+  background:
+    radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--chrome-accent) 15%, transparent), transparent 42%),
+    linear-gradient(135deg, var(--app-surface) 0%, var(--app-surface-soft) 100%) !important;
+  border-color: var(--app-border) !important;
+}
+
+:host ::ng-deep .page :is(.lede, .stat-label, .stat-hint, .panel-head p, .category-head p, .theme-copy small, .page-header p),
+:host ::ng-deep .inbox :is(.titles p, small) {
+  color: var(--app-muted) !important;
+}
+
+:host ::ng-deep .page :is(.stat-value, .panel h2, .category h2, .theme-copy strong) {
+  color: var(--app-ink) !important;
 }
 
 :host ::ng-deep .page-header h1 {

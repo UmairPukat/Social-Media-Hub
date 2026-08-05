@@ -5,11 +5,11 @@
 }
 
 .studio {
-  --ink: #0f172a;
-  --muted: #64748b;
-  --line: rgba(15, 23, 42, 0.08);
-  --surface: #ffffff;
-  --canvas: #f3f5f8;
+  --ink: var(--app-ink, #0f172a);
+  --muted: var(--app-muted, #64748b);
+  --line: var(--app-border, rgba(15, 23, 42, 0.08));
+  --surface: var(--app-surface, #ffffff);
+  --canvas: var(--app-surface-soft, #f3f5f8);
   --accent: #1877f2;
 
   height: 100%;
@@ -20,14 +20,14 @@
   font-family: Manrope, "Segoe UI", sans-serif;
   background:
     radial-gradient(circle at 0% 0%, color-mix(in srgb, var(--accent) 10%, transparent), transparent 42%),
-    linear-gradient(180deg, #f8fafc 0%, #eef2f7 100%);
+    var(--app-page-bg, linear-gradient(180deg, #f8fafc 0%, #eef2f7 100%));
   overflow: auto;
 }
 
 .studio-top {
   padding: 22px 24px 18px;
   border-bottom: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.82);
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
   backdrop-filter: blur(10px);
 }
 
@@ -301,12 +301,12 @@
   overflow: auto;
   padding: 16px 18px 20px;
   background:
-    linear-gradient(180deg, transparent, rgba(15, 23, 42, 0.02)),
+    linear-gradient(180deg, transparent, color-mix(in srgb, var(--ink) 3%, transparent)),
     repeating-linear-gradient(
       0deg,
       transparent,
       transparent 23px,
-      rgba(15, 23, 42, 0.02) 24px
+      color-mix(in srgb, var(--ink) 3%, transparent) 24px
     );
   display: grid;
   place-items: start center;
@@ -382,19 +382,6 @@
   gap: 10px;
   align-items: center;
   padding: 14px 16px 0;
-}
-
-.x-user small {
-  display: block;
-  color: #536471;
-  font-size: 0.82rem;
-}
-
-.x-meta {
-  padding: 8px 16px 16px;
-  color: #536471;
-  font-size: 0.82rem;
-  font-weight: 600;
 }
 
 .audience {
@@ -639,6 +626,291 @@ input {
 .cta.yt { width: auto; margin: 0; background: #cc0000; border-radius: 999px; padding: 8px 18px; }
 .cta.tt { width: 100%; margin: 12px 0 0; background: #fe2c55; border-radius: 8px; }
 .cta.x { width: auto; margin: 0; background: #0f1419; border-radius: 999px; padding: 8px 18px; }
+
+.sheet.x {
+  width: min(100%, 600px);
+  color: #0f1419;
+  border-color: #eff3f4;
+  border-radius: 16px;
+  font-family: Arial, "Segoe UI", sans-serif;
+}
+
+.x-head {
+  position: relative;
+  min-height: 53px;
+  display: grid;
+  grid-template-columns: 40px 1fr auto;
+  align-items: center;
+  padding: 0 16px;
+}
+
+.x-close {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: #0f1419;
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+
+.x-close:hover {
+  background: rgba(15, 20, 25, 0.1);
+}
+
+.x-close mat-icon {
+  width: 20px;
+  height: 20px;
+  font-size: 20px;
+}
+
+.x-mark {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 1.65rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.x-drafts {
+  grid-column: 3;
+  border: 0;
+  background: transparent;
+  color: #0f1419;
+  font: inherit;
+  font-size: 0.92rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.x-compose {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr);
+  gap: 12px;
+  padding: 12px 16px 8px;
+}
+
+.x-avatar {
+  width: 40px;
+  height: 40px;
+}
+
+.x-editor {
+  min-width: 0;
+}
+
+.x-audience {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  height: 24px;
+  margin: 1px 0 8px;
+  padding: 0 9px;
+  border: 1px solid #cfd9de;
+  border-radius: 999px;
+  background: #fff;
+  color: #1d9bf0;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.x-audience mat-icon {
+  width: 16px;
+  height: 16px;
+  font-size: 16px;
+}
+
+.x-editor textarea {
+  display: block;
+  width: 100%;
+  min-height: 150px;
+  box-sizing: border-box;
+  padding: 8px 0 16px;
+  border: 0;
+  background: transparent;
+  color: #0f1419;
+  font-size: 1.28rem;
+  line-height: 1.35;
+  resize: none;
+}
+
+.x-editor textarea::placeholder {
+  color: #536471;
+  opacity: 1;
+}
+
+.x-preview {
+  position: relative;
+  overflow: hidden;
+  margin: 0 0 12px;
+  border: 1px solid #cfd9de;
+  border-radius: 16px;
+  background: #000;
+}
+
+.x-preview img,
+.x-preview video {
+  display: block;
+  width: 100%;
+  max-height: 320px;
+  object-fit: cover;
+}
+
+.x-preview > button {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(15, 20, 25, 0.75);
+  color: #fff;
+  cursor: pointer;
+}
+
+.x-preview > button mat-icon {
+  width: 18px;
+  height: 18px;
+  font-size: 18px;
+}
+
+.x-file {
+  margin-bottom: 10px;
+}
+
+.x-replies {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 4px 0 11px;
+  padding: 5px 7px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: #1d9bf0;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.x-replies:hover {
+  background: rgba(29, 155, 240, 0.1);
+}
+
+.x-replies mat-icon {
+  width: 16px;
+  height: 16px;
+  font-size: 16px;
+}
+
+.x-divider {
+  height: 1px;
+  background: #eff3f4;
+}
+
+.x-actions {
+  min-height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-top: 4px;
+}
+
+.x-tools,
+.x-submit {
+  display: flex;
+  align-items: center;
+}
+
+.x-tools {
+  gap: 1px;
+  color: #1d9bf0;
+}
+
+.x-tools label,
+.x-tools button {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: #1d9bf0;
+  cursor: pointer;
+  transition: background 140ms ease;
+}
+
+.x-tools label:hover,
+.x-tools button:hover {
+  background: rgba(29, 155, 240, 0.1);
+}
+
+.x-tools mat-icon {
+  width: 20px;
+  height: 20px;
+  font-size: 20px;
+}
+
+.x-submit {
+  gap: 9px;
+}
+
+.x-counter {
+  --x-progress: 0deg;
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle, #fff 0 60%, transparent 63%),
+    conic-gradient(#1d9bf0 var(--x-progress), #eff3f4 0);
+  color: #536471;
+  font-size: 0.62rem;
+  font-weight: 500;
+}
+
+.x-counter.warn {
+  color: #f4212e;
+  background:
+    radial-gradient(circle, #fff 0 60%, transparent 63%),
+    conic-gradient(#f4212e var(--x-progress), #eff3f4 0);
+}
+
+.x-submit-divider {
+  width: 1px;
+  height: 30px;
+  background: #eff3f4;
+}
+
+.x-submit .cta.x {
+  min-width: 74px;
+  margin: 0;
+  padding: 9px 18px 10px;
+  background: #0f1419;
+  font-size: 0.94rem;
+  line-height: 1;
+}
+
+.x-submit .cta.x:disabled {
+  background: #0f1419;
+  opacity: 0.5;
+}
 
 .ig-body {
   display: grid;
