@@ -1,9 +1,13 @@
 using Microsoft.OpenApi.Models;
+using SocialMedia.Api.Configuration;
 using SocialMedia.Application;
 using SocialMedia.Infrastructure;
 using SocialMedia.Infrastructure.Persistence;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Map flat Railway env vars (instagramAppId, JwtSecretKey, …) into nested settings.
+builder.Configuration.AddRailwayFlatEnv();
 
 // Clean Architecture registration: Application (services) + Infrastructure (EF, Meta, JWT)
 builder.Services.AddApplication();

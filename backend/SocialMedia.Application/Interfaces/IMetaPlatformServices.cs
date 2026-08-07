@@ -11,6 +11,8 @@ public class MetaCallContext
 {
     public string AccessToken { get; set; } = string.Empty;
     public string ProfileExternalId { get; set; } = string.Empty;
+    /// <summary>Facebook Page ID used for IG Messaging when connected via Facebook Login.</summary>
+    public string? PageExternalId { get; set; }
 }
 
 public interface IFacebookService
@@ -46,6 +48,7 @@ public interface IInstagramService
     Task DeleteCommentAsync(MetaCallContext context, string commentId, CancellationToken cancellationToken = default);
     Task SendMessageAsync(MetaCallContext context, string recipientId, string message, CancellationToken cancellationToken = default);
     Task DeleteMessageAsync(MetaCallContext context, string messageId, CancellationToken cancellationToken = default);
+    Task SubscribeWebhooksAsync(string accessToken, CancellationToken cancellationToken = default);
     Task ProcessWebhookPayloadAsync(WebhookEvent webhookEvent, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<SocialProfileDraft>> DiscoverProfilesAsync(string userAccessToken, CancellationToken cancellationToken = default);
 }
@@ -79,4 +82,6 @@ public class SocialProfileDraft
     public string? ProfileImage { get; set; }
     public string ProfileType { get; set; } = string.Empty;
     public string? PageAccessToken { get; set; }
+    /// <summary>Linked Facebook Page ID (Instagram via Facebook Login).</summary>
+    public string? PageId { get; set; }
 }

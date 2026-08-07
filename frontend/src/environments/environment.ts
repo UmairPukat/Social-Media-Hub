@@ -1,6 +1,6 @@
 export const environment = {
   production: false,
-  apiUrl: 'http://localhost:5080/api',
+  apiUrl: 'https://socialbackend-production-a9ea.up.railway.app/api',
   // Frontend builds Meta auth URLs — backend only stores tokens after OAuth.
   meta: {
     facebook: {
@@ -10,11 +10,11 @@ export const environment = {
       scopes: 'pages_show_list,pages_read_engagement,pages_manage_posts,pages_manage_engagement,pages_messaging'
     },
     instagram: {
-      // Instagram Business uses Facebook Login (same App Id).
-      appId: 'YOUR_FACEBOOK_APP_ID',
+      // Same Meta App Id as Facebook — Instagram uses Facebook Login.
+      appId: '1106538287780623',
       redirectUri: 'http://localhost:4200/integrations/callback/instagram',
       graphVersion: 'v21.0',
-      scopes: 'pages_show_list,pages_read_engagement,instagram_basic,instagram_content_publish,instagram_manage_comments,instagram_manage_messages,business_management'
+      scopes: 'pages_show_list,pages_read_engagement,pages_manage_metadata,pages_messaging,instagram_basic,instagram_content_publish,instagram_manage_comments,instagram_manage_messages,business_management'
     },
     whatsapp: {
       appId: 'YOUR_WHATSAPP_APP_ID',

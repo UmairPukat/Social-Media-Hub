@@ -1,0 +1,282 @@
+<section class="page analytics-page">
+  <header class="analytics-hero">
+    <div>
+      <div class="hero-labels">
+        <p class="eyebrow">Performance intelligence</p>
+        <span class="live-badge"><i></i>{{ previewMode() ? 'Preview model' : 'Workspace data' }}</span>
+      </div>
+      <h1>Analytics</h1>
+      <p class="lede">Understand reach, engagement, publishing health, and audience growth across every social channel.</p>
+    </div>
+    <div class="hero-actions">
+      <div class="range-control" aria-label="Analytics date range">
+        @for (item of ranges; track item.value) {
+          <button type="button" [class.active]="range() === item.value" (click)="setRange(item.value)">
+            {{ item.label }}
+          </button>
+        }
+      </div>
+      <button mat-stroked-button type="button" (click)="exportReport()">
+        <mat-icon>download</mat-icon>
+        Export report
+      </button>
+    </div>
+  </header>
+
+  @if (notice()) {
+    <div class="notice">
+      <mat-icon>check_circle</mat-icon>
+      <span>{{ notice() }}</span>
+      <button type="button" aria-label="Dismiss" (click)="notice.set('')"><mat-icon>close</mat-icon></button>
+    </div>
+  }
+
+  <section class="kpi-grid" aria-label="Performance summary">
+    <article class="kpi" data-tone="blue">
+      <div class="kpi-top">
+        <span class="kpi-icon"><mat-icon>visibility</mat-icon></span>
+        <span class="trend up"><mat-icon>north_east</mat-icon>18.4%</span>
+      </div>
+      <span class="kpi-label">Total reach</span>
+      <strong>{{ compact(reach()) }}</strong>
+      <p>Unique people who saw your content</p>
+      <div class="spark-bars" aria-hidden="true">
+        @for (height of [32, 45, 38, 58, 52, 68, 76, 71, 86, 94]; track $index) {
+          <i [style.height.%]="height"></i>
+        }
+      </div>
+    </article>
+
+    <article class="kpi" data-tone="violet">
+      <div class="kpi-top">
+        <span class="kpi-icon"><mat-icon>favorite</mat-icon></span>
+        <span class="trend up"><mat-icon>north_east</mat-icon>12.7%</span>
+      </div>
+      <span class="kpi-label">Engagements</span>
+      <strong>{{ compact(engagement()) }}</strong>
+      <p>Reactions, comments, clicks, and shares</p>
+      <div class="spark-bars" aria-hidden="true">
+        @for (height of [28, 34, 51, 44, 63, 57, 72, 69, 82, 89]; track $index) {
+          <i [style.height.%]="height"></i>
+        }
+      </div>
+    </article>
+
+    <article class="kpi" data-tone="green">
+      <div class="kpi-top">
+        <span class="kpi-icon"><mat-icon>percent</mat-icon></span>
+        <span class="trend up"><mat-icon>north_east</mat-icon>1.6%</span>
+      </div>
+      <span class="kpi-label">Engagement rate</span>
+      <strong>7.9%</strong>
+      <p>Engagements as a share of total reach</p>
+      <div class="progress-line"><i style="width:79%"></i></div>
+      <small>Top 18% of comparable profiles</small>
+    </article>
+
+    <article class="kpi" data-tone="amber">
+      <div class="kpi-top">
+        <span class="kpi-icon"><mat-icon>group_add</mat-icon></span>
+        <span class="trend up"><mat-icon>north_east</mat-icon>9.3%</span>
+      </div>
+      <span class="kpi-label">Audience growth</span>
+      <strong>+6,842</strong>
+      <p>Net new followers across all channels</p>
+      <div class="audience-total">
+        <span>Total audience</span>
+        <b>142.8K</b>
+      </div>
+    </article>
+  </section>
+
+  <div class="analytics-grid primary-grid">
+    <section class="panel reach-panel">
+      <header class="panel-head">
+        <div>
+          <p class="section-kicker">Performance trend</p>
+          <h2>Reach over time</h2>
+          <span>Daily organic and paid content reach</span>
+        </div>
+        <div class="chart-total">
+          <small>{{ range() }}-day reach</small>
+          <strong>{{ compact(reach()) }}</strong>
+        </div>
+      </header>
+
+      <div class="legend">
+        <span><i class="organic"></i>Organic reach</span>
+        <span><i class="paid"></i>Paid reach</span>
+      </div>
+
+      <div class="line-chart">
+        <div class="y-axis" aria-hidden="true">
+          <span>120K</span><span>90K</span><span>60K</span><span>30K</span><span>0</span>
+        </div>
+        <div class="chart-plot">
+          <svg viewBox="0 0 800 250" preserveAspectRatio="none" role="img" aria-label="Reach trend chart">
+            <defs>
+              <linearGradient id="reachArea" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#2563eb" stop-opacity=".28" />
+                <stop offset="100%" stop-color="#2563eb" stop-opacity="0" />
+              </linearGradient>
+            </defs>
+            <g class="grid-lines">
+              <line x1="0" y1="20" x2="800" y2="20" />
+              <line x1="0" y1="75" x2="800" y2="75" />
+              <line x1="0" y1="130" x2="800" y2="130" />
+              <line x1="0" y1="185" x2="800" y2="185" />
+              <line x1="0" y1="240" x2="800" y2="240" />
+            </g>
+            <path class="area-path" [attr.d]="areaPath()" />
+            <path class="line-path" [attr.d]="linePath()" />
+            @for (point of chartPoints(); track $index) {
+              @if ($index === chartPoints().length - 1) {
+                <circle class="point-halo" [attr.cx]="point.x" [attr.cy]="point.y" r="10" />
+                <circle class="point" [attr.cx]="point.x" [attr.cy]="point.y" r="4" />
+              }
+            }
+          </svg>
+          <div class="x-axis">
+            @for (label of axisLabels(); track label) { <span>{{ label }}</span> }
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel mix-panel">
+      <header class="panel-head">
+        <div>
+          <p class="section-kicker">Channel mix</p>
+          <h2>Reach by platform</h2>
+          <span>Contribution to total audience reach</span>
+        </div>
+      </header>
+
+      <div class="donut-wrap">
+        <div class="donut">
+          <div><strong>{{ compact(reach()) }}</strong><span>Total reach</span></div>
+        </div>
+      </div>
+      <div class="mix-list">
+        @for (platform of platforms; track platform.code) {
+          <div>
+            <span class="mix-name"><i [style.background]="platform.color"></i>{{ platform.name }}</span>
+            <strong>{{ platform.share }}%</strong>
+          </div>
+        }
+      </div>
+    </section>
+  </div>
+
+  <div class="analytics-grid secondary-grid">
+    <section class="panel platform-panel">
+      <header class="panel-head">
+        <div>
+          <p class="section-kicker">Channel comparison</p>
+          <h2>Platform performance</h2>
+          <span>Reach, engagement, and audience momentum</span>
+        </div>
+        <a routerLink="/app/integrations">Manage channels <mat-icon>arrow_forward</mat-icon></a>
+      </header>
+
+      <div class="platform-table">
+        <div class="platform-row table-header">
+          <span>Platform</span><span>Reach</span><span>Engagement</span><span>Growth</span><span>Performance</span>
+        </div>
+        @for (platform of platforms; track platform.code) {
+          <div class="platform-row">
+            <span class="platform-name">
+              <i [style.background]="platform.color"><mat-icon>{{ platform.icon }}</mat-icon></i>
+              <strong>{{ platform.name }}</strong>
+            </span>
+            <span>{{ compact(platform.reach) }}</span>
+            <span>{{ compact(platform.engagement) }}</span>
+            <span class="growth">+{{ platform.growth }}%</span>
+            <span class="performance-track"><i [style.width.%]="platform.share * 2.4" [style.background]="platform.color"></i></span>
+          </div>
+        }
+      </div>
+    </section>
+
+    <section class="panel health-panel">
+      <header class="panel-head">
+        <div>
+          <p class="section-kicker">Operations</p>
+          <h2>Publishing health</h2>
+          <span>Delivery success across connected channels</span>
+        </div>
+      </header>
+
+      <div class="health-score">
+        <div class="health-ring" [style.--score]="publishingRate()">
+          <span><strong>{{ publishingRate() }}%</strong><small>Success</small></span>
+        </div>
+        <div class="health-copy">
+          <span class="health-status"><i></i>Healthy</span>
+          <p>Your publishing workflow is operating above the 90% reliability target.</p>
+        </div>
+      </div>
+      <div class="health-stats">
+        <div><span>Published</span><strong>{{ summary().publishedPostsCount | number }}</strong></div>
+        <div><span>Scheduled</span><strong>{{ summary().scheduledPostsCount | number }}</strong></div>
+        <div><span>Failed</span><strong>{{ summary().failedPostsCount | number }}</strong></div>
+      </div>
+    </section>
+  </div>
+
+  <div class="analytics-grid bottom-grid">
+    <section class="panel content-panel">
+      <header class="panel-head">
+        <div>
+          <p class="section-kicker">Content intelligence</p>
+          <h2>Top-performing content</h2>
+          <span>Posts generating the strongest response this period</span>
+        </div>
+        <a routerLink="/app/posts">View all posts <mat-icon>arrow_forward</mat-icon></a>
+      </header>
+
+      <div class="content-table">
+        <div class="content-row content-header">
+          <span>Content</span><span>Type</span><span>Reach</span><span>Engagement</span><span>Rate</span>
+        </div>
+        @for (post of topContent; track post.title) {
+          <div class="content-row">
+            <span class="content-name">
+              <i [style.background]="post.color"><mat-icon>{{ post.icon }}</mat-icon></i>
+              <span><strong>{{ post.title }}</strong><small>{{ post.platform }}</small></span>
+            </span>
+            <span><em>{{ post.type }}</em></span>
+            <span>{{ compact(post.reach) }}</span>
+            <span>{{ compact(post.engagement) }}</span>
+            <span class="rate">{{ post.rate }}%</span>
+          </div>
+        }
+      </div>
+    </section>
+
+    <section class="panel insight-panel">
+      <header class="panel-head">
+        <div>
+          <p class="section-kicker">Recommended action</p>
+          <h2>Performance insights</h2>
+          <span>Opportunities detected from recent activity</span>
+        </div>
+      </header>
+
+      <div class="insights">
+        <article>
+          <span class="insight-icon green"><mat-icon>schedule</mat-icon></span>
+          <div><strong>Best publishing window</strong><p>Posts between 6–8 PM generate 24% more engagement.</p></div>
+        </article>
+        <article>
+          <span class="insight-icon violet"><mat-icon>movie</mat-icon></span>
+          <div><strong>Prioritize short-form video</strong><p>Reels and TikToks deliver 2.3× your average reach.</p></div>
+        </article>
+        <article>
+          <span class="insight-icon blue"><mat-icon>forum</mat-icon></span>
+          <div><strong>Respond while momentum is high</strong><p>{{ summary().unreadInboxCount }} inbox items are waiting for your team.</p></div>
+        </article>
+      </div>
+    </section>
+  </div>
+</section>

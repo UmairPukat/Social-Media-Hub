@@ -60,7 +60,22 @@ public class InboxService : IInboxService
                     Content = c.Message,
                     IsHidden = c.IsHidden,
                     IsRead = true,
-                    ReceivedAt = c.PlatformCreatedAt ?? c.CreatedAt
+                    IsOutgoing = !string.IsNullOrWhiteSpace(c.AuthorId) &&
+                                 c.AuthorId == c.Post?.SocialProfile?.ExternalProfileId,
+                    ReceivedAt = c.PlatformCreatedAt ?? c.CreatedAt,
+                    CommentLikes = c.LikeCount,
+                    ReplyCount = c.Replies.Count,
+                    Post = c.Post is null ? null : new InboxPostMetaDto
+                    {
+                        PostId = c.Post.ExternalPostId ?? c.Post.Id.ToString(),
+                        PageName = c.Post.SocialProfile?.Name ?? c.Post.SocialProfile?.Username ?? "Instagram",
+                        PostText = c.Post.Caption ?? c.Post.Text ?? string.Empty,
+                        PostImageUrl = c.Post.MediaItems.FirstOrDefault()?.Url,
+                        LikesCount = c.Post.LikeCount,
+                        CommentsCount = c.Post.CommentCount,
+                        SharesCount = c.Post.ShareCount,
+                        PostedAt = c.Post.PublishedAt ?? c.Post.CreatedAt
+                    }
                 }));
             }
 
@@ -73,11 +88,15 @@ public class InboxService : IInboxService
                     ItemKind = "message",
                     PlatformCode = m.Conversation?.SocialProfile?.SocialAccount?.Platform?.Code ?? string.Empty,
                     ExternalId = m.ExternalMessageId,
-                    AuthorName = m.SenderId ?? "Unknown",
+                    AuthorName = m.Direction == MessageDirection.Outbound
+                        ? "You"
+                        : m.Conversation?.CustomerName ?? m.SenderId ?? "Instagram user",
                     AuthorId = m.SenderId,
                     Content = m.Body ?? string.Empty,
                     IsHidden = false,
-                    IsRead = m.Conversation?.UnreadCount == 0,
+                    IsRead = m.Direction == MessageDirection.Outbound || m.Conversation?.UnreadCount == 0,
+                    IsOutgoing = m.Direction == MessageDirection.Outbound,
+                    ConversationId = m.ConversationId,
                     ReceivedAt = m.PlatformCreatedAt ?? m.CreatedAt
                 }));
             }
@@ -251,7 +270,8 @@ public class InboxService : IInboxService
         return (new MetaCallContext
         {
             AccessToken = account.Auth.AccessToken,
-            ProfileExternalId = profile.ExternalProfileId
+            ProfileExternalId = profile.ExternalProfileId,
+            PageExternalId = ReadPageId(profile.MetadataJson)
         }, platform?.Code?.ToLowerInvariant() ?? string.Empty);
     }
 
@@ -268,14 +288,31 @@ public class InboxService : IInboxService
         if (account.UserId != userId || account.Auth is null)
             throw new InvalidOperationException("Message not found.");
 
-        var recipient = message.SenderId ?? conversation.CustomerId
+        var recipient = (message.Direction == MessageDirection.Outbound
+            ? message.ReceiverId ?? conversation.CustomerId
+            : message.SenderId ?? conversation.CustomerId)
             ?? throw new InvalidOperationException("Recipient unknown.");
 
         var platform = await _unitOfWork.Platforms.GetByIdAsync(account.PlatformId, cancellationToken);
         return (new MetaCallContext
         {
             AccessToken = account.Auth.AccessToken,
-            ProfileExternalId = profile.ExternalProfileId
+            ProfileExternalId = profile.ExternalProfileId,
+            PageExternalId = ReadPageId(profile.MetadataJson)
         }, platform?.Code?.ToLowerInvariant() ?? string.Empty, recipient);
+    }
+
+    private static string? ReadPageId(string? metadataJson)
+    {
+        if (string.IsNullOrWhiteSpace(metadataJson)) return null;
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(metadataJson);
+            return doc.RootElement.TryGetProperty("pageId", out var pageId) ? pageId.GetString() : null;
+        }
+        catch
+        {
+            return null;
+        }
     }
 }

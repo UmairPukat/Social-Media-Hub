@@ -10,6 +10,8 @@ namespace SocialMedia.Infrastructure.Meta;
 /// </summary>
 public class MetaGraphClient
 {
+    private const string FacebookGraphHost = "https://graph.facebook.com";
+    private const string InstagramGraphHost = "https://graph.instagram.com";
     private readonly HttpClient _httpClient;
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -31,12 +33,45 @@ public class MetaGraphClient
         CancellationToken cancellationToken,
         params (string Key, string Value)[] query)
     {
-        var url = BuildUrl(version, path, accessToken, query);
+        var url = BuildUrl(FacebookGraphHost, version, path, accessToken, query);
         using var response = await _httpClient.GetAsync(url, cancellationToken);
         var body = await response.Content.ReadAsStringAsync(cancellationToken);
 
         if (!response.IsSuccessStatusCode)
             throw new InvalidOperationException($"Meta Graph GET failed ({(int)response.StatusCode}): {body}");
+
+        return JsonDocument.Parse(body);
+    }
+
+    public async Task<JsonDocument> GetInstagramAsync(
+        string version,
+        string path,
+        string accessToken,
+        CancellationToken cancellationToken,
+        params (string Key, string Value)[] query)
+    {
+        var url = BuildUrl(InstagramGraphHost, version, path, accessToken, query);
+        return await GetUrlAsync(url, cancellationToken);
+    }
+
+    public async Task<JsonDocument> GetInstagramTokenAsync(
+        string path,
+        CancellationToken cancellationToken,
+        params (string Key, string Value)[] query)
+    {
+        var url = BuildUrl(InstagramGraphHost, string.Empty, path, string.Empty, query);
+        return await GetUrlAsync(url, cancellationToken);
+    }
+
+    public async Task<JsonDocument> PostInstagramOAuthAsync(
+        IDictionary<string, string> formFields,
+        CancellationToken cancellationToken)
+    {
+        using var content = new FormUrlEncodedContent(formFields);
+        using var response = await _httpClient.PostAsync("https://api.instagram.com/oauth/access_token", content, cancellationToken);
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        if (!response.IsSuccessStatusCode)
+            throw new InvalidOperationException($"Instagram OAuth failed ({(int)response.StatusCode}): {body}");
 
         return JsonDocument.Parse(body);
     }
@@ -51,13 +86,30 @@ public class MetaGraphClient
         IDictionary<string, string> formFields,
         CancellationToken cancellationToken)
     {
-        var url = BuildUrl(version, path, accessToken);
+        var url = BuildUrl(FacebookGraphHost, version, path, accessToken);
         using var content = new FormUrlEncodedContent(formFields);
         using var response = await _httpClient.PostAsync(url, content, cancellationToken);
         var body = await response.Content.ReadAsStringAsync(cancellationToken);
 
         if (!response.IsSuccessStatusCode)
             throw new InvalidOperationException($"Meta Graph POST failed ({(int)response.StatusCode}): {body}");
+
+        return JsonDocument.Parse(body);
+    }
+
+    public async Task<JsonDocument> PostInstagramAsync(
+        string version,
+        string path,
+        string accessToken,
+        IDictionary<string, string> formFields,
+        CancellationToken cancellationToken)
+    {
+        var url = BuildUrl(InstagramGraphHost, version, path, accessToken);
+        using var content = new FormUrlEncodedContent(formFields);
+        using var response = await _httpClient.PostAsync(url, content, cancellationToken);
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        if (!response.IsSuccessStatusCode)
+            throw new InvalidOperationException($"Instagram Graph POST failed ({(int)response.StatusCode}): {body}");
 
         return JsonDocument.Parse(body);
     }
@@ -69,7 +121,7 @@ public class MetaGraphClient
         object payload,
         CancellationToken cancellationToken)
     {
-        var url = BuildUrl(version, path, accessToken);
+        var url = BuildUrl(FacebookGraphHost, version, path, accessToken);
         var json = JsonSerializer.Serialize(payload);
         using var content = new StringContent(json, Encoding.UTF8, "application/json");
         using var response = await _httpClient.PostAsync(url, content, cancellationToken);
@@ -81,13 +133,31 @@ public class MetaGraphClient
         return JsonDocument.Parse(body);
     }
 
+    public async Task<JsonDocument> PostInstagramJsonAsync(
+        string version,
+        string path,
+        string accessToken,
+        object payload,
+        CancellationToken cancellationToken)
+    {
+        var url = BuildUrl(InstagramGraphHost, version, path, accessToken);
+        var json = JsonSerializer.Serialize(payload);
+        using var content = new StringContent(json, Encoding.UTF8, "application/json");
+        using var response = await _httpClient.PostAsync(url, content, cancellationToken);
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        if (!response.IsSuccessStatusCode)
+            throw new InvalidOperationException($"Instagram Graph POST JSON failed ({(int)response.StatusCode}): {body}");
+
+        return JsonDocument.Parse(body);
+    }
+
     public async Task DeleteAsync(
         string version,
         string path,
         string accessToken,
         CancellationToken cancellationToken)
     {
-        var url = BuildUrl(version, path, accessToken);
+        var url = BuildUrl(FacebookGraphHost, version, path, accessToken);
         using var response = await _httpClient.DeleteAsync(url, cancellationToken);
         var body = await response.Content.ReadAsStringAsync(cancellationToken);
 
@@ -95,14 +165,39 @@ public class MetaGraphClient
             throw new InvalidOperationException($"Meta Graph DELETE failed ({(int)response.StatusCode}): {body}");
     }
 
+    public async Task DeleteInstagramAsync(
+        string version,
+        string path,
+        string accessToken,
+        CancellationToken cancellationToken)
+    {
+        var url = BuildUrl(InstagramGraphHost, version, path, accessToken);
+        using var response = await _httpClient.DeleteAsync(url, cancellationToken);
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        if (!response.IsSuccessStatusCode)
+            throw new InvalidOperationException($"Instagram Graph DELETE failed ({(int)response.StatusCode}): {body}");
+    }
+
+    private async Task<JsonDocument> GetUrlAsync(string url, CancellationToken cancellationToken)
+    {
+        using var response = await _httpClient.GetAsync(url, cancellationToken);
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        if (!response.IsSuccessStatusCode)
+            throw new InvalidOperationException($"Instagram Graph GET failed ({(int)response.StatusCode}): {body}");
+
+        return JsonDocument.Parse(body);
+    }
+
     private static string BuildUrl(
+        string host,
         string version,
         string path,
         string accessToken,
         params (string Key, string Value)[] query)
     {
         var trimmedPath = path.TrimStart('/');
-        var builder = new StringBuilder($"https://graph.facebook.com/{version}/{trimmedPath}");
+        var versionPrefix = string.IsNullOrWhiteSpace(version) ? string.Empty : $"{version.Trim('/')}/";
+        var builder = new StringBuilder($"{host.TrimEnd('/')}/{versionPrefix}{trimmedPath}");
 
         var first = true;
         void Append(string key, string value)

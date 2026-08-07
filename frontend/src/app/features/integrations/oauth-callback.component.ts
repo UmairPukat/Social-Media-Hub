@@ -56,7 +56,7 @@ export class OAuthCallbackComponent implements OnInit {
       this.fail(platform, 'Missing authorization code.');
       return;
     }
-    if (expected && state && expected !== state) {
+    if (!expected || !state || expected !== state) {
       this.fail(platform, 'Invalid OAuth state.');
       return;
     }

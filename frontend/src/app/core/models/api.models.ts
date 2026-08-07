@@ -74,10 +74,16 @@ export interface SocialPost {
   socialProfileId: string;
   platformId: string;
   platformCode?: string;
+  profileName?: string;
+  profileUsername?: string;
   externalPostId?: string;
   text?: string;
   caption?: string;
   status: number;
+  likeCount: number;
+  commentCount: number;
+  shareCount: number;
+  viewCount: number;
   publishedAt?: string;
   errorMessage?: string;
   createdAt: string;
@@ -110,6 +116,8 @@ export interface InboxItem {
   content: string;
   isHidden: boolean;
   isRead: boolean;
+  isOutgoing?: boolean;
+  conversationId?: string;
   receivedAt: string;
   /** Parent post context for Facebook / Instagram comments. */
   post?: InboxPostMeta;

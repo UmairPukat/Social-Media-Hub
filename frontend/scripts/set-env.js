@@ -11,10 +11,10 @@ const apiUrl =
 
 const frontendOrigin =
   process.env.FRONTEND_ORIGIN ||
-  'https://YOUR-FRONTEND.up.railway.app';
+  'https://socialfrontend-production.up.railway.app';
 
 const graphVersion = process.env.META_GRAPH_VERSION || 'v21.0';
-const facebookAppId = process.env.META_FACEBOOK_APP_ID || 'YOUR_FACEBOOK_APP_ID';
+const facebookAppId = process.env.META_FACEBOOK_APP_ID || '1106538287780623';
 const whatsappAppId = process.env.META_WHATSAPP_APP_ID || 'YOUR_WHATSAPP_APP_ID';
 const instagramAppId = process.env.META_INSTAGRAM_APP_ID || facebookAppId;
 
@@ -42,7 +42,7 @@ const content = `export const environment = {
       appId: ${JSON.stringify(instagramAppId)},
       redirectUri: ${JSON.stringify(instagramRedirect)},
       graphVersion: ${JSON.stringify(graphVersion)},
-      scopes: 'pages_show_list,pages_read_engagement,instagram_basic,instagram_content_publish,instagram_manage_comments,instagram_manage_messages,business_management'
+      scopes: 'pages_show_list,pages_read_engagement,pages_manage_metadata,pages_messaging,instagram_basic,instagram_content_publish,instagram_manage_comments,instagram_manage_messages,business_management'
     },
     whatsapp: {
       appId: ${JSON.stringify(whatsappAppId)},

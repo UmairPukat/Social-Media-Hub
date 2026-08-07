@@ -5,7 +5,6 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { ApiService } from '../../core/services/api.service';
-import { INBOX_DEMO_ITEMS } from '../../core/data/inbox-demo.data';
 import {
   ApiResponse,
   InboxItem,
@@ -83,12 +82,12 @@ export class InboxComponent implements OnInit {
     const grouped = new Map<string, MessageConversation>();
     for (const item of this.filteredItems()) {
       if (item.itemKind !== 'message') continue;
-      const key = `msg:${item.platformCode}:${item.authorId || item.authorName}`;
+      const key = `msg:${item.platformCode}:${item.conversationId || item.authorId || item.authorName}`;
       const existing = grouped.get(key);
       if (!existing) {
         grouped.set(key, {
           key,
-          authorName: item.authorName || 'Unknown',
+          authorName: item.isOutgoing ? 'Instagram user' : item.authorName || 'Instagram user',
           authorId: item.authorId,
           platformCode: item.platformCode,
           lastContent: item.content,
@@ -98,6 +97,10 @@ export class InboxComponent implements OnInit {
         });
       } else {
         existing.items.push(item);
+        if (!item.isOutgoing && item.authorName) {
+          existing.authorName = item.authorName;
+          existing.authorId = item.authorId;
+        }
         if (!item.isRead) existing.unreadCount += 1;
         if (new Date(item.receivedAt) > new Date(existing.lastAt)) {
           existing.lastContent = item.content;
@@ -168,7 +171,7 @@ export class InboxComponent implements OnInit {
     if (!conv) return [];
     const incoming = [...conv.items]
       .sort((a, b) => +new Date(a.receivedAt) - +new Date(b.receivedAt))
-      .map(i => ({ id: i.id, content: i.content, at: i.receivedAt, outgoing: false }));
+      .map(i => ({ id: i.id, content: i.content, at: i.receivedAt, outgoing: !!i.isOutgoing }));
     const outgoing = this.localOutgoing()[conv.key] || [];
     return [...incoming, ...outgoing].sort((a, b) => +new Date(a.at) - +new Date(b.at));
   });
@@ -194,16 +197,13 @@ export class InboxComponent implements OnInit {
   reload(): void {
     this.api.getInbox().subscribe({
       next: (res: ApiResponse<InboxItem[]>) => {
-        const live = res.data || [];
-        // Prefer live rows; always include demo so the UI has FB/IG/WA samples.
-        const liveIds = new Set(live.map(i => i.id));
-        const demo = INBOX_DEMO_ITEMS.filter(d => !liveIds.has(d.id));
-        this.items.set([...live, ...demo]);
+        this.items.set(res.data || []);
+        this.banner.set('');
         this.autoSelectFirst();
       },
       error: () => {
-        this.items.set([...INBOX_DEMO_ITEMS]);
-        this.banner.set('Showing demo inbox (API unavailable).');
+        this.items.set([]);
+        this.banner.set('Inbox API is unavailable. Live Instagram data could not be loaded.');
         this.autoSelectFirst();
       }
     });
@@ -223,6 +223,14 @@ export class InboxComponent implements OnInit {
   selectMessage(conv: MessageConversation): void {
     this.selectedKey.set(conv.key);
     this.replyText.set('');
+    const conversationId = conv.items.find((item) => item.conversationId)?.conversationId;
+    if (conversationId && conv.unreadCount > 0) {
+      this.api.markRead(conversationId).subscribe({
+        next: () => this.items.update((items) =>
+          items.map((item) => item.conversationId === conversationId ? { ...item, isRead: true } : item)
+        )
+      });
+    }
   }
 
   selectCommentThread(thread: CommentPostThread): void {
@@ -268,11 +276,18 @@ export class InboxComponent implements OnInit {
       const conv = this.selectedMessage();
       if (!conv) return;
       const latest = [...conv.items].sort((a, b) => +new Date(b.receivedAt) - +new Date(a.receivedAt))[0];
-      this.pushLocalReply(conv.key, text);
-      if (latest?.id.startsWith('demo-')) return;
+      if (!latest) return;
       this.sending.set(true);
       this.api.replyMessage(latest.id, text).subscribe({
-        next: () => this.sending.set(false),
+        next: (res) => {
+          if (res.success) {
+            this.pushLocalReply(conv.key, text);
+            this.banner.set('');
+          } else {
+            this.banner.set(res.message || 'Reply failed');
+          }
+          this.sending.set(false);
+        },
         error: (err: { error?: { message?: string } }) => {
           this.banner.set(err?.error?.message || 'Reply failed');
           this.sending.set(false);
@@ -284,6 +299,7 @@ export class InboxComponent implements OnInit {
     const thread = this.selectedCommentThread();
     if (!thread) return;
     const latest = [...thread.comments].sort((a, b) => +new Date(b.receivedAt) - +new Date(a.receivedAt))[0];
+    if (!latest) return;
     // Append as a local comment reply in the list
     const local: InboxItem = {
       id: `local-${Date.now()}`,
@@ -299,12 +315,18 @@ export class InboxComponent implements OnInit {
       replyCount: 0,
       post: thread.post
     };
-    this.items.update(list => [...list, local]);
-    this.replyText.set('');
-    if (latest?.id.startsWith('demo-')) return;
     this.sending.set(true);
     this.api.replyComment(latest.id, text).subscribe({
-      next: () => this.sending.set(false),
+      next: (res) => {
+        if (res.success) {
+          this.items.update(list => [...list, local]);
+          this.replyText.set('');
+          this.banner.set('');
+        } else {
+          this.banner.set(res.message || 'Reply failed');
+        }
+        this.sending.set(false);
+      },
       error: (err: { error?: { message?: string } }) => {
         this.banner.set(err?.error?.message || 'Reply failed');
         this.sending.set(false);

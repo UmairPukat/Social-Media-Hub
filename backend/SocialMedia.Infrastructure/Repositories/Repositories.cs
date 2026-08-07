@@ -119,6 +119,7 @@ public class PostRepository : Repository<Post>, IPostRepository
     {
         var query = DbSet.AsNoTracking()
             .Include(p => p.SocialProfile!).ThenInclude(sp => sp.SocialAccount)
+            .Include(p => p.Platform)
             .Include(p => p.MediaItems)
             .Where(p => p.SocialProfile!.SocialAccount!.UserId == userId);
 
@@ -127,6 +128,11 @@ public class PostRepository : Repository<Post>, IPostRepository
 
         return await query.OrderByDescending(p => p.CreatedAt).ToListAsync(cancellationToken);
     }
+
+    public Task<Post?> GetByExternalPostIdAsync(Guid socialProfileId, string externalPostId, CancellationToken cancellationToken = default)
+        => DbSet.FirstOrDefaultAsync(
+            p => p.SocialProfileId == socialProfileId && p.ExternalPostId == externalPostId,
+            cancellationToken);
 }
 
 public class CommentRepository : Repository<Comment>, ICommentRepository
@@ -137,6 +143,8 @@ public class CommentRepository : Repository<Comment>, ICommentRepository
     {
         var query = DbSet.AsNoTracking()
             .Include(c => c.Post).ThenInclude(p => p!.SocialProfile).ThenInclude(sp => sp!.SocialAccount).ThenInclude(a => a!.Platform)
+            .Include(c => c.Post).ThenInclude(p => p!.MediaItems)
+            .Include(c => c.Replies)
             .Where(c => c.Post!.SocialProfile!.SocialAccount!.UserId == userId && !c.IsDeleted);
 
         if (platformId.HasValue)
@@ -144,6 +152,9 @@ public class CommentRepository : Repository<Comment>, ICommentRepository
 
         return await query.OrderByDescending(c => c.CreatedAt).ToListAsync(cancellationToken);
     }
+
+    public Task<Comment?> GetByExternalCommentIdAsync(string externalCommentId, CancellationToken cancellationToken = default)
+        => DbSet.FirstOrDefaultAsync(c => c.ExternalCommentId == externalCommentId, cancellationToken);
 }
 
 public class ConversationRepository : Repository<Conversation>, IConversationRepository
@@ -162,6 +173,14 @@ public class ConversationRepository : Repository<Conversation>, IConversationRep
 
         return await query.OrderByDescending(c => c.LastMessageAt).ToListAsync(cancellationToken);
     }
+
+    public Task<Conversation?> GetByExternalConversationIdAsync(
+        Guid socialProfileId,
+        string externalConversationId,
+        CancellationToken cancellationToken = default)
+        => DbSet.FirstOrDefaultAsync(
+            c => c.SocialProfileId == socialProfileId && c.ExternalConversationId == externalConversationId,
+            cancellationToken);
 }
 
 public class MessageRepository : Repository<Message>, IMessageRepository
@@ -179,6 +198,9 @@ public class MessageRepository : Repository<Message>, IMessageRepository
 
         return await query.OrderByDescending(m => m.CreatedAt).ToListAsync(cancellationToken);
     }
+
+    public Task<Message?> GetByExternalMessageIdAsync(string externalMessageId, CancellationToken cancellationToken = default)
+        => DbSet.FirstOrDefaultAsync(m => m.ExternalMessageId == externalMessageId, cancellationToken);
 }
 
 public class WebhookEventRepository : Repository<WebhookEvent>, IWebhookEventRepository

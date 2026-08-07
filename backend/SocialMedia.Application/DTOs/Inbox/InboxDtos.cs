@@ -11,7 +11,24 @@ public class InboxItemDto
     public string Content { get; set; } = string.Empty;
     public bool IsHidden { get; set; }
     public bool IsRead { get; set; }
+    public bool IsOutgoing { get; set; }
+    public Guid? ConversationId { get; set; }
     public DateTime ReceivedAt { get; set; }
+    public InboxPostMetaDto? Post { get; set; }
+    public int CommentLikes { get; set; }
+    public int ReplyCount { get; set; }
+}
+
+public class InboxPostMetaDto
+{
+    public string PostId { get; set; } = string.Empty;
+    public string PageName { get; set; } = string.Empty;
+    public string PostText { get; set; } = string.Empty;
+    public string? PostImageUrl { get; set; }
+    public int LikesCount { get; set; }
+    public int CommentsCount { get; set; }
+    public int SharesCount { get; set; }
+    public DateTime PostedAt { get; set; }
 }
 
 public class InboxFilterRequest

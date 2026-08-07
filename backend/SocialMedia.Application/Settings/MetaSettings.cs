@@ -45,9 +45,8 @@ public class FacebookSettings : MetaPlatformSettings
 }
 
 /// <summary>
-/// Instagram-specific settings. OAuth App Id / Secret come from <see cref="FacebookSettings"/>
-/// (Facebook Login). Use this section for the Instagram callback redirect URI and webhook token.
-/// AppId / AppSecret here are ignored for login — kept only for optional overrides / documentation.
+/// Instagram via Facebook Login. Prefer Facebook AppId/AppSecret for OAuth;
+/// use this section for Instagram redirect URI and webhook verify token.
 /// </summary>
 public class InstagramSettings : MetaPlatformSettings
 {

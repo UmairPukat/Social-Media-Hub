@@ -11,7 +11,8 @@ using SocialMedia.Domain.Interfaces;
 namespace SocialMedia.Infrastructure.Meta;
 
 /// <summary>
-/// Instagram Graph API. Auth uses Facebook Login on the frontend.
+/// Instagram Graph API via Facebook Login for Business.
+/// OAuth uses Facebook App credentials; Graph calls use the Page access token.
 /// </summary>
 public class InstagramService : IInstagramService
 {
@@ -31,15 +32,28 @@ public class InstagramService : IInstagramService
     }
 
     private string GraphVersion =>
-        string.IsNullOrWhiteSpace(_instagram.GraphApiVersion) ? _facebook.GraphApiVersion : _instagram.GraphApiVersion;
+        !string.IsNullOrWhiteSpace(_instagram.GraphApiVersion)
+            ? _instagram.GraphApiVersion
+            : !string.IsNullOrWhiteSpace(_facebook.GraphApiVersion)
+                ? _facebook.GraphApiVersion
+                : "v21.0";
 
-    /// <summary>Instagram Business uses Facebook Login — exchange with Facebook App Id/Secret.</summary>
+    private string AppId =>
+        !string.IsNullOrWhiteSpace(_facebook.AppId) ? _facebook.AppId : _instagram.AppId;
+
+    private string AppSecret =>
+        !string.IsNullOrWhiteSpace(_facebook.AppSecret) ? _facebook.AppSecret : _instagram.AppSecret;
+
+    /// <summary>Facebook Login: authorization code → short token → long-lived user token.</summary>
     public async Task<OAuthTokenResult> ExchangeCodeAsync(string code, string redirectUri, CancellationToken cancellationToken = default)
     {
+        if (string.IsNullOrWhiteSpace(AppId) || string.IsNullOrWhiteSpace(AppSecret))
+            throw new InvalidOperationException("Facebook AppId/AppSecret are required for Instagram Facebook Login.");
+
         using var shortLived = await _graph.GetAsync(
             GraphVersion, "oauth/access_token", string.Empty, cancellationToken,
-            ("client_id", _facebook.AppId),
-            ("client_secret", _facebook.AppSecret),
+            ("client_id", AppId),
+            ("client_secret", AppSecret),
             ("redirect_uri", redirectUri),
             ("code", code));
 
@@ -51,8 +65,8 @@ public class InstagramService : IInstagramService
             using var longLived = await _graph.GetAsync(
                 GraphVersion, "oauth/access_token", string.Empty, cancellationToken,
                 ("grant_type", "fb_exchange_token"),
-                ("client_id", _facebook.AppId),
-                ("client_secret", _facebook.AppSecret),
+                ("client_id", AppId),
+                ("client_secret", AppSecret),
                 ("fb_exchange_token", shortToken));
 
             return ParseToken(longLived.RootElement);
@@ -89,8 +103,12 @@ public class InstagramService : IInstagramService
 
     public async Task<IReadOnlyList<SocialProfileDraft>> DiscoverProfilesAsync(string userAccessToken, CancellationToken cancellationToken = default)
     {
-        using var pagesDoc = await _graph.GetAsync(GraphVersion, "me/accounts", userAccessToken, cancellationToken,
-            ("fields", "id,name,access_token,instagram_business_account{id,username,profile_picture_url}"));
+        using var pagesDoc = await _graph.GetAsync(
+            GraphVersion,
+            "me/accounts",
+            userAccessToken,
+            cancellationToken,
+            ("fields", "id,name,access_token,instagram_business_account{id,username,profile_picture_url,name}"));
 
         var list = new List<SocialProfileDraft>();
         if (!pagesDoc.RootElement.TryGetProperty("data", out var data))
@@ -101,13 +119,16 @@ public class InstagramService : IInstagramService
             if (!page.TryGetProperty("instagram_business_account", out var ig))
                 continue;
 
+            var username = ig.TryGetProperty("username", out var u) ? u.GetString() : null;
+            var name = ig.TryGetProperty("name", out var n) ? n.GetString() : null;
             list.Add(new SocialProfileDraft
             {
                 ExternalProfileId = ig.GetProperty("id").GetString() ?? string.Empty,
-                Name = ig.TryGetProperty("username", out var u) ? u.GetString() ?? "Instagram" : "Instagram",
-                Username = ig.TryGetProperty("username", out var u2) ? u2.GetString() : null,
+                Name = name ?? username ?? "Instagram",
+                Username = username,
                 ProfileImage = ig.TryGetProperty("profile_picture_url", out var pic) ? pic.GetString() : null,
                 ProfileType = "InstagramBusiness",
+                PageId = page.TryGetProperty("id", out var pageId) ? pageId.GetString() : null,
                 PageAccessToken = page.TryGetProperty("access_token", out var t) ? t.GetString() : null
             });
         }
@@ -173,12 +194,35 @@ public class InstagramService : IInstagramService
 
     public async Task SendMessageAsync(MetaCallContext context, string recipientId, string message, CancellationToken cancellationToken = default)
     {
-        var payload = new { recipient = new { id = recipientId }, message = new { text = message } };
-        using var _ = await _graph.PostJsonAsync(GraphVersion, $"{context.ProfileExternalId}/messages", context.AccessToken, payload, cancellationToken);
+        // Facebook Login for Instagram Messaging uses the Page ID + Page access token.
+        var pathId = !string.IsNullOrWhiteSpace(context.PageExternalId)
+            ? context.PageExternalId
+            : context.ProfileExternalId;
+        var payload = new
+        {
+            recipient = new { id = recipientId },
+            messaging_type = "RESPONSE",
+            message = new { text = message }
+        };
+        using var _ = await _graph.PostJsonAsync(GraphVersion, $"{pathId}/messages", context.AccessToken, payload, cancellationToken);
     }
 
     public Task DeleteMessageAsync(MetaCallContext context, string messageId, CancellationToken cancellationToken = default)
         => _graph.DeleteAsync(GraphVersion, messageId, context.AccessToken, cancellationToken);
+
+    /// <summary>Subscribe the linked Facebook Page to Instagram webhook fields.</summary>
+    public async Task SubscribeWebhooksAsync(string accessToken, CancellationToken cancellationToken = default)
+    {
+        using var _ = await _graph.PostAsync(
+            GraphVersion,
+            "me/subscribed_apps",
+            accessToken,
+            new Dictionary<string, string>
+            {
+                ["subscribed_fields"] = "feed,messages,messaging_postbacks,messaging_seen,message_deliveries"
+            },
+            cancellationToken);
+    }
 
     public async Task ProcessWebhookPayloadAsync(WebhookEvent webhookEvent, CancellationToken cancellationToken = default)
     {
@@ -190,28 +234,19 @@ public class InstagramService : IInstagramService
 
             foreach (var entry in entries.EnumerateArray())
             {
-                var igUserId = entry.TryGetProperty("id", out var idEl) ? idEl.GetString() : null;
+                var igUserId = entry.TryGetProperty("id", out var idEl) ? idEl.ToString() : null;
                 if (igUserId is null) continue;
-                var profile = await _unitOfWork.SocialProfiles.GetByExternalProfileIdAsync(igUserId, cancellationToken);
-                if (profile is null || !entry.TryGetProperty("changes", out var changes)) continue;
 
-                foreach (var change in changes.EnumerateArray())
-                {
-                    if (!change.TryGetProperty("value", out var value)) continue;
-                    var externalId = value.TryGetProperty("id", out var vid) ? vid.GetString() : null;
-                    if (string.IsNullOrWhiteSpace(externalId)) continue;
+                // Facebook Login webhooks may key entry.id to IG user or Page id.
+                var profile = await _unitOfWork.SocialProfiles.GetByExternalProfileIdAsync(igUserId, cancellationToken)
+                    ?? await FindProfileByPageIdAsync(igUserId, cancellationToken);
+                if (profile is null) continue;
 
-                    var account = await _unitOfWork.SocialAccounts.GetByIdAsync(profile.SocialAccountId, cancellationToken);
-                    var post = new Post
-                    {
-                        SocialProfileId = profile.Id,
-                        PlatformId = account?.PlatformId ?? Guid.Empty,
-                        ExternalPostId = externalId,
-                        Status = ContentPostStatus.Published,
-                        Text = value.TryGetProperty("text", out var text) ? text.GetString() : string.Empty
-                    };
-                    await _unitOfWork.Posts.AddAsync(post, cancellationToken);
-                }
+                if (entry.TryGetProperty("changes", out var changes))
+                    await ProcessCommentChangesAsync(profile, entry, changes, cancellationToken);
+
+                if (entry.TryGetProperty("messaging", out var messaging))
+                    await ProcessMessagesAsync(profile, messaging, cancellationToken);
             }
 
             await _unitOfWork.SaveChangesAsync(cancellationToken);
@@ -222,4 +257,193 @@ public class InstagramService : IInstagramService
             throw;
         }
     }
+
+    private async Task<SocialProfile?> FindProfileByPageIdAsync(string pageId, CancellationToken cancellationToken)
+    {
+        var profiles = await _unitOfWork.SocialProfiles.FindAsync(
+            p => p.ProfileType == ProfileType.InstagramBusiness && p.MetadataJson != null && p.MetadataJson.Contains(pageId),
+            cancellationToken);
+        return profiles.FirstOrDefault(p =>
+        {
+            try
+            {
+                using var meta = JsonDocument.Parse(p.MetadataJson!);
+                return meta.RootElement.TryGetProperty("pageId", out var id) && id.GetString() == pageId;
+            }
+            catch
+            {
+                return false;
+            }
+        });
+    }
+
+    private async Task ProcessCommentChangesAsync(
+        SocialProfile profile,
+        JsonElement entry,
+        JsonElement changes,
+        CancellationToken cancellationToken)
+    {
+        var account = await _unitOfWork.SocialAccounts.GetByIdAsync(profile.SocialAccountId, cancellationToken);
+        if (account is null) return;
+
+        foreach (var change in changes.EnumerateArray())
+        {
+            var field = change.TryGetProperty("field", out var fieldElement) ? fieldElement.GetString() : null;
+            if (field is not ("comments" or "live_comments") ||
+                !change.TryGetProperty("value", out var value))
+                continue;
+
+            var commentId = value.TryGetProperty("id", out var commentIdElement)
+                ? commentIdElement.ToString()
+                : null;
+            var mediaId = value.TryGetProperty("media", out var media) &&
+                          media.TryGetProperty("id", out var mediaIdElement)
+                ? mediaIdElement.ToString()
+                : null;
+            if (string.IsNullOrWhiteSpace(commentId) || string.IsNullOrWhiteSpace(mediaId))
+                continue;
+            if (await _unitOfWork.Comments.GetByExternalCommentIdAsync(commentId, cancellationToken) is not null)
+                continue;
+
+            var post = await _unitOfWork.Posts.GetByExternalPostIdAsync(profile.Id, mediaId, cancellationToken);
+            var isNewPost = post is null;
+            if (post is null)
+            {
+                post = new Post
+                {
+                    SocialProfileId = profile.Id,
+                    PlatformId = account.PlatformId,
+                    ExternalPostId = mediaId,
+                    Status = ContentPostStatus.Published,
+                    PublishedAt = UnixSeconds(entry, "time")
+                };
+                await _unitOfWork.Posts.AddAsync(post, cancellationToken);
+            }
+
+            var authorId = string.Empty;
+            var authorName = "Instagram user";
+            if (value.TryGetProperty("from", out var from))
+            {
+                authorId = from.TryGetProperty("id", out var fromId) ? fromId.ToString() : string.Empty;
+                authorName = from.TryGetProperty("username", out var username)
+                    ? username.GetString() ?? authorName
+                    : authorName;
+            }
+            Comment? parentComment = null;
+            if (value.TryGetProperty("parent_id", out var parentIdElement))
+            {
+                var parentId = parentIdElement.ToString();
+                if (!string.IsNullOrWhiteSpace(parentId))
+                    parentComment = await _unitOfWork.Comments.GetByExternalCommentIdAsync(parentId, cancellationToken);
+            }
+
+            await _unitOfWork.Comments.AddAsync(new Comment
+            {
+                PostId = post.Id,
+                ParentCommentId = parentComment?.Id,
+                ExternalCommentId = commentId,
+                AuthorId = authorId,
+                AuthorName = authorName,
+                Message = value.TryGetProperty("text", out var text) ? text.GetString() ?? string.Empty : string.Empty,
+                PlatformCreatedAt = UnixSeconds(entry, "time")
+            }, cancellationToken);
+            post.CommentCount += 1;
+            if (!isNewPost) _unitOfWork.Posts.Update(post);
+        }
+    }
+
+    private async Task ProcessMessagesAsync(
+        SocialProfile profile,
+        JsonElement messaging,
+        CancellationToken cancellationToken)
+    {
+        foreach (var item in messaging.EnumerateArray())
+        {
+            if (!item.TryGetProperty("message", out var message)) continue;
+            var messageId = message.TryGetProperty("mid", out var mid) ? mid.GetString() : null;
+            if (string.IsNullOrWhiteSpace(messageId) ||
+                await _unitOfWork.Messages.GetByExternalMessageIdAsync(messageId, cancellationToken) is not null)
+                continue;
+
+            var senderId = item.TryGetProperty("sender", out var sender) &&
+                           sender.TryGetProperty("id", out var senderValue)
+                ? senderValue.ToString()
+                : string.Empty;
+            var receiverId = item.TryGetProperty("recipient", out var recipient) &&
+                             recipient.TryGetProperty("id", out var recipientValue)
+                ? recipientValue.ToString()
+                : string.Empty;
+            var isEcho = message.TryGetProperty("is_echo", out var echo) && echo.ValueKind == JsonValueKind.True;
+            var pageId = TryReadPageId(profile.MetadataJson);
+            var outbound = isEcho ||
+                           senderId == profile.ExternalProfileId ||
+                           (!string.IsNullOrWhiteSpace(pageId) && senderId == pageId);
+            var customerId = outbound ? receiverId : senderId;
+            if (string.IsNullOrWhiteSpace(customerId)) continue;
+
+            var conversationKey = $"{profile.ExternalProfileId}:{customerId}";
+            var conversation = await _unitOfWork.Conversations.GetByExternalConversationIdAsync(
+                profile.Id, conversationKey, cancellationToken);
+            var isNewConversation = conversation is null;
+            if (conversation is null)
+            {
+                conversation = new Conversation
+                {
+                    SocialProfileId = profile.Id,
+                    ExternalConversationId = conversationKey,
+                    CustomerId = customerId,
+                    CustomerName = customerId,
+                    Status = ConversationStatus.Open
+                };
+                await _unitOfWork.Conversations.AddAsync(conversation, cancellationToken);
+            }
+
+            var receivedAt = UnixMilliseconds(item, "timestamp") ?? DateTime.UtcNow;
+            var body = message.TryGetProperty("text", out var text)
+                ? text.GetString()
+                : message.TryGetProperty("attachments", out _) ? "[Instagram attachment]" : string.Empty;
+
+            await _unitOfWork.Messages.AddAsync(new Message
+            {
+                ConversationId = conversation.Id,
+                ExternalMessageId = messageId,
+                SenderId = senderId,
+                ReceiverId = receiverId,
+                Direction = outbound ? MessageDirection.Outbound : MessageDirection.Inbound,
+                MessageType = MessageContentType.Text,
+                Body = body,
+                Status = outbound ? MessageDeliveryStatus.Sent : MessageDeliveryStatus.Delivered,
+                PlatformCreatedAt = receivedAt
+            }, cancellationToken);
+
+            conversation.LastMessageAt = receivedAt;
+            conversation.UpdatedAt = DateTime.UtcNow;
+            if (!outbound) conversation.UnreadCount += 1;
+            if (!isNewConversation) _unitOfWork.Conversations.Update(conversation);
+        }
+    }
+
+    private static string? TryReadPageId(string? metadataJson)
+    {
+        if (string.IsNullOrWhiteSpace(metadataJson)) return null;
+        try
+        {
+            using var meta = JsonDocument.Parse(metadataJson);
+            return meta.RootElement.TryGetProperty("pageId", out var pageId) ? pageId.GetString() : null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static DateTime? UnixSeconds(JsonElement element, string property)
+        => element.TryGetProperty(property, out var value) && value.TryGetInt64(out var seconds)
+            ? DateTimeOffset.FromUnixTimeSeconds(seconds).UtcDateTime
+            : null;
+
+    private static DateTime? UnixMilliseconds(JsonElement element, string property)
+        => element.TryGetProperty(property, out var value) && value.TryGetInt64(out var milliseconds)
+            ? DateTimeOffset.FromUnixTimeMilliseconds(milliseconds).UtcDateTime
+            : null;
 }

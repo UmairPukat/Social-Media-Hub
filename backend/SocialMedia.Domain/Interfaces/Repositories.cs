@@ -41,21 +41,25 @@ public interface ISocialProfileRepository : IRepository<SocialProfile>
 public interface IPostRepository : IRepository<Post>
 {
     Task<IReadOnlyList<Post>> GetByUserProfilesAsync(Guid userId, Guid? platformId = null, CancellationToken cancellationToken = default);
+    Task<Post?> GetByExternalPostIdAsync(Guid socialProfileId, string externalPostId, CancellationToken cancellationToken = default);
 }
 
 public interface ICommentRepository : IRepository<Comment>
 {
     Task<IReadOnlyList<Comment>> GetByUserAsync(Guid userId, Guid? platformId = null, CancellationToken cancellationToken = default);
+    Task<Comment?> GetByExternalCommentIdAsync(string externalCommentId, CancellationToken cancellationToken = default);
 }
 
 public interface IConversationRepository : IRepository<Conversation>
 {
     Task<IReadOnlyList<Conversation>> GetByUserAsync(Guid userId, Guid? platformId = null, CancellationToken cancellationToken = default);
+    Task<Conversation?> GetByExternalConversationIdAsync(Guid socialProfileId, string externalConversationId, CancellationToken cancellationToken = default);
 }
 
 public interface IMessageRepository : IRepository<Message>
 {
     Task<IReadOnlyList<Message>> GetByUserAsync(Guid userId, Guid? platformId = null, CancellationToken cancellationToken = default);
+    Task<Message?> GetByExternalMessageIdAsync(string externalMessageId, CancellationToken cancellationToken = default);
 }
 
 public interface IWebhookEventRepository : IRepository<WebhookEvent>

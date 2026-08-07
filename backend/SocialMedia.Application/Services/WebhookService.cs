@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using Microsoft.Extensions.Options;
 using SocialMedia.Application.DTOs.Common;
 using SocialMedia.Application.Interfaces;
@@ -48,6 +50,39 @@ public class WebhookService : IWebhookService
             return challenge;
 
         return null;
+    }
+
+    public bool IsSignatureValid(string platformCode, string payloadJson, string? signature)
+    {
+        var appSecret = platformCode.ToLowerInvariant() switch
+        {
+            "facebook" => _meta.Facebook.AppSecret,
+            // Facebook Login for Instagram signs with the Facebook/Meta app secret.
+            "instagram" => !string.IsNullOrWhiteSpace(_meta.Instagram.AppSecret)
+                ? _meta.Instagram.AppSecret
+                : _meta.Facebook.AppSecret,
+            "whatsapp" => _meta.WhatsApp.AppSecret,
+            _ => string.Empty
+        };
+        if (string.IsNullOrWhiteSpace(appSecret) ||
+            string.IsNullOrWhiteSpace(signature) ||
+            !signature.StartsWith("sha256=", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        byte[] supplied;
+        try
+        {
+            supplied = Convert.FromHexString(signature["sha256=".Length..]);
+        }
+        catch (FormatException)
+        {
+            return false;
+        }
+
+        using var hmac = new HMACSHA256(Encoding.UTF8.GetBytes(appSecret));
+        var expected = hmac.ComputeHash(Encoding.UTF8.GetBytes(payloadJson));
+        return supplied.Length == expected.Length &&
+               CryptographicOperations.FixedTimeEquals(supplied, expected);
     }
 
     public async Task<ApiResponse<object>> SubscribeAsync(string platformCode, string? callbackUrl, CancellationToken cancellationToken = default)

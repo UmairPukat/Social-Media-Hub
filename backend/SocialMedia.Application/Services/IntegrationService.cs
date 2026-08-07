@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.Extensions.Options;
 using SocialMedia.Application.Catalog;
 using SocialMedia.Application.DTOs.Common;
@@ -221,12 +222,28 @@ public class IntegrationService : IIntegrationService
             existing.Username = draft.Username;
             existing.ProfileImage = draft.ProfileImage;
             existing.ProfileType = ParseProfileType(draft.ProfileType);
+            if (!string.IsNullOrWhiteSpace(draft.PageId))
+            {
+                existing.MetadataJson = JsonSerializer.Serialize(new { pageId = draft.PageId });
+            }
             existing.UpdatedAt = DateTime.UtcNow;
 
             if (!string.IsNullOrWhiteSpace(draft.PageAccessToken))
             {
                 auth.AccessToken = draft.PageAccessToken;
                 _unitOfWork.SocialAuths.Update(auth);
+
+                if (platformCode == "instagram")
+                {
+                    try
+                    {
+                        await _instagramService.SubscribeWebhooksAsync(draft.PageAccessToken, cancellationToken);
+                    }
+                    catch
+                    {
+                        // Connection still succeeds; webhook fields can be subscribed manually in Meta.
+                    }
+                }
             }
 
             _unitOfWork.SocialProfiles.Update(existing);

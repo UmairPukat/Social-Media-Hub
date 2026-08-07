@@ -14,6 +14,7 @@ export class MetaAuthUrlService {
   buildAuthUrl(platform: MetaPlatform, state: string): string {
     const cfg = environment.meta[platform];
     const version = cfg.graphVersion || 'v21.0';
+    // Instagram uses Facebook Login (same dialog) — not Instagram Business Login.
     return `https://www.facebook.com/${version}/dialog/oauth`
       + `?client_id=${encodeURIComponent(cfg.appId)}`
       + `&redirect_uri=${encodeURIComponent(cfg.redirectUri)}`

@@ -108,7 +108,7 @@ public class PostService : IPostService
         try
         {
             var posts = await _unitOfWork.Posts.GetByUserProfilesAsync(userId, platformId, cancellationToken);
-            return ApiResponse<IReadOnlyList<SocialPostDto>>.Ok(posts.Select(p => Map(p, null)).ToList());
+            return ApiResponse<IReadOnlyList<SocialPostDto>>.Ok(posts.Select(p => Map(p, p.Platform?.Code)).ToList());
         }
         catch (Exception ex)
         {
@@ -145,10 +145,16 @@ public class PostService : IPostService
         SocialProfileId = post.SocialProfileId,
         PlatformId = post.PlatformId,
         PlatformCode = platformCode,
+        ProfileName = post.SocialProfile?.Name,
+        ProfileUsername = post.SocialProfile?.Username,
         ExternalPostId = post.ExternalPostId,
         Text = post.Text,
         Caption = post.Caption,
         Status = post.Status,
+        LikeCount = post.LikeCount,
+        CommentCount = post.CommentCount,
+        ShareCount = post.ShareCount,
+        ViewCount = post.ViewCount,
         PublishedAt = post.PublishedAt,
         ErrorMessage = post.ErrorMessage,
         CreatedAt = post.CreatedAt

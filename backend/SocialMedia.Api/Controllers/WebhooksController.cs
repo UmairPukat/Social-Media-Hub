@@ -46,9 +46,27 @@ public class WebhooksController : ControllerBase
     /// <summary>Receives webhook payloads — always saves WebhookEvent first.</summary>
     [HttpPost]
     public async Task<IActionResult> Received(string platformCode)
+        => await ReceivePlatformAsync(platformCode);
+
+    /// <summary>Single callback URL used in Meta's Instagram webhook configuration.</summary>
+    [HttpGet("~/api/webhooks/instagram")]
+    public IActionResult InstagramVerification(
+        [FromQuery(Name = "hub.mode")] string mode,
+        [FromQuery(Name = "hub.challenge")] string challenge,
+        [FromQuery(Name = "hub.verify_token")] string verifyToken)
+        => Connection("instagram", mode, challenge, verifyToken);
+
+    [HttpPost("~/api/webhooks/instagram")]
+    public Task<IActionResult> InstagramEvents()
+        => ReceivePlatformAsync("instagram");
+
+    private async Task<IActionResult> ReceivePlatformAsync(string platformCode)
     {
         var payload = await new StreamReader(Request.Body).ReadToEndAsync();
         var signature = Request.Headers["X-Hub-Signature-256"].FirstOrDefault();
+        if (!_webhookService.IsSignatureValid(platformCode, payload, signature))
+            return Unauthorized();
+
         var headersJson = System.Text.Json.JsonSerializer.Serialize(
             Request.Headers.ToDictionary(h => h.Key, h => h.Value.ToString()));
 

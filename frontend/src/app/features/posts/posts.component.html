@@ -1,0 +1,266 @@
+<section class="page posts-page">
+  <header class="posts-hero">
+    <div>
+      <p class="eyebrow">Content operations</p>
+      <h1>Posts</h1>
+      <p class="lede">
+        Review, filter, and manage published, scheduled, and draft content across every channel.
+        New platforms appear here automatically as your catalog grows.
+      </p>
+    </div>
+    <div class="hero-actions">
+      <button mat-stroked-button type="button" (click)="reload()" [disabled]="loading()">
+        <mat-icon>refresh</mat-icon>
+        Refresh
+      </button>
+      <a mat-flat-button routerLink="/app/create-post">
+        <mat-icon>add</mat-icon>
+        Create post
+      </a>
+    </div>
+  </header>
+
+  @if (notice()) {
+    <div class="notice">
+      <mat-icon>info</mat-icon>
+      <span>{{ notice() }}</span>
+      <button type="button" (click)="notice.set('')" aria-label="Dismiss"><mat-icon>close</mat-icon></button>
+    </div>
+  }
+
+  <section class="summary-grid" aria-label="Post summary">
+    <article class="summary-card" data-tone="blue">
+      <span class="summary-icon"><mat-icon>library_books</mat-icon></span>
+      <div><span>All content</span><strong>{{ totalCount() | number }}</strong></div>
+      <small>Across every connected profile</small>
+    </article>
+    <article class="summary-card" data-tone="green">
+      <span class="summary-icon"><mat-icon>check_circle</mat-icon></span>
+      <div><span>Published</span><strong>{{ publishedCount() | number }}</strong></div>
+      <small>Successfully delivered posts</small>
+    </article>
+    <article class="summary-card" data-tone="violet">
+      <span class="summary-icon"><mat-icon>schedule</mat-icon></span>
+      <div><span>Scheduled</span><strong>{{ scheduledCount() | number }}</strong></div>
+      <small>Waiting in the publishing queue</small>
+    </article>
+    <article class="summary-card" data-tone="rose">
+      <span class="summary-icon"><mat-icon>error</mat-icon></span>
+      <div><span>Needs attention</span><strong>{{ attentionCount() | number }}</strong></div>
+      <small>Failed posts to review</small>
+    </article>
+  </section>
+
+  <section class="library-panel">
+    <div class="library-head">
+      <div>
+        <p class="section-kicker">Content library</p>
+        <div class="library-title">
+          <h2>Manage every post in one place</h2>
+          @if (demoMode()) {
+            <span class="demo-badge"><mat-icon>science</mat-icon>Preview data</span>
+          }
+        </div>
+      </div>
+      <label class="search-box">
+        <mat-icon>search</mat-icon>
+        <input
+          type="search"
+          placeholder="Search content, profile, or platform"
+          [value]="search()"
+          (input)="setSearch($event)"
+        />
+        @if (search()) {
+          <button type="button" (click)="search.set('')" aria-label="Clear search"><mat-icon>close</mat-icon></button>
+        }
+      </label>
+    </div>
+
+    <div class="filter-group">
+      <div class="filter-label">
+        <span>Platform</span>
+        <small>Current and future publishing channels</small>
+      </div>
+      <div class="platform-filter" role="tablist" aria-label="Filter by platform">
+        <button
+          type="button"
+          class="platform-chip all"
+          [class.active]="selectedPlatform() === 'all'"
+          (click)="setPlatform('all')">
+          <span class="platform-chip-icon"><mat-icon>apps</mat-icon></span>
+          <span>All platforms</span>
+        </button>
+        @for (platform of postPlatforms(); track platform.platformId) {
+          <button
+            type="button"
+            class="platform-chip"
+            [class.active]="selectedPlatform() === platform.platformId"
+            [style.--platform]="platformColor(platform.code)"
+            (click)="setPlatform(platform.platformId)">
+            <span class="platform-chip-icon"><mat-icon>{{ platformIcon(platform.code) }}</mat-icon></span>
+            <span>{{ platform.displayName }}</span>
+            <i [class.ready]="platform.supportsPosts" [attr.title]="platform.supportsPosts ? 'Publishing available' : 'Future channel'"></i>
+          </button>
+        }
+      </div>
+    </div>
+
+    <div class="status-bar">
+      <div class="status-filter" role="tablist" aria-label="Filter by status">
+        @for (filter of statusFilters; track filter.value) {
+          <button
+            type="button"
+            [class.active]="selectedStatus() === filter.value"
+            (click)="setStatus(filter.value)">
+            <mat-icon>{{ filter.icon }}</mat-icon>
+            {{ filter.label }}
+            <span>{{ statusCount(filter.value) }}</span>
+          </button>
+        }
+      </div>
+      <span class="result-count">{{ visiblePosts().length }} result{{ visiblePosts().length === 1 ? '' : 's' }}</span>
+    </div>
+
+    @if (loadError()) {
+      <div class="state state-error">
+        <span><mat-icon>cloud_off</mat-icon></span>
+        <h3>Content library unavailable</h3>
+        <p>{{ loadError() }}</p>
+        <button mat-flat-button type="button" (click)="reload()">Try again</button>
+      </div>
+    } @else if (loading()) {
+      <div class="table-wrap" aria-label="Loading posts">
+        <table class="posts-table loading-table">
+          <thead>
+            <tr>
+              <th>Platform & profile</th>
+              <th>Post content</th>
+              <th>Status</th>
+              <th>Engagement</th>
+              <th>Date</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (item of [1, 2, 3, 4, 5, 6]; track item) {
+              <tr>
+                <td><div class="skeleton-line medium"></div></td>
+                <td><div class="skeleton-line"></div><div class="skeleton-line short"></div></td>
+                <td><div class="skeleton-line medium"></div></td>
+                <td><div class="skeleton-line"></div></td>
+                <td><div class="skeleton-line medium"></div></td>
+                <td><div class="skeleton-line short"></div></td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    } @else if (visiblePosts().length) {
+      <div class="table-wrap">
+        <table class="posts-table">
+          <thead>
+            <tr>
+              <th scope="col">Platform & profile</th>
+              <th scope="col">Post content</th>
+              <th scope="col">Status</th>
+              <th scope="col">Engagement</th>
+              <th scope="col">Date</th>
+              <th scope="col" class="actions-heading">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (post of visiblePosts(); track post.id) {
+              <tr [style.--platform]="platformColor(platformCode(post))">
+                <td>
+                  <div class="platform-cell">
+                    <span class="post-platform-icon">
+                      <mat-icon>{{ platformIcon(platformCode(post)) }}</mat-icon>
+                    </span>
+                    <div class="post-account">
+                      <strong>{{ platformName(post) }}</strong>
+                      <span>{{ post.profileName || 'Connected profile' }}</span>
+                      @if (post.profileUsername) {
+                        <small>{{ '@' }}{{ post.profileUsername }}</small>
+                      }
+                    </div>
+                  </div>
+                </td>
+                <td class="content-column">
+                  <div class="content-cell">
+                    <p [class.placeholder]="!content(post)">
+                      {{ content(post) || 'No text content was stored for this post.' }}
+                    </p>
+                    @if (post.errorMessage) {
+                      <span class="inline-error" [matTooltip]="post.errorMessage">
+                        <mat-icon>warning_amber</mat-icon>
+                        {{ post.errorMessage }}
+                      </span>
+                    }
+                  </div>
+                </td>
+                <td>
+                  <span class="status" [attr.data-status]="statusMeta(post.status).tone">
+                    <mat-icon>{{ statusMeta(post.status).icon }}</mat-icon>
+                    {{ statusMeta(post.status).label }}
+                  </span>
+                </td>
+                <td>
+                  <div class="engagement" aria-label="Post engagement">
+                    <span matTooltip="Views"><mat-icon>visibility</mat-icon>{{ (post.viewCount || 0) | number }}</span>
+                    <span matTooltip="Likes"><mat-icon>favorite_border</mat-icon>{{ (post.likeCount || 0) | number }}</span>
+                    <span matTooltip="Comments"><mat-icon>chat_bubble_outline</mat-icon>{{ (post.commentCount || 0) | number }}</span>
+                    <span matTooltip="Shares"><mat-icon>repeat</mat-icon>{{ (post.shareCount || 0) | number }}</span>
+                  </div>
+                </td>
+                <td>
+                  <div class="post-date">
+                    <mat-icon>{{ post.status === 3 ? 'schedule' : post.publishedAt ? 'send' : 'calendar_today' }}</mat-icon>
+                    <span>
+                      <small>{{ post.status === 3 ? 'Scheduled' : post.publishedAt ? 'Published' : 'Created' }}</small>
+                      {{ (post.publishedAt || post.createdAt) | date: 'MMM d, y' }}
+                      <em>{{ (post.publishedAt || post.createdAt) | date: 'h:mm a' }}</em>
+                    </span>
+                  </div>
+                </td>
+                <td class="actions-cell">
+                  @if (pendingDelete() === post.id) {
+                    <div class="delete-confirm">
+                      <button type="button" (click)="cancelDelete()">Cancel</button>
+                      <button type="button" class="danger" (click)="remove(post.id)" [disabled]="deleting() === post.id">
+                        {{ deleting() === post.id ? 'Deleting…' : 'Delete' }}
+                      </button>
+                    </div>
+                  } @else {
+                    <div class="post-actions">
+                      @if (isDemo(post)) {
+                        <span class="preview-label">Preview</span>
+                      }
+                      <button type="button" class="more-action" (click)="requestDelete(post.id)" aria-label="Delete post" matTooltip="Delete">
+                        <mat-icon>delete_outline</mat-icon>
+                      </button>
+                    </div>
+                  }
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    } @else {
+      <div class="state">
+        <span><mat-icon>{{ totalCount() ? 'filter_alt_off' : 'auto_awesome' }}</mat-icon></span>
+        <h3>{{ totalCount() ? 'No posts match these filters' : 'Your content library is ready' }}</h3>
+        <p>
+          {{ totalCount()
+            ? 'Try another platform, status, or search phrase.'
+            : 'Create your first post and manage its publishing lifecycle here.' }}
+        </p>
+        @if (totalCount()) {
+          <button mat-stroked-button type="button" (click)="clearFilters()">Clear filters</button>
+        } @else {
+          <a mat-flat-button routerLink="/app/create-post"><mat-icon>add</mat-icon>Create first post</a>
+        }
+      </div>
+    }
+  </section>
+</section>
