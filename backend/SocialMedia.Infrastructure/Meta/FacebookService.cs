@@ -109,6 +109,9 @@ public class FacebookService : IFacebookService
         return list;
     }
 
+    public Task<IReadOnlyList<MetaPageInfo>> ListPagesAsync(string userAccessToken, CancellationToken cancellationToken = default)
+        => _graph.ListPagesAsync(_settings.GraphApiVersion, userAccessToken, cancellationToken);
+
     public async Task<PostDto> CreatePostAsync(MetaCallContext context, string content, string? mediaUrl, CancellationToken cancellationToken = default)
     {
         var fields = new Dictionary<string, string> { ["message"] = content };

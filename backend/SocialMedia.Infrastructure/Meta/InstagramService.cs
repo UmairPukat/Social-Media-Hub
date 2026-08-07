@@ -144,6 +144,9 @@ public class InstagramService : IInstagramService
         return list;
     }
 
+    public Task<IReadOnlyList<MetaPageInfo>> ListPagesAsync(string userAccessToken, CancellationToken cancellationToken = default)
+        => _graph.ListPagesAsync(GraphVersion, userAccessToken, cancellationToken);
+
     public async Task<PostDto> CreatePostAsync(MetaCallContext context, string content, string? mediaUrl, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(mediaUrl))

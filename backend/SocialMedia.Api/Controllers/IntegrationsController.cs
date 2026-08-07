@@ -42,4 +42,20 @@ public class IntegrationsController : ControllerBase
         var response = await _integrationService.WhatsAppCallbackAsync(User.GetUserId(), model);
         return Ok(response);
     }
+
+    /// <summary>Facebook Pages granted by the stored Meta login, shown in the page picker.</summary>
+    [HttpGet]
+    public async Task<IActionResult> GetPages([FromQuery] string platformCode)
+    {
+        var response = await _integrationService.GetPagesAsync(User.GetUserId(), platformCode);
+        return Ok(response);
+    }
+
+    /// <summary>Connects the single page the user ticked in the picker.</summary>
+    [HttpPost]
+    public async Task<IActionResult> SelectPage([FromBody] SelectPageRequest model)
+    {
+        var response = await _integrationService.SelectPageAsync(User.GetUserId(), model);
+        return Ok(response);
+    }
 }

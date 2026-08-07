@@ -61,6 +61,20 @@ export interface SocialAccount {
   connectedAt?: string;
   lastSyncAt?: string;
   profiles: SocialProfile[];
+  /** True right after Meta login, while no page has been picked yet. */
+  requiresPageSelection?: boolean;
+}
+
+/** A Facebook Page offered in the page picker after Meta login. */
+export interface MetaPage {
+  pageId: string;
+  pageName: string;
+  pageImage?: string;
+  instagramId?: string;
+  instagramUsername?: string;
+  isEligible: boolean;
+  ineligibleReason?: string;
+  isSelected: boolean;
 }
 
 /** Sent to Integrations/*Callback after Meta popup returns `code`. */

@@ -23,4 +23,10 @@ public interface IIntegrationService
 
     /// <summary>WhatsApp Facebook Login popup callback.</summary>
     Task<ApiResponse<SocialAccountDto>> WhatsAppCallbackAsync(Guid userId, OAuthCallbackRequest request, CancellationToken cancellationToken = default);
+
+    /// <summary>Facebook Pages granted by the stored user token, for the page picker.</summary>
+    Task<ApiResponse<IReadOnlyList<MetaPageDto>>> GetPagesAsync(Guid userId, string platformCode, CancellationToken cancellationToken = default);
+
+    /// <summary>Attaches the single page the user picked and subscribes its webhooks.</summary>
+    Task<ApiResponse<SocialAccountDto>> SelectPageAsync(Guid userId, SelectPageRequest request, CancellationToken cancellationToken = default);
 }

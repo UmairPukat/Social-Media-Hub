@@ -83,6 +83,11 @@
 
               <div class="stat-action">
                 @if (card.isConnected) {
+                  @if (supportsPageSelection(card.code)) {
+                    <button mat-stroked-button type="button" (click)="openPagePicker(card)">
+                      Change page
+                    </button>
+                  }
                   <button mat-stroked-button type="button" class="danger" (click)="disconnect(card)">
                     Disconnect
                   </button>
@@ -105,4 +110,113 @@
       </section>
     }
   </div>
+
+  @if (pickerPlatform()) {
+    <div class="picker-backdrop" (click)="closePagePicker()"></div>
+
+    <div class="picker" role="dialog" aria-modal="true" aria-labelledby="page-picker-title">
+      <header class="picker-head">
+        <div>
+          <p class="eyebrow">{{ pickerTitle() }}</p>
+          <h2 id="page-picker-title">Select a page</h2>
+          <p class="picker-lede">
+            @if (pickerPlatform() === 'instagram') {
+              Pick the Facebook Page whose Instagram Business account you want to manage.
+              Comments and messages sync for the page you choose.
+            } @else {
+              Pick the Facebook Page you want to manage. Posts, comments, and messages sync for this page.
+            }
+          </p>
+        </div>
+        <button type="button" class="picker-close" aria-label="Close" (click)="closePagePicker()">
+          <mat-icon>close</mat-icon>
+        </button>
+      </header>
+
+      @if (pagesError()) {
+        <p class="picker-error">{{ pagesError() }}</p>
+      }
+
+      @if (pagesLoading()) {
+        <p class="picker-empty">Loading your pages…</p>
+      } @else if (!pages().length) {
+        <p class="picker-empty">
+          No Facebook Pages came back for this login. Make sure you granted page access in the Meta dialog, then reconnect.
+        </p>
+      } @else {
+        <div class="picker-table-wrap">
+          <table class="picker-table">
+            <thead>
+              <tr>
+                <th scope="col" class="pick-col">Select</th>
+                <th scope="col">Facebook page</th>
+                <th scope="col">Page ID</th>
+                @if (pickerPlatform() === 'instagram') {
+                  <th scope="col">Instagram account</th>
+                }
+              </tr>
+            </thead>
+            <tbody>
+              @for (page of pages(); track page.pageId) {
+                <tr
+                  [class.picked]="isPageChecked(page)"
+                  [class.blocked]="!page.isEligible"
+                  (click)="togglePage(page)">
+                  <td class="pick-col">
+                    <input
+                      type="checkbox"
+                      [checked]="isPageChecked(page)"
+                      [disabled]="!page.isEligible"
+                      [attr.aria-label]="'Select ' + page.pageName"
+                      (click)="$event.stopPropagation()"
+                      (change)="togglePage(page)" />
+                  </td>
+                  <td>
+                    <div class="page-cell">
+                      <strong>{{ page.pageName }}</strong>
+                      @if (page.isSelected) {
+                        <span class="tag">Currently connected</span>
+                      }
+                      @if (!page.isEligible) {
+                        <small>{{ page.ineligibleReason }}</small>
+                      }
+                    </div>
+                  </td>
+                  <td><code>{{ page.pageId }}</code></td>
+                  @if (pickerPlatform() === 'instagram') {
+                    <td>
+                      @if (page.instagramUsername) {
+                        <span class="ig-handle">&#64;{{ page.instagramUsername }}</span>
+                      } @else if (page.instagramId) {
+                        <code>{{ page.instagramId }}</code>
+                      } @else {
+                        <span class="muted">Not linked</span>
+                      }
+                    </td>
+                  }
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      }
+
+      <footer class="picker-foot">
+        <span class="picker-count">
+          {{ eligiblePages().length }} of {{ pages().length }} pages available
+        </span>
+        <div class="picker-actions">
+          <button mat-stroked-button type="button" (click)="closePagePicker()">Cancel</button>
+          <button
+            mat-flat-button
+            color="primary"
+            type="button"
+            [disabled]="!selectedPageId() || savingPage()"
+            (click)="confirmPage()">
+            {{ savingPage() ? 'Connecting…' : 'Continue' }}
+          </button>
+        </div>
+      </footer>
+    </div>
+  }
 </section>

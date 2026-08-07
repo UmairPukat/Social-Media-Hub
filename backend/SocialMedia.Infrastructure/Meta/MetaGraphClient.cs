@@ -1,6 +1,7 @@
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
+using SocialMedia.Application.Interfaces;
 
 namespace SocialMedia.Infrastructure.Meta;
 
@@ -42,6 +43,59 @@ public class MetaGraphClient
 
         return JsonDocument.Parse(body);
     }
+
+    /// <summary>
+    /// GET me/accounts — the Facebook Pages granted by the user, with any linked Instagram
+    /// Business account. Shared by Facebook and Instagram page selection.
+    /// </summary>
+    public async Task<IReadOnlyList<MetaPageInfo>> ListPagesAsync(
+        string version,
+        string userAccessToken,
+        CancellationToken cancellationToken)
+    {
+        using var doc = await GetAsync(
+            version,
+            "me/accounts",
+            userAccessToken,
+            cancellationToken,
+            ("fields", "id,name,access_token,picture{url},instagram_business_account{id,username,name,profile_picture_url}"),
+            ("limit", "100"));
+
+        var pages = new List<MetaPageInfo>();
+        if (!doc.RootElement.TryGetProperty("data", out var data))
+            return pages;
+
+        foreach (var page in data.EnumerateArray())
+        {
+            var info = new MetaPageInfo
+            {
+                PageId = page.TryGetProperty("id", out var id) ? id.GetString() ?? string.Empty : string.Empty,
+                PageName = page.TryGetProperty("name", out var name) ? name.GetString() ?? "Facebook Page" : "Facebook Page",
+                PageAccessToken = page.TryGetProperty("access_token", out var token) ? token.GetString() : null,
+                PageImage = ReadPictureUrl(page)
+            };
+
+            if (page.TryGetProperty("instagram_business_account", out var ig))
+            {
+                info.InstagramId = ig.TryGetProperty("id", out var igId) ? igId.GetString() : null;
+                info.InstagramUsername = ig.TryGetProperty("username", out var igUser) ? igUser.GetString() : null;
+                info.InstagramName = ig.TryGetProperty("name", out var igName) ? igName.GetString() : null;
+                info.InstagramImage = ig.TryGetProperty("profile_picture_url", out var igPic) ? igPic.GetString() : null;
+            }
+
+            if (!string.IsNullOrWhiteSpace(info.PageId))
+                pages.Add(info);
+        }
+
+        return pages;
+    }
+
+    private static string? ReadPictureUrl(JsonElement page) =>
+        page.TryGetProperty("picture", out var picture) &&
+        picture.TryGetProperty("data", out var pictureData) &&
+        pictureData.TryGetProperty("url", out var url)
+            ? url.GetString()
+            : null;
 
     public async Task<JsonDocument> GetInstagramAsync(
         string version,

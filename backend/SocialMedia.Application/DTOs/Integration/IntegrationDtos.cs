@@ -49,6 +49,40 @@ public class SocialAccountDto
     public DateTime? ConnectedAt { get; set; }
     public DateTime? LastSyncAt { get; set; }
     public IReadOnlyList<SocialProfileDto> Profiles { get; set; } = Array.Empty<SocialProfileDto>();
+
+    /// <summary>
+    /// True when the token is stored but no page has been chosen yet — the frontend
+    /// then shows the page picker before any syncing happens.
+    /// </summary>
+    public bool RequiresPageSelection { get; set; }
+}
+
+/// <summary>
+/// One selectable Facebook Page. Access tokens are never included.
+/// </summary>
+public class MetaPageDto
+{
+    public string PageId { get; set; } = string.Empty;
+    public string PageName { get; set; } = string.Empty;
+    public string? PageImage { get; set; }
+    public string? InstagramId { get; set; }
+    public string? InstagramUsername { get; set; }
+
+    /// <summary>False when the page cannot be used for this platform (e.g. no linked Instagram account).</summary>
+    public bool IsEligible { get; set; }
+
+    /// <summary>Reason shown in the picker when <see cref="IsEligible"/> is false.</summary>
+    public string? IneligibleReason { get; set; }
+
+    /// <summary>True when this page is the one already connected for the platform.</summary>
+    public bool IsSelected { get; set; }
+}
+
+/// <summary>Frontend sends the single page the user ticked in the picker.</summary>
+public class SelectPageRequest
+{
+    public string PlatformCode { get; set; } = string.Empty;
+    public string PageId { get; set; } = string.Empty;
 }
 
 public class SocialProfileDto

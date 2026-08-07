@@ -6,6 +6,7 @@ import {
   ApiResponse,
   DashboardSummary,
   InboxItem,
+  MetaPage,
   OAuthCallbackRequest,
   PlatformCard,
   PublishPostResponse,
@@ -38,6 +39,19 @@ export class ApiService {
       : platform === 'instagram' ? 'InstagramCallback'
       : 'WhatsAppCallback';
     return this.http.post<ApiResponse<SocialAccount>>(`${this.base}/Integrations/${action}`, body);
+  }
+
+  getMetaPages(platformCode: string): Observable<ApiResponse<MetaPage[]>> {
+    return this.http.get<ApiResponse<MetaPage[]>>(
+      `${this.base}/Integrations/GetPages?platformCode=${encodeURIComponent(platformCode)}`
+    );
+  }
+
+  selectMetaPage(platformCode: string, pageId: string): Observable<ApiResponse<SocialAccount>> {
+    return this.http.post<ApiResponse<SocialAccount>>(`${this.base}/Integrations/SelectPage`, {
+      platformCode,
+      pageId
+    });
   }
 
   disconnect(platformCode: string): Observable<ApiResponse<object>> {

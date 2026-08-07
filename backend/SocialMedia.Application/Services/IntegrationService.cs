@@ -168,6 +168,7 @@ public class IntegrationService : IIntegrationService
             return ApiResponse<SocialAccountDto>.Fail($"Unknown platform '{platformCode}'.");
 
         var account = await _unitOfWork.SocialAccounts.GetByUserAndPlatformAsync(userId, platform.Id, cancellationToken);
+        var isNewAccount = account is null;
         if (account is null)
         {
             account = new SocialAccount
@@ -183,9 +184,13 @@ public class IntegrationService : IIntegrationService
         account.Status = SocialAccountStatus.Connected;
         account.ConnectedAt = DateTime.UtcNow;
         account.UpdatedAt = DateTime.UtcNow;
-        _unitOfWork.SocialAccounts.Update(account);
+        MarkUpdated(_unitOfWork.SocialAccounts, account, isNewAccount);
+
+        // Insert the account before its auth row so the foreign key is already valid.
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
 
         var auth = await _unitOfWork.SocialAuths.GetBySocialAccountIdAsync(account.Id, cancellationToken);
+        var isNewAuth = auth is null;
         if (auth is null)
         {
             auth = new SocialAuth { SocialAccountId = account.Id };
@@ -193,62 +198,238 @@ public class IntegrationService : IIntegrationService
         }
 
         auth.AccessToken = accessToken;
+        // Keep the long-lived user token: AccessToken is later swapped for the selected
+        // page token, but listing pages always needs the user token.
+        auth.RefreshToken = accessToken;
         auth.ExpiresAt = expiresAt;
         auth.UpdatedAt = DateTime.UtcNow;
-        _unitOfWork.SocialAuths.Update(auth);
+        MarkUpdated(_unitOfWork.SocialAuths, auth, isNewAuth);
 
         await _unitOfWork.SaveChangesAsync(cancellationToken);
 
-        var drafts = platformCode.ToLowerInvariant() switch
+        var requiresPageSelection = SupportsPageSelection(platformCode);
+        if (!requiresPageSelection)
         {
-            "facebook" => await _facebookService.DiscoverProfilesAsync(accessToken, cancellationToken),
-            "instagram" => await _instagramService.DiscoverProfilesAsync(accessToken, cancellationToken),
-            "whatsapp" => await _whatsAppService.DiscoverProfilesAsync(
-                accessToken, _meta.WhatsApp.PhoneNumberId, _meta.WhatsApp.WabaId, cancellationToken),
-            _ => Array.Empty<SocialProfileDraft>()
-        };
+            // WhatsApp resolves to a single phone number, so there is nothing to pick.
+            var drafts = await _whatsAppService.DiscoverProfilesAsync(
+                accessToken, _meta.WhatsApp.PhoneNumberId, _meta.WhatsApp.WabaId, cancellationToken);
 
-        foreach (var draft in drafts)
+            foreach (var draft in drafts)
+                await UpsertProfileAsync(account, draft, cancellationToken);
+
+            await QueueInitialSyncAsync(account, cancellationToken);
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+        }
+
+        var reloaded = await _unitOfWork.SocialAccounts.GetWithAuthAndProfilesAsync(account.Id, cancellationToken);
+        var dto = MapAccount(reloaded ?? account, platform);
+        dto.RequiresPageSelection = requiresPageSelection;
+
+        return ApiResponse<SocialAccountDto>.Ok(dto, requiresPageSelection
+            ? "Signed in with Meta. Choose the page you want to manage."
+            : "Account connected.");
+    }
+
+    public async Task<ApiResponse<IReadOnlyList<MetaPageDto>>> GetPagesAsync(
+        Guid userId,
+        string platformCode,
+        CancellationToken cancellationToken = default)
+    {
+        try
         {
-            var existing = await _unitOfWork.SocialProfiles.GetByExternalProfileIdAsync(draft.ExternalProfileId, cancellationToken);
-            if (existing is null)
-            {
-                existing = new SocialProfile { SocialAccountId = account.Id };
-                await _unitOfWork.SocialProfiles.AddAsync(existing, cancellationToken);
-            }
+            var code = (platformCode ?? string.Empty).Trim().ToLowerInvariant();
+            if (!SupportsPageSelection(code))
+                return ApiResponse<IReadOnlyList<MetaPageDto>>.Fail($"Page selection is not available for '{platformCode}'.");
 
-            existing.ExternalProfileId = draft.ExternalProfileId;
-            existing.Name = draft.Name;
-            existing.Username = draft.Username;
-            existing.ProfileImage = draft.ProfileImage;
-            existing.ProfileType = ParseProfileType(draft.ProfileType);
-            if (!string.IsNullOrWhiteSpace(draft.PageId))
-            {
-                existing.MetadataJson = JsonSerializer.Serialize(new { pageId = draft.PageId });
-            }
-            existing.UpdatedAt = DateTime.UtcNow;
+            var platform = await _unitOfWork.Platforms.GetByCodeAsync(code, cancellationToken);
+            if (platform is null)
+                return ApiResponse<IReadOnlyList<MetaPageDto>>.Fail("Unknown platform.");
 
-            if (!string.IsNullOrWhiteSpace(draft.PageAccessToken))
-            {
-                auth.AccessToken = draft.PageAccessToken;
-                _unitOfWork.SocialAuths.Update(auth);
+            var account = await _unitOfWork.SocialAccounts.GetByUserAndPlatformAsync(userId, platform.Id, cancellationToken);
+            var userToken = ResolveUserAccessToken(account);
+            if (string.IsNullOrWhiteSpace(userToken))
+                return ApiResponse<IReadOnlyList<MetaPageDto>>.Fail("Sign in with Meta again — no stored login token was found.");
 
-                if (platformCode == "instagram")
+            var pages = await ListPagesAsync(code, userToken!, cancellationToken);
+            var connectedPageIds = ResolveConnectedPageIds(account, code);
+            var data = pages
+                .Select(p => MapPage(p, code, connectedPageIds))
+                .OrderByDescending(p => p.IsSelected)
+                .ThenByDescending(p => p.IsEligible)
+                .ThenBy(p => p.PageName, StringComparer.CurrentCultureIgnoreCase)
+                .ToList();
+
+            return ApiResponse<IReadOnlyList<MetaPageDto>>.Ok(data);
+        }
+        catch (Exception ex)
+        {
+            return ApiResponse<IReadOnlyList<MetaPageDto>>.Fail(ex.Message);
+        }
+    }
+
+    public async Task<ApiResponse<SocialAccountDto>> SelectPageAsync(
+        Guid userId,
+        SelectPageRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var code = (request.PlatformCode ?? string.Empty).Trim().ToLowerInvariant();
+            if (!SupportsPageSelection(code))
+                return ApiResponse<SocialAccountDto>.Fail($"Page selection is not available for '{request.PlatformCode}'.");
+            if (string.IsNullOrWhiteSpace(request.PageId))
+                return ApiResponse<SocialAccountDto>.Fail("Select a page first.");
+
+            var platform = await _unitOfWork.Platforms.GetByCodeAsync(code, cancellationToken);
+            if (platform is null)
+                return ApiResponse<SocialAccountDto>.Fail("Unknown platform.");
+
+            var account = await _unitOfWork.SocialAccounts.GetByUserAndPlatformAsync(userId, platform.Id, cancellationToken);
+            var auth = account?.Auth;
+            var userToken = ResolveUserAccessToken(account);
+            if (account is null || auth is null || string.IsNullOrWhiteSpace(userToken))
+                return ApiResponse<SocialAccountDto>.Fail("Sign in with Meta before selecting a page.");
+
+            var pages = await ListPagesAsync(code, userToken!, cancellationToken);
+            var page = pages.FirstOrDefault(p => p.PageId == request.PageId);
+            if (page is null)
+                return ApiResponse<SocialAccountDto>.Fail("That page is no longer granted to this Meta login. Reconnect and try again.");
+
+            if (code == "instagram" && string.IsNullOrWhiteSpace(page.InstagramId))
+                return ApiResponse<SocialAccountDto>.Fail($"'{page.PageName}' has no Instagram Business account linked to it.");
+
+            var draft = code == "instagram"
+                ? new SocialProfileDraft
                 {
-                    try
-                    {
-                        await _instagramService.SubscribeWebhooksAsync(draft.PageAccessToken, cancellationToken);
-                    }
-                    catch
-                    {
-                        // Connection still succeeds; webhook fields can be subscribed manually in Meta.
-                    }
+                    ExternalProfileId = page.InstagramId!,
+                    Name = page.InstagramName ?? page.InstagramUsername ?? page.PageName,
+                    Username = page.InstagramUsername,
+                    ProfileImage = page.InstagramImage,
+                    ProfileType = "InstagramBusiness",
+                    PageId = page.PageId,
+                    PageAccessToken = page.PageAccessToken
+                }
+                : new SocialProfileDraft
+                {
+                    ExternalProfileId = page.PageId,
+                    Name = page.PageName,
+                    ProfileImage = page.PageImage,
+                    ProfileType = "FacebookPage",
+                    PageId = page.PageId,
+                    PageAccessToken = page.PageAccessToken
+                };
+
+            await UpsertProfileAsync(account, draft, cancellationToken);
+
+            if (!string.IsNullOrWhiteSpace(page.PageAccessToken))
+            {
+                // Page token drives post / comment / message calls; the user token stays in RefreshToken.
+                auth.AccessToken = page.PageAccessToken!;
+                auth.UpdatedAt = DateTime.UtcNow;
+                MarkUpdated(_unitOfWork.SocialAuths, auth, isNew: false);
+            }
+
+            account.Status = SocialAccountStatus.Connected;
+            account.ConnectedAt ??= DateTime.UtcNow;
+            account.MetadataJson = JsonSerializer.Serialize(new
+            {
+                selectedPageId = page.PageId,
+                selectedPageName = page.PageName
+            });
+            await QueueInitialSyncAsync(account, cancellationToken);
+
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+            if (code == "instagram" && !string.IsNullOrWhiteSpace(page.PageAccessToken))
+            {
+                try
+                {
+                    await _instagramService.SubscribeWebhooksAsync(page.PageAccessToken!, cancellationToken);
+                }
+                catch
+                {
+                    // Page is connected either way; webhook fields can be subscribed manually in Meta.
                 }
             }
 
-            _unitOfWork.SocialProfiles.Update(existing);
+            var reloaded = await _unitOfWork.SocialAccounts.GetWithAuthAndProfilesAsync(account.Id, cancellationToken);
+            return ApiResponse<SocialAccountDto>.Ok(MapAccount(reloaded ?? account, platform), $"{page.PageName} connected.");
+        }
+        catch (Exception ex)
+        {
+            return ApiResponse<SocialAccountDto>.Fail(ex.Message);
+        }
+    }
+
+    private async Task<IReadOnlyList<MetaPageInfo>> ListPagesAsync(
+        string platformCode,
+        string userAccessToken,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return platformCode == "instagram"
+                ? await _instagramService.ListPagesAsync(userAccessToken, cancellationToken)
+                : await _facebookService.ListPagesAsync(userAccessToken, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            // A stale token, or one stored before page selection existed, cannot list pages.
+            throw new InvalidOperationException(
+                "Could not read your Facebook Pages with the stored Meta login. Reconnect with Meta and try again.", ex);
+        }
+    }
+
+    private static bool SupportsPageSelection(string platformCode) =>
+        platformCode.Equals("facebook", StringComparison.OrdinalIgnoreCase) ||
+        platformCode.Equals("instagram", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// EF already tracks a freshly added entity as Added; calling Update() on it flips the state
+    /// to Modified and issues an UPDATE for a row that does not exist, which fails with
+    /// "expected to affect 1 row(s), but actually affected 0 row(s)".
+    /// </summary>
+    private static void MarkUpdated<T>(IRepository<T> repository, T entity, bool isNew) where T : class
+    {
+        if (!isNew)
+            repository.Update(entity);
+    }
+
+    private async Task<SocialProfile> UpsertProfileAsync(
+        SocialAccount account,
+        SocialProfileDraft draft,
+        CancellationToken cancellationToken)
+    {
+        var profiles = await _unitOfWork.SocialProfiles.GetBySocialAccountAsync(account.Id, cancellationToken);
+        var existingId = profiles.FirstOrDefault(p => p.ExternalProfileId == draft.ExternalProfileId)?.Id;
+
+        var profile = existingId.HasValue
+            ? await _unitOfWork.SocialProfiles.GetByIdAsync(existingId.Value, cancellationToken)
+            : null;
+
+        var isNew = profile is null;
+        if (profile is null)
+        {
+            profile = new SocialProfile { SocialAccountId = account.Id };
+            await _unitOfWork.SocialProfiles.AddAsync(profile, cancellationToken);
         }
 
+        profile.SocialAccountId = account.Id;
+        profile.ExternalProfileId = draft.ExternalProfileId;
+        profile.Name = draft.Name;
+        profile.Username = draft.Username;
+        profile.ProfileImage = draft.ProfileImage;
+        profile.ProfileType = ParseProfileType(draft.ProfileType);
+        if (!string.IsNullOrWhiteSpace(draft.PageId))
+            profile.MetadataJson = JsonSerializer.Serialize(new { pageId = draft.PageId });
+        profile.UpdatedAt = DateTime.UtcNow;
+        MarkUpdated(_unitOfWork.SocialProfiles, profile, isNew);
+
+        return profile;
+    }
+
+    private async Task QueueInitialSyncAsync(SocialAccount account, CancellationToken cancellationToken)
+    {
         await _unitOfWork.SyncJobs.AddAsync(new SyncJob
         {
             SocialAccountId = account.Id,
@@ -258,11 +439,70 @@ public class IntegrationService : IIntegrationService
         }, cancellationToken);
 
         account.LastSyncAt = DateTime.UtcNow;
-        _unitOfWork.SocialAccounts.Update(account);
-        await _unitOfWork.SaveChangesAsync(cancellationToken);
+        account.UpdatedAt = DateTime.UtcNow;
+    }
 
-        var reloaded = await _unitOfWork.SocialAccounts.GetWithAuthAndProfilesAsync(account.Id, cancellationToken);
-        return ApiResponse<SocialAccountDto>.Ok(MapAccount(reloaded!, platform), "Account connected.");
+    private static string? ResolveUserAccessToken(SocialAccount? account)
+    {
+        var auth = account?.Auth;
+        if (auth is null)
+            return null;
+
+        return !string.IsNullOrWhiteSpace(auth.RefreshToken) ? auth.RefreshToken : auth.AccessToken;
+    }
+
+    private static HashSet<string> ResolveConnectedPageIds(SocialAccount? account, string platformCode)
+    {
+        var ids = new HashSet<string>(StringComparer.Ordinal);
+        if (account is null)
+            return ids;
+
+        foreach (var profile in account.Profiles)
+        {
+            // Facebook profiles are the page itself; Instagram profiles keep the page id in metadata.
+            if (platformCode == "facebook" && !string.IsNullOrWhiteSpace(profile.ExternalProfileId))
+                ids.Add(profile.ExternalProfileId);
+
+            var pageId = ReadPageId(profile.MetadataJson);
+            if (!string.IsNullOrWhiteSpace(pageId))
+                ids.Add(pageId!);
+        }
+
+        return ids;
+    }
+
+    private static string? ReadPageId(string? metadataJson)
+    {
+        if (string.IsNullOrWhiteSpace(metadataJson))
+            return null;
+
+        try
+        {
+            using var doc = JsonDocument.Parse(metadataJson);
+            return doc.RootElement.TryGetProperty("pageId", out var pageId) ? pageId.GetString() : null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static MetaPageDto MapPage(MetaPageInfo page, string platformCode, ISet<string> connectedPageIds)
+    {
+        var needsInstagram = platformCode == "instagram";
+        var isEligible = !needsInstagram || !string.IsNullOrWhiteSpace(page.InstagramId);
+
+        return new MetaPageDto
+        {
+            PageId = page.PageId,
+            PageName = page.PageName,
+            PageImage = needsInstagram ? page.InstagramImage ?? page.PageImage : page.PageImage,
+            InstagramId = page.InstagramId,
+            InstagramUsername = page.InstagramUsername,
+            IsEligible = isEligible,
+            IneligibleReason = isEligible ? null : "No Instagram Business account is linked to this page.",
+            IsSelected = connectedPageIds.Contains(page.PageId)
+        };
     }
 
     public async Task<ApiResponse<object>> DisconnectAsync(Guid userId, string platformCode, CancellationToken cancellationToken = default)

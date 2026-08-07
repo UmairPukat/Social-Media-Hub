@@ -3,7 +3,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { ApiService } from '../../core/services/api.service';
 import { MetaAuthUrlService, MetaPlatform } from '../../core/services/meta-auth-url.service';
-import { ApiResponse, PlatformCard } from '../../core/models/api.models';
+import { ApiResponse, MetaPage, PlatformCard } from '../../core/models/api.models';
 
 export interface IntegrationCategoryGroup {
   id: string;
@@ -51,7 +51,18 @@ export class IntegrationsComponent implements OnInit {
   readonly connecting = signal<string | null>(null);
   readonly activeCategory = signal<string>('all');
 
+  /** Page picker state — shown after Meta login so one page is connected at a time. */
+  readonly pickerPlatform = signal<MetaPlatform | null>(null);
+  readonly pickerTitle = signal('');
+  readonly pages = signal<MetaPage[]>([]);
+  readonly pagesLoading = signal(false);
+  readonly pagesError = signal('');
+  readonly selectedPageId = signal<string | null>(null);
+  readonly savingPage = signal(false);
+
   readonly connectedCount = computed(() => this.cards().filter((c) => c.isConnected).length);
+
+  readonly eligiblePages = computed(() => this.pages().filter((p) => p.isEligible));
 
   readonly categories = computed<IntegrationCategoryGroup[]>(() => {
     const map = new Map<string, IntegrationCategoryGroup>();
@@ -114,17 +125,100 @@ export class IntegrationsComponent implements OnInit {
 
     try {
       const result = await this.metaAuth.openPopup(code);
-      if (result.ok) {
-        this.message.set(`${card.displayName} connected.`);
-        this.reload();
-      } else {
+      if (!result.ok) {
         this.message.set(result.message || 'Connection failed');
+        return;
+      }
+
+      this.reload();
+
+      if (this.supportsPageSelection(code)) {
+        this.message.set(`Signed in with Meta. Choose the ${card.displayName} page you want to manage.`);
+        this.openPagePicker(card);
+      } else {
+        this.message.set(`${card.displayName} connected.`);
       }
     } catch (err) {
       this.message.set(err instanceof Error ? err.message : 'Connection failed');
     } finally {
       this.connecting.set(null);
     }
+  }
+
+  supportsPageSelection(code: string): boolean {
+    return ['facebook', 'instagram'].includes(code.toLowerCase());
+  }
+
+  openPagePicker(card: PlatformCard): void {
+    const code = card.code.toLowerCase() as MetaPlatform;
+    this.pickerPlatform.set(code);
+    this.pickerTitle.set(card.displayName);
+    this.loadPages();
+  }
+
+  closePagePicker(): void {
+    this.pickerPlatform.set(null);
+    this.pages.set([]);
+    this.pagesError.set('');
+    this.selectedPageId.set(null);
+  }
+
+  loadPages(): void {
+    const code = this.pickerPlatform();
+    if (!code) return;
+
+    this.pagesLoading.set(true);
+    this.pagesError.set('');
+    this.api.getMetaPages(code).subscribe({
+      next: (res: ApiResponse<MetaPage[]>) => {
+        this.pagesLoading.set(false);
+        if (!res.success) {
+          this.pagesError.set(res.message || 'Could not load your pages.');
+          return;
+        }
+        const list = res.data || [];
+        this.pages.set(list);
+        this.selectedPageId.set(list.find((p) => p.isSelected && p.isEligible)?.pageId || null);
+      },
+      error: (err: { error?: { message?: string } }) => {
+        this.pagesLoading.set(false);
+        this.pagesError.set(err?.error?.message || 'Could not load your pages.');
+      }
+    });
+  }
+
+  /** Checkboxes behave as a single-choice list: ticking one clears the rest. */
+  togglePage(page: MetaPage): void {
+    if (!page.isEligible) return;
+    this.selectedPageId.update((current) => (current === page.pageId ? null : page.pageId));
+  }
+
+  isPageChecked(page: MetaPage): boolean {
+    return this.selectedPageId() === page.pageId;
+  }
+
+  confirmPage(): void {
+    const code = this.pickerPlatform();
+    const pageId = this.selectedPageId();
+    if (!code || !pageId) return;
+
+    this.savingPage.set(true);
+    this.api.selectMetaPage(code, pageId).subscribe({
+      next: (res) => {
+        this.savingPage.set(false);
+        if (!res.success) {
+          this.pagesError.set(res.message || 'Could not connect that page.');
+          return;
+        }
+        this.message.set(res.message || 'Page connected.');
+        this.closePagePicker();
+        this.reload();
+      },
+      error: (err: { error?: { message?: string } }) => {
+        this.savingPage.set(false);
+        this.pagesError.set(err?.error?.message || 'Could not connect that page.');
+      }
+    });
   }
 
   disconnect(card: PlatformCard): void {

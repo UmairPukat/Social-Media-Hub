@@ -32,6 +32,9 @@ public interface IFacebookService
     Task DeleteMessageAsync(MetaCallContext context, string messageId, CancellationToken cancellationToken = default);
     Task ProcessWebhookPayloadAsync(WebhookEvent webhookEvent, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<SocialProfileDraft>> DiscoverProfilesAsync(string userAccessToken, CancellationToken cancellationToken = default);
+
+    /// <summary>Lists the Facebook Pages the user granted, so one can be chosen before connecting.</summary>
+    Task<IReadOnlyList<MetaPageInfo>> ListPagesAsync(string userAccessToken, CancellationToken cancellationToken = default);
 }
 
 public interface IInstagramService
@@ -51,6 +54,9 @@ public interface IInstagramService
     Task SubscribeWebhooksAsync(string accessToken, CancellationToken cancellationToken = default);
     Task ProcessWebhookPayloadAsync(WebhookEvent webhookEvent, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<SocialProfileDraft>> DiscoverProfilesAsync(string userAccessToken, CancellationToken cancellationToken = default);
+
+    /// <summary>Lists Facebook Pages with their linked Instagram Business account, for page selection.</summary>
+    Task<IReadOnlyList<MetaPageInfo>> ListPagesAsync(string userAccessToken, CancellationToken cancellationToken = default);
 }
 
 public interface IWhatsAppService
@@ -71,6 +77,22 @@ public class OAuthTokenResult
     public string AccessToken { get; set; } = string.Empty;
     public DateTime? ExpiresAt { get; set; }
     public string? TokenType { get; set; }
+}
+
+/// <summary>
+/// A Facebook Page granted during Facebook Login, plus its linked Instagram Business account.
+/// The page access token stays server-side and is never mapped into a response DTO.
+/// </summary>
+public class MetaPageInfo
+{
+    public string PageId { get; set; } = string.Empty;
+    public string PageName { get; set; } = string.Empty;
+    public string? PageAccessToken { get; set; }
+    public string? PageImage { get; set; }
+    public string? InstagramId { get; set; }
+    public string? InstagramUsername { get; set; }
+    public string? InstagramName { get; set; }
+    public string? InstagramImage { get; set; }
 }
 
 /// <summary>Temporary profile shape returned while connecting an account.</summary>
