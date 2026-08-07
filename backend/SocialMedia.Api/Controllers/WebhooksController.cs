@@ -60,6 +60,21 @@ public class WebhooksController : ControllerBase
     public Task<IActionResult> InstagramEvents()
         => ReceivePlatformAsync("instagram");
 
+    /// <summary>
+    /// Authenticated test endpoint — posts a Meta-shaped payload without signature checks.
+    /// Use this to verify WebhookLogs + comment/message + SignalR before live Meta events.
+    /// </summary>
+    [Authorize]
+    [HttpPost]
+    public async Task<IActionResult> TestReceive(string platformCode = "instagram")
+    {
+        var payload = await new StreamReader(Request.Body).ReadToEndAsync();
+        var headersJson = System.Text.Json.JsonSerializer.Serialize(
+            Request.Headers.ToDictionary(h => h.Key, h => h.Value.ToString()));
+        var response = await _webhookService.ReceiveAsync(platformCode, payload, "test-signature", headersJson);
+        return Ok(response);
+    }
+
     private async Task<IActionResult> ReceivePlatformAsync(string platformCode)
     {
         var payload = await new StreamReader(Request.Body).ReadToEndAsync();

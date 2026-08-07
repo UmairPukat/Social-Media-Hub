@@ -1,10 +1,12 @@
-import { Component, OnInit, computed, inject, signal } from '@angular/core';
+import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
 import { DatePipe, DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatTooltipModule } from '@angular/material/tooltip';
+import { Subscription } from 'rxjs';
 import { ApiService } from '../../core/services/api.service';
+import { InboxRealtimeService } from '../../core/services/inbox-realtime.service';
 import {
   ApiResponse,
   InboxItem,
@@ -46,8 +48,10 @@ export interface ThreadBubble {
   templateUrl: './inbox.component.html',
   styleUrl: './inbox.component.scss'
 })
-export class InboxComponent implements OnInit {
+export class InboxComponent implements OnInit, OnDestroy {
   private readonly api = inject(ApiService);
+  private readonly realtime = inject(InboxRealtimeService);
+  private realtimeSub?: Subscription;
 
   readonly items = signal<InboxItem[]>([]);
   readonly platformCode = signal<string | null>(null);
@@ -178,6 +182,31 @@ export class InboxComponent implements OnInit {
 
   ngOnInit(): void {
     this.reload();
+    this.realtimeSub = this.realtime.item$.subscribe((item) => this.upsertItem(item));
+    void this.realtime.start().catch(() => {
+      this.banner.set('Live updates unavailable. Refresh Inbox to pull new webhook items.');
+    });
+  }
+
+  ngOnDestroy(): void {
+    this.realtimeSub?.unsubscribe();
+    void this.realtime.stop();
+  }
+
+  private upsertItem(item: InboxItem): void {
+    this.items.update((list) => {
+      const existing = list.findIndex((row) => row.id === item.id || row.externalId === item.externalId);
+      if (existing >= 0) {
+        const next = [...list];
+        next[existing] = { ...next[existing], ...item };
+        return next;
+      }
+      return [item, ...list];
+    });
+
+    if (!this.selectedKey()) {
+      this.autoSelectFirst();
+    }
   }
 
   setPlatform(code: string | null): void {

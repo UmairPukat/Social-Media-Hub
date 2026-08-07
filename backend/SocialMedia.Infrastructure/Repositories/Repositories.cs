@@ -214,6 +214,11 @@ public class WebhookEventRepository : Repository<WebhookEvent>, IWebhookEventRep
             .ToListAsync(cancellationToken);
 }
 
+public class WebhookLogRepository : Repository<WebhookLog>, IWebhookLogRepository
+{
+    public WebhookLogRepository(AppDbContext context) : base(context) { }
+}
+
 public class SyncJobRepository : Repository<SyncJob>, ISyncJobRepository
 {
     public SyncJobRepository(AppDbContext context) : base(context) { }
@@ -236,6 +241,7 @@ public class UnitOfWork : IUnitOfWork
         IConversationRepository conversations,
         IMessageRepository messages,
         IWebhookEventRepository webhookEvents,
+        IWebhookLogRepository webhookLogs,
         ISyncJobRepository syncJobs)
     {
         _context = context;
@@ -250,6 +256,7 @@ public class UnitOfWork : IUnitOfWork
         Conversations = conversations;
         Messages = messages;
         WebhookEvents = webhookEvents;
+        WebhookLogs = webhookLogs;
         SyncJobs = syncJobs;
     }
 
@@ -264,6 +271,7 @@ public class UnitOfWork : IUnitOfWork
     public IConversationRepository Conversations { get; }
     public IMessageRepository Messages { get; }
     public IWebhookEventRepository WebhookEvents { get; }
+    public IWebhookLogRepository WebhookLogs { get; }
     public ISyncJobRepository SyncJobs { get; }
 
     public Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)

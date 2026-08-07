@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using SocialMedia.Application.DTOs.Inbox;
 using SocialMedia.Application.DTOs.Meta;
 using SocialMedia.Application.Interfaces;
 using SocialMedia.Application.Settings;
@@ -20,14 +21,21 @@ public class InstagramService : IInstagramService
     private readonly InstagramSettings _instagram;
     private readonly FacebookSettings _facebook;
     private readonly IUnitOfWork _unitOfWork;
+    private readonly IInboxRealtimeNotifier _inboxRealtime;
     private readonly ILogger<InstagramService> _logger;
 
-    public InstagramService(MetaGraphClient graph, IOptions<MetaSettings> options, IUnitOfWork unitOfWork, ILogger<InstagramService> logger)
+    public InstagramService(
+        MetaGraphClient graph,
+        IOptions<MetaSettings> options,
+        IUnitOfWork unitOfWork,
+        IInboxRealtimeNotifier inboxRealtime,
+        ILogger<InstagramService> logger)
     {
         _graph = graph;
         _instagram = options.Value.Instagram;
         _facebook = options.Value.Facebook;
         _unitOfWork = unitOfWork;
+        _inboxRealtime = inboxRealtime;
         _logger = logger;
     }
 
@@ -305,6 +313,7 @@ public class InstagramService : IInstagramService
             if (await _unitOfWork.Comments.GetByExternalCommentIdAsync(commentId, cancellationToken) is not null)
                 continue;
 
+            // Attach to existing post by media/post id; create a stub post if missing.
             var post = await _unitOfWork.Posts.GetByExternalPostIdAsync(profile.Id, mediaId, cancellationToken);
             var isNewPost = post is null;
             if (post is null)
@@ -315,7 +324,9 @@ public class InstagramService : IInstagramService
                     PlatformId = account.PlatformId,
                     ExternalPostId = mediaId,
                     Status = ContentPostStatus.Published,
-                    PublishedAt = UnixSeconds(entry, "time")
+                    PublishedAt = UnixSeconds(entry, "time"),
+                    Text = string.Empty,
+                    Caption = string.Empty
                 };
                 await _unitOfWork.Posts.AddAsync(post, cancellationToken);
             }
@@ -337,18 +348,52 @@ public class InstagramService : IInstagramService
                     parentComment = await _unitOfWork.Comments.GetByExternalCommentIdAsync(parentId, cancellationToken);
             }
 
-            await _unitOfWork.Comments.AddAsync(new Comment
+            var commentText = value.TryGetProperty("text", out var text) ? text.GetString() ?? string.Empty : string.Empty;
+            var receivedAt = UnixSeconds(entry, "time") ?? DateTime.UtcNow;
+            var comment = new Comment
             {
                 PostId = post.Id,
                 ParentCommentId = parentComment?.Id,
                 ExternalCommentId = commentId,
                 AuthorId = authorId,
                 AuthorName = authorName,
-                Message = value.TryGetProperty("text", out var text) ? text.GetString() ?? string.Empty : string.Empty,
-                PlatformCreatedAt = UnixSeconds(entry, "time")
-            }, cancellationToken);
+                Message = commentText,
+                PlatformCreatedAt = receivedAt
+            };
+            await _unitOfWork.Comments.AddAsync(comment, cancellationToken);
             post.CommentCount += 1;
             if (!isNewPost) _unitOfWork.Posts.Update(post);
+
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+            var inboxItem = new InboxItemDto
+            {
+                Id = comment.Id,
+                ItemKind = "comment",
+                PlatformCode = "instagram",
+                ExternalId = comment.ExternalCommentId,
+                AuthorName = comment.AuthorName,
+                AuthorId = comment.AuthorId,
+                Content = comment.Message,
+                IsHidden = false,
+                IsRead = false,
+                IsOutgoing = !string.IsNullOrWhiteSpace(authorId) && authorId == profile.ExternalProfileId,
+                ReceivedAt = receivedAt,
+                CommentLikes = 0,
+                ReplyCount = 0,
+                Post = new InboxPostMetaDto
+                {
+                    PostId = post.ExternalPostId ?? post.Id.ToString(),
+                    PageName = profile.Name ?? profile.Username ?? "Instagram",
+                    PostText = post.Caption ?? post.Text ?? string.Empty,
+                    LikesCount = post.LikeCount,
+                    CommentsCount = post.CommentCount,
+                    SharesCount = post.ShareCount,
+                    PostedAt = post.PublishedAt ?? post.CreatedAt
+                }
+            };
+
+            await _inboxRealtime.NotifyInboxItemAsync(account.UserId, inboxItem, cancellationToken);
         }
     }
 
@@ -357,6 +402,9 @@ public class InstagramService : IInstagramService
         JsonElement messaging,
         CancellationToken cancellationToken)
     {
+        var account = await _unitOfWork.SocialAccounts.GetByIdAsync(profile.SocialAccountId, cancellationToken);
+        if (account is null) return;
+
         foreach (var item in messaging.EnumerateArray())
         {
             if (!item.TryGetProperty("message", out var message)) continue;
@@ -403,7 +451,7 @@ public class InstagramService : IInstagramService
                 ? text.GetString()
                 : message.TryGetProperty("attachments", out _) ? "[Instagram attachment]" : string.Empty;
 
-            await _unitOfWork.Messages.AddAsync(new Message
+            var msg = new Message
             {
                 ConversationId = conversation.Id,
                 ExternalMessageId = messageId,
@@ -414,12 +462,33 @@ public class InstagramService : IInstagramService
                 Body = body,
                 Status = outbound ? MessageDeliveryStatus.Sent : MessageDeliveryStatus.Delivered,
                 PlatformCreatedAt = receivedAt
-            }, cancellationToken);
+            };
+            await _unitOfWork.Messages.AddAsync(msg, cancellationToken);
 
             conversation.LastMessageAt = receivedAt;
             conversation.UpdatedAt = DateTime.UtcNow;
             if (!outbound) conversation.UnreadCount += 1;
             if (!isNewConversation) _unitOfWork.Conversations.Update(conversation);
+
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+            var inboxItem = new InboxItemDto
+            {
+                Id = msg.Id,
+                ItemKind = "message",
+                PlatformCode = "instagram",
+                ExternalId = msg.ExternalMessageId,
+                AuthorName = outbound ? "You" : conversation.CustomerName ?? senderId,
+                AuthorId = senderId,
+                Content = body ?? string.Empty,
+                IsHidden = false,
+                IsRead = outbound,
+                IsOutgoing = outbound,
+                ConversationId = conversation.Id,
+                ReceivedAt = receivedAt
+            };
+
+            await _inboxRealtime.NotifyInboxItemAsync(account.UserId, inboxItem, cancellationToken);
         }
     }
 

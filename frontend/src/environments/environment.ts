@@ -1,6 +1,7 @@
 export const environment = {
   production: false,
   apiUrl: 'https://socialbackend-production-a9ea.up.railway.app/api',
+  hubUrl: 'https://socialbackend-production-a9ea.up.railway.app/hubs/inbox',
   // Frontend builds Meta auth URLs — backend only stores tokens after OAuth.
   meta: {
     facebook: {

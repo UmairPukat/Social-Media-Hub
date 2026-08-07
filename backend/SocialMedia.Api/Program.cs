@@ -1,6 +1,8 @@
 using Microsoft.OpenApi.Models;
 using SocialMedia.Api.Configuration;
+using SocialMedia.Api.Hubs;
 using SocialMedia.Application;
+using SocialMedia.Application.Interfaces;
 using SocialMedia.Infrastructure;
 using SocialMedia.Infrastructure.Persistence;
 
@@ -12,6 +14,9 @@ builder.Configuration.AddRailwayFlatEnv();
 // Clean Architecture registration: Application (services) + Infrastructure (EF, Meta, JWT)
 builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
+
+builder.Services.AddSignalR();
+builder.Services.AddScoped<IInboxRealtimeNotifier, InboxRealtimeNotifier>();
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
@@ -66,18 +71,13 @@ builder.Services.AddCors(options =>
         policy
             .WithOrigins(origins)
             .AllowAnyHeader()
-            .AllowAnyMethod();
+            .AllowAnyMethod()
+            .AllowCredentials();
     });
 });
 
 var app = builder.Build();
 
-// Create DB + seed demo admin / invite token.
-// SQL Server may not be ready yet if services start in parallel (e.g. on Railway), so
-// retry with a delay a few times before giving up. If seeding still fails after all
-// retries, log the error and let the application start anyway rather than crashing -
-// requests that depend on seeded data will surface their own errors, and the app can
-// be restarted or the seed re-attempted later.
 if (Environment.GetEnvironmentVariable("SEED_ON_STARTUP")?.ToLower() == "true")
 {
     using (var scope = app.Services.CreateScope())
@@ -107,5 +107,5 @@ app.UseCors("Frontend");
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
+app.MapHub<InboxHub>("/hubs/inbox");
 app.Run();
-

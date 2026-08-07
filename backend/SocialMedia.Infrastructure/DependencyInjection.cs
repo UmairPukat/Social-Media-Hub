@@ -1,4 +1,3 @@
-using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -11,6 +10,7 @@ using SocialMedia.Infrastructure.Auth;
 using SocialMedia.Infrastructure.Meta;
 using SocialMedia.Infrastructure.Persistence;
 using SocialMedia.Infrastructure.Repositories;
+using System.Text;
 
 namespace SocialMedia.Infrastructure;
 
@@ -59,11 +59,13 @@ public static class DependencyInjection
         services.AddScoped<IConversationRepository, ConversationRepository>();
         services.AddScoped<IMessageRepository, MessageRepository>();
         services.AddScoped<IWebhookEventRepository, WebhookEventRepository>();
+        services.AddScoped<IWebhookLogRepository, WebhookLogRepository>();
         services.AddScoped<ISyncJobRepository, SyncJobRepository>();
         services.AddScoped<IUnitOfWork, UnitOfWork>();
 
         services.AddScoped<IPasswordHasher, PasswordHasher>();
         services.AddScoped<IJwtTokenService, JwtTokenService>();
+        services.AddScoped<IInboxRealtimeNotifier, Application.Realtime.NullInboxRealtimeNotifier>();
 
         services.AddHttpClient<MetaGraphClient>();
         services.AddScoped<IFacebookService, FacebookService>();
@@ -85,6 +87,19 @@ public static class DependencyInjection
                     ValidIssuer = jwt.Issuer,
                     ValidAudience = jwt.Audience,
                     IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwt.SecretKey))
+                };
+
+                // SignalR sends the JWT as ?access_token= for WebSocket connections.
+                options.Events = new JwtBearerEvents
+                {
+                    OnMessageReceived = context =>
+                    {
+                        var accessToken = context.Request.Query["access_token"];
+                        var path = context.HttpContext.Request.Path;
+                        if (!string.IsNullOrEmpty(accessToken) && path.StartsWithSegments("/hubs/inbox"))
+                            context.Token = accessToken;
+                        return Task.CompletedTask;
+                    }
                 };
             });
 

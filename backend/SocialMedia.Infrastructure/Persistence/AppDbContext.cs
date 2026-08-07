@@ -25,6 +25,7 @@ public class AppDbContext : DbContext
     public DbSet<Message> Messages => Set<Message>();
     public DbSet<MessageAttachment> MessageAttachments => Set<MessageAttachment>();
     public DbSet<WebhookEvent> WebhookEvents => Set<WebhookEvent>();
+    public DbSet<WebhookLog> WebhookLogs => Set<WebhookLog>();
     public DbSet<SyncJob> SyncJobs => Set<SyncJob>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)

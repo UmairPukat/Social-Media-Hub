@@ -12,7 +12,7 @@ namespace SocialMedia.Application.Services;
 
 /// <summary>
 /// Webhook connection (verify), subscribe, and receive.
-/// Always persists WebhookEvent before processing.
+/// Flow: save full payload to WebhookLogs → save WebhookEvent → process → SignalR.
 /// </summary>
 public class WebhookService : IWebhookService
 {
@@ -57,7 +57,6 @@ public class WebhookService : IWebhookService
         var appSecret = platformCode.ToLowerInvariant() switch
         {
             "facebook" => _meta.Facebook.AppSecret,
-            // Facebook Login for Instagram signs with the Facebook/Meta app secret.
             "instagram" => !string.IsNullOrWhiteSpace(_meta.Instagram.AppSecret)
                 ? _meta.Instagram.AppSecret
                 : _meta.Facebook.AppSecret,
@@ -93,8 +92,6 @@ public class WebhookService : IWebhookService
             if (platform is null)
                 return ApiResponse<object>.Fail("Unknown platform.");
 
-            // Subscription itself is configured in Meta Developer Console.
-            // We record an audit-style webhook event so the app knows subscribe was requested.
             await _unitOfWork.WebhookEvents.AddAsync(new WebhookEvent
             {
                 PlatformId = platform.Id,
@@ -138,7 +135,20 @@ public class WebhookService : IWebhookService
         {
             var platform = await _unitOfWork.Platforms.GetByCodeAsync(platformCode, cancellationToken);
 
-            // 1) Always save first — never process directly.
+            // 1) Always persist the full raw payload to WebhookLogs first.
+            var log = new WebhookLog
+            {
+                PlatformId = platform?.Id,
+                PlatformCode = platformCode,
+                Signature = signature,
+                HeadersJson = headersJson,
+                PayloadJson = payloadJson,
+                ReceivedAt = DateTime.UtcNow
+            };
+            await _unitOfWork.WebhookLogs.AddAsync(log, cancellationToken);
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+            // 2) Track processing status on WebhookEvents.
             var webhookEvent = new WebhookEvent
             {
                 PlatformId = platform?.Id,
@@ -153,7 +163,6 @@ public class WebhookService : IWebhookService
             await _unitOfWork.WebhookEvents.AddAsync(webhookEvent, cancellationToken);
             await _unitOfWork.SaveChangesAsync(cancellationToken);
 
-            // 2) Queue + process (in-process for now; swap for Hangfire/Queue later).
             webhookEvent.Status = WebhookEventStatus.Processing;
             _unitOfWork.WebhookEvents.Update(webhookEvent);
             await _unitOfWork.SaveChangesAsync(cancellationToken);
@@ -186,7 +195,12 @@ public class WebhookService : IWebhookService
             _unitOfWork.WebhookEvents.Update(webhookEvent);
             await _unitOfWork.SaveChangesAsync(cancellationToken);
 
-            return ApiResponse<object>.Ok(new { webhookEvent.Id, webhookEvent.Status }, "Webhook received.");
+            return ApiResponse<object>.Ok(new
+            {
+                logId = log.Id,
+                webhookEvent.Id,
+                webhookEvent.Status
+            }, "Webhook received.");
         }
         catch (Exception ex)
         {

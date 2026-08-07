@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using SocialMedia.Application.Catalog;
 using SocialMedia.Domain.Entities;
@@ -61,6 +62,7 @@ public static class DbSeeder
     public static async Task SeedAsync(AppDbContext db)
     {
         await db.Database.EnsureCreatedAsync();
+        await EnsureWebhookLogsTableAsync(db);
 
         var catalogCodes = new HashSet<string>(
             PlatformCatalog.All.Select(p => p.Code),
@@ -119,6 +121,30 @@ public static class DbSeeder
         }
 
         await db.SaveChangesAsync();
+    }
+
+    /// <summary>
+    /// EnsureCreated does not alter existing databases — create WebhookLogs if missing.
+    /// </summary>
+    private static async Task EnsureWebhookLogsTableAsync(AppDbContext db)
+    {
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE IF NOT EXISTS "WebhookLogs" (
+                "Id" uuid NOT NULL,
+                "PlatformId" uuid NULL,
+                "PlatformCode" character varying(50) NOT NULL,
+                "Signature" text NULL,
+                "HeadersJson" text NULL,
+                "PayloadJson" text NOT NULL,
+                "ReceivedAt" timestamp with time zone NOT NULL,
+                "CreatedAt" timestamp with time zone NOT NULL,
+                "UpdatedAt" timestamp with time zone NULL,
+                CONSTRAINT "PK_WebhookLogs" PRIMARY KEY ("Id")
+            );
+            """);
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE INDEX IF NOT EXISTS "IX_WebhookLogs_ReceivedAt" ON "WebhookLogs" ("ReceivedAt");
+            """);
     }
 }
 

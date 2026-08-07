@@ -67,6 +67,10 @@ public interface IWebhookEventRepository : IRepository<WebhookEvent>
     Task<IReadOnlyList<WebhookEvent>> GetPendingAsync(int take = 50, CancellationToken cancellationToken = default);
 }
 
+public interface IWebhookLogRepository : IRepository<WebhookLog>
+{
+}
+
 public interface ISyncJobRepository : IRepository<SyncJob>
 {
 }
@@ -84,6 +88,7 @@ public interface IUnitOfWork : IDisposable
     IConversationRepository Conversations { get; }
     IMessageRepository Messages { get; }
     IWebhookEventRepository WebhookEvents { get; }
+    IWebhookLogRepository WebhookLogs { get; }
     ISyncJobRepository SyncJobs { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);

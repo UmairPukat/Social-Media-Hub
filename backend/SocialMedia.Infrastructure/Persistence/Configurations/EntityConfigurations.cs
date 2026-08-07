@@ -171,6 +171,19 @@ public class WebhookEventConfiguration : IEntityTypeConfiguration<WebhookEvent>
     }
 }
 
+public class WebhookLogConfiguration : IEntityTypeConfiguration<WebhookLog>
+{
+    public void Configure(EntityTypeBuilder<WebhookLog> builder)
+    {
+        builder.ToTable("WebhookLogs");
+        builder.HasKey(x => x.Id);
+        builder.Property(x => x.PlatformCode).IsRequired().HasMaxLength(50);
+        builder.Property(x => x.PayloadJson).IsRequired();
+        builder.HasOne(x => x.Platform).WithMany().HasForeignKey(x => x.PlatformId).OnDelete(DeleteBehavior.SetNull);
+        builder.HasIndex(x => x.ReceivedAt);
+    }
+}
+
 public class SyncJobConfiguration : IEntityTypeConfiguration<SyncJob>
 {
     public void Configure(EntityTypeBuilder<SyncJob> builder)
