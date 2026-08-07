@@ -112,6 +112,14 @@ public class FacebookService : IFacebookService
     public Task<IReadOnlyList<MetaPageInfo>> ListPagesAsync(string userAccessToken, CancellationToken cancellationToken = default)
         => _graph.ListPagesAsync(_settings.GraphApiVersion, userAccessToken, cancellationToken);
 
+    /// <summary>Subscribe the selected page to feed and messaging webhook fields.</summary>
+    public Task SubscribePageWebhooksAsync(string pageId, string pageAccessToken, CancellationToken cancellationToken = default)
+        => _graph.SubscribePageAsync(
+            _settings.GraphApiVersion, pageId, pageAccessToken, MetaGraphClient.PageSubscribedFields, cancellationToken);
+
+    public Task UnsubscribePageWebhooksAsync(string pageId, string pageAccessToken, CancellationToken cancellationToken = default)
+        => _graph.UnsubscribePageAsync(_settings.GraphApiVersion, pageId, pageAccessToken, cancellationToken);
+
     public async Task<PostDto> CreatePostAsync(MetaCallContext context, string content, string? mediaUrl, CancellationToken cancellationToken = default)
     {
         var fields = new Dictionary<string, string> { ["message"] = content };

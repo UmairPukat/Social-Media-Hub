@@ -221,19 +221,12 @@ public class InstagramService : IInstagramService
     public Task DeleteMessageAsync(MetaCallContext context, string messageId, CancellationToken cancellationToken = default)
         => _graph.DeleteAsync(GraphVersion, messageId, context.AccessToken, cancellationToken);
 
-    /// <summary>Subscribe the linked Facebook Page to Instagram webhook fields.</summary>
-    public async Task SubscribeWebhooksAsync(string accessToken, CancellationToken cancellationToken = default)
-    {
-        using var _ = await _graph.PostAsync(
-            GraphVersion,
-            "me/subscribed_apps",
-            accessToken,
-            new Dictionary<string, string>
-            {
-                ["subscribed_fields"] = "feed,messages,messaging_postbacks,messaging_seen,message_deliveries"
-            },
-            cancellationToken);
-    }
+    /// <summary>Subscribe the linked Facebook Page to comment and message webhook fields.</summary>
+    public Task SubscribePageWebhooksAsync(string pageId, string pageAccessToken, CancellationToken cancellationToken = default)
+        => _graph.SubscribePageAsync(GraphVersion, pageId, pageAccessToken, MetaGraphClient.PageSubscribedFields, cancellationToken);
+
+    public Task UnsubscribePageWebhooksAsync(string pageId, string pageAccessToken, CancellationToken cancellationToken = default)
+        => _graph.UnsubscribePageAsync(GraphVersion, pageId, pageAccessToken, cancellationToken);
 
     public async Task ProcessWebhookPayloadAsync(WebhookEvent webhookEvent, CancellationToken cancellationToken = default)
     {

@@ -340,25 +340,89 @@ public class IntegrationService : IIntegrationService
 
             await _unitOfWork.SaveChangesAsync(cancellationToken);
 
-            if (code == "instagram" && !string.IsNullOrWhiteSpace(page.PageAccessToken))
-            {
-                try
-                {
-                    await _instagramService.SubscribeWebhooksAsync(page.PageAccessToken!, cancellationToken);
-                }
-                catch
-                {
-                    // Page is connected either way; webhook fields can be subscribed manually in Meta.
-                }
-            }
+            var subscribeWarning = await SubscribePageWebhooksAsync(code, page, cancellationToken);
 
             var reloaded = await _unitOfWork.SocialAccounts.GetWithAuthAndProfilesAsync(account.Id, cancellationToken);
-            return ApiResponse<SocialAccountDto>.Ok(MapAccount(reloaded ?? account, platform), $"{page.PageName} connected.");
+            var message = string.IsNullOrWhiteSpace(subscribeWarning)
+                ? $"{page.PageName} connected."
+                : $"{page.PageName} connected, but webhook subscription failed: {subscribeWarning}";
+
+            return ApiResponse<SocialAccountDto>.Ok(MapAccount(reloaded ?? account, platform), message);
         }
         catch (Exception ex)
         {
             return ApiResponse<SocialAccountDto>.Fail(ex.Message);
         }
+    }
+
+    /// <summary>
+    /// Subscribes the picked page to webhook fields. Returns null on success, or the reason to
+    /// surface — a failed subscription must not undo an otherwise successful connection.
+    /// </summary>
+    private async Task<string?> SubscribePageWebhooksAsync(
+        string platformCode,
+        MetaPageInfo page,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(page.PageAccessToken))
+            return "no page access token was returned by Meta.";
+
+        try
+        {
+            if (platformCode == "instagram")
+                await _instagramService.SubscribePageWebhooksAsync(page.PageId, page.PageAccessToken!, cancellationToken);
+            else
+                await _facebookService.SubscribePageWebhooksAsync(page.PageId, page.PageAccessToken!, cancellationToken);
+
+            return null;
+        }
+        catch (Exception ex)
+        {
+            return ex.Message;
+        }
+    }
+
+    /// <summary>Best-effort unsubscribe so a disconnected page stops sending webhooks.</summary>
+    private async Task UnsubscribePageWebhooksAsync(
+        string platformCode,
+        SocialAccount account,
+        string? pageAccessToken,
+        CancellationToken cancellationToken)
+    {
+        var pageId = ResolveSelectedPageId(account, platformCode);
+        if (string.IsNullOrWhiteSpace(pageId) || string.IsNullOrWhiteSpace(pageAccessToken))
+            return;
+
+        try
+        {
+            if (platformCode == "instagram")
+                await _instagramService.UnsubscribePageWebhooksAsync(pageId!, pageAccessToken!, cancellationToken);
+            else
+                await _facebookService.UnsubscribePageWebhooksAsync(pageId!, pageAccessToken!, cancellationToken);
+        }
+        catch
+        {
+            // The local account still disconnects; the page subscription can be removed in Meta.
+        }
+    }
+
+    private static string? ResolveSelectedPageId(SocialAccount account, string platformCode)
+    {
+        var selected = ReadJsonString(account.MetadataJson, "selectedPageId");
+        if (!string.IsNullOrWhiteSpace(selected))
+            return selected;
+
+        foreach (var profile in account.Profiles)
+        {
+            var pageId = ReadJsonString(profile.MetadataJson, "pageId");
+            if (!string.IsNullOrWhiteSpace(pageId))
+                return pageId;
+
+            if (platformCode == "facebook" && !string.IsNullOrWhiteSpace(profile.ExternalProfileId))
+                return profile.ExternalProfileId;
+        }
+
+        return null;
     }
 
     private async Task<IReadOnlyList<MetaPageInfo>> ListPagesAsync(
@@ -463,7 +527,7 @@ public class IntegrationService : IIntegrationService
             if (platformCode == "facebook" && !string.IsNullOrWhiteSpace(profile.ExternalProfileId))
                 ids.Add(profile.ExternalProfileId);
 
-            var pageId = ReadPageId(profile.MetadataJson);
+            var pageId = ReadJsonString(profile.MetadataJson, "pageId");
             if (!string.IsNullOrWhiteSpace(pageId))
                 ids.Add(pageId!);
         }
@@ -471,15 +535,15 @@ public class IntegrationService : IIntegrationService
         return ids;
     }
 
-    private static string? ReadPageId(string? metadataJson)
+    private static string? ReadJsonString(string? json, string propertyName)
     {
-        if (string.IsNullOrWhiteSpace(metadataJson))
+        if (string.IsNullOrWhiteSpace(json))
             return null;
 
         try
         {
-            using var doc = JsonDocument.Parse(metadataJson);
-            return doc.RootElement.TryGetProperty("pageId", out var pageId) ? pageId.GetString() : null;
+            using var doc = JsonDocument.Parse(json);
+            return doc.RootElement.TryGetProperty(propertyName, out var value) ? value.GetString() : null;
         }
         catch
         {
@@ -517,11 +581,17 @@ public class IntegrationService : IIntegrationService
             if (account is null)
                 return ApiResponse<object>.Fail("Account not connected.");
 
+            var code = platformCode.Trim().ToLowerInvariant();
+            var auth = await _unitOfWork.SocialAuths.GetBySocialAccountIdAsync(account.Id, cancellationToken);
+
+            // Stop Meta from sending webhooks for this page before the token is cleared.
+            if (SupportsPageSelection(code))
+                await UnsubscribePageWebhooksAsync(code, account, auth?.AccessToken, cancellationToken);
+
             account.Status = SocialAccountStatus.Disconnected;
             account.UpdatedAt = DateTime.UtcNow;
             _unitOfWork.SocialAccounts.Update(account);
 
-            var auth = await _unitOfWork.SocialAuths.GetBySocialAccountIdAsync(account.Id, cancellationToken);
             if (auth is not null)
             {
                 auth.AccessToken = string.Empty;

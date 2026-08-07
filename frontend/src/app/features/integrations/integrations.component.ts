@@ -1,4 +1,4 @@
-import { Component, OnInit, computed, inject, signal } from '@angular/core';
+import { Component, ElementRef, OnInit, computed, inject, signal, viewChild } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { ApiService } from '../../core/services/api.service';
@@ -50,6 +50,12 @@ export class IntegrationsComponent implements OnInit {
   readonly message = signal('');
   readonly connecting = signal<string | null>(null);
   readonly activeCategory = signal<string>('all');
+
+  /**
+   * Native dialog so the picker lands in the browser top layer and stays centred in the
+   * viewport — a `position: fixed` panel would anchor to the transformed `.page` wrapper.
+   */
+  private readonly pickerDialog = viewChild<ElementRef<HTMLDialogElement>>('pickerDialog');
 
   /** Page picker state — shown after Meta login so one page is connected at a time. */
   readonly pickerPlatform = signal<MetaPlatform | null>(null);
@@ -154,9 +160,26 @@ export class IntegrationsComponent implements OnInit {
     this.pickerPlatform.set(code);
     this.pickerTitle.set(card.displayName);
     this.loadPages();
+
+    const dialog = this.pickerDialog()?.nativeElement;
+    if (dialog && !dialog.open) dialog.showModal();
   }
 
   closePagePicker(): void {
+    const dialog = this.pickerDialog()?.nativeElement;
+    if (dialog?.open) {
+      dialog.close();
+      return;
+    }
+    this.resetPicker();
+  }
+
+  /** Also runs when the dialog is dismissed with Escape. */
+  onPickerClosed(): void {
+    this.resetPicker();
+  }
+
+  private resetPicker(): void {
     this.pickerPlatform.set(null);
     this.pages.set([]);
     this.pagesError.set('');

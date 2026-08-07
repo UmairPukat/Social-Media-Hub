@@ -35,6 +35,12 @@ public interface IFacebookService
 
     /// <summary>Lists the Facebook Pages the user granted, so one can be chosen before connecting.</summary>
     Task<IReadOnlyList<MetaPageInfo>> ListPagesAsync(string userAccessToken, CancellationToken cancellationToken = default);
+
+    /// <summary>POST {pageId}/subscribed_apps — subscribes the selected page to webhook fields.</summary>
+    Task SubscribePageWebhooksAsync(string pageId, string pageAccessToken, CancellationToken cancellationToken = default);
+
+    /// <summary>DELETE {pageId}/subscribed_apps — drops the page subscription on disconnect.</summary>
+    Task UnsubscribePageWebhooksAsync(string pageId, string pageAccessToken, CancellationToken cancellationToken = default);
 }
 
 public interface IInstagramService
@@ -51,12 +57,17 @@ public interface IInstagramService
     Task DeleteCommentAsync(MetaCallContext context, string commentId, CancellationToken cancellationToken = default);
     Task SendMessageAsync(MetaCallContext context, string recipientId, string message, CancellationToken cancellationToken = default);
     Task DeleteMessageAsync(MetaCallContext context, string messageId, CancellationToken cancellationToken = default);
-    Task SubscribeWebhooksAsync(string accessToken, CancellationToken cancellationToken = default);
     Task ProcessWebhookPayloadAsync(WebhookEvent webhookEvent, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<SocialProfileDraft>> DiscoverProfilesAsync(string userAccessToken, CancellationToken cancellationToken = default);
 
     /// <summary>Lists Facebook Pages with their linked Instagram Business account, for page selection.</summary>
     Task<IReadOnlyList<MetaPageInfo>> ListPagesAsync(string userAccessToken, CancellationToken cancellationToken = default);
+
+    /// <summary>POST {pageId}/subscribed_apps — subscribes the selected page to webhook fields.</summary>
+    Task SubscribePageWebhooksAsync(string pageId, string pageAccessToken, CancellationToken cancellationToken = default);
+
+    /// <summary>DELETE {pageId}/subscribed_apps — drops the page subscription on disconnect.</summary>
+    Task UnsubscribePageWebhooksAsync(string pageId, string pageAccessToken, CancellationToken cancellationToken = default);
 }
 
 public interface IWhatsAppService

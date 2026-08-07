@@ -265,31 +265,32 @@
   border-color: rgba(190, 18, 60, 0.22) !important;
 }
 
-/* Page picker shown after Meta login */
-.picker-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 40;
-  background: rgba(15, 23, 42, 0.45);
-  backdrop-filter: blur(2px);
-}
-
+/*
+ * Page picker shown after Meta login. The routed `.page` wrapper keeps a transform from its
+ * entrance animation, which would make it the containing block for a fixed panel and push the
+ * modal down the scrolled page. A native modal dialog renders in the top layer instead, so the
+ * UA centres it in the viewport with no scrolling.
+ */
 .picker {
-  position: fixed;
-  z-index: 41;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
   width: min(760px, calc(100vw - 32px));
   max-height: min(82vh, 720px);
-  display: flex;
-  flex-direction: column;
+  padding: 0;
   border-radius: 18px;
   background: var(--app-surface, #ffffff);
   color: var(--app-ink, #0b1220);
   border: 1px solid var(--app-border, rgba(15, 23, 42, 0.08));
   box-shadow: 0 28px 70px rgba(15, 23, 42, 0.28);
   overflow: hidden;
+}
+
+.picker[open] {
+  display: flex;
+  flex-direction: column;
+}
+
+.picker::backdrop {
+  background: rgba(15, 23, 42, 0.45);
+  backdrop-filter: blur(2px);
 }
 
 .picker-head {

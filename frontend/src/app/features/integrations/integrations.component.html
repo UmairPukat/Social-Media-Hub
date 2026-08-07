@@ -111,10 +111,8 @@
     }
   </div>
 
-  @if (pickerPlatform()) {
-    <div class="picker-backdrop" (click)="closePagePicker()"></div>
-
-    <div class="picker" role="dialog" aria-modal="true" aria-labelledby="page-picker-title">
+  <dialog #pickerDialog class="picker" aria-labelledby="page-picker-title" (close)="onPickerClosed()">
+    @if (pickerPlatform()) {
       <header class="picker-head">
         <div>
           <p class="eyebrow">{{ pickerTitle() }}</p>
@@ -217,6 +215,6 @@
           </button>
         </div>
       </footer>
-    </div>
-  }
+    }
+  </dialog>
 </section>

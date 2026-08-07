@@ -13,6 +13,10 @@ public class MetaGraphClient
 {
     private const string FacebookGraphHost = "https://graph.facebook.com";
     private const string InstagramGraphHost = "https://graph.instagram.com";
+
+    /// <summary>Webhook fields subscribed on a selected page: post comments plus messaging.</summary>
+    public const string PageSubscribedFields = "feed,messages,messaging_postbacks";
+
     private readonly HttpClient _httpClient;
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -230,6 +234,49 @@ public class MetaGraphClient
         var body = await response.Content.ReadAsStringAsync(cancellationToken);
         if (!response.IsSuccessStatusCode)
             throw new InvalidOperationException($"Instagram Graph DELETE failed ({(int)response.StatusCode}): {body}");
+    }
+
+    /// <summary>
+    /// POST {pageId}/subscribed_apps?subscribed_fields=... — subscribes this app to the page's
+    /// webhook fields. The page token goes in the Authorization header, never the query string.
+    /// </summary>
+    public Task SubscribePageAsync(
+        string version,
+        string pageId,
+        string pageAccessToken,
+        string subscribedFields,
+        CancellationToken cancellationToken)
+    {
+        var url = BuildUrl(FacebookGraphHost, version, $"{pageId}/subscribed_apps", string.Empty,
+            ("subscribed_fields", subscribedFields));
+        return SendWithBearerAsync(HttpMethod.Post, url, pageAccessToken, cancellationToken);
+    }
+
+    /// <summary>DELETE {pageId}/subscribed_apps — removes this app's page subscription.</summary>
+    public Task UnsubscribePageAsync(
+        string version,
+        string pageId,
+        string pageAccessToken,
+        CancellationToken cancellationToken)
+    {
+        var url = BuildUrl(FacebookGraphHost, version, $"{pageId}/subscribed_apps", string.Empty);
+        return SendWithBearerAsync(HttpMethod.Delete, url, pageAccessToken, cancellationToken);
+    }
+
+    private async Task SendWithBearerAsync(
+        HttpMethod method,
+        string url,
+        string accessToken,
+        CancellationToken cancellationToken)
+    {
+        using var request = new HttpRequestMessage(method, url);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+
+        if (!response.IsSuccessStatusCode)
+            throw new InvalidOperationException($"Meta Graph {method} failed ({(int)response.StatusCode}): {body}");
     }
 
     private async Task<JsonDocument> GetUrlAsync(string url, CancellationToken cancellationToken)
