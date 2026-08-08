@@ -216,6 +216,43 @@ public class InstagramService : IInstagramService
         return results;
     }
 
+    public async Task<RemoteCommentSnapshot?> GetCommentSnapshotAsync(string accessToken, string commentId, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(accessToken) || string.IsNullOrWhiteSpace(commentId))
+            return null;
+
+        using var doc = await _graph.GetAsync(GraphVersion, commentId, accessToken, cancellationToken,
+            ("fields", "id,text,timestamp,username,from,like_count,parent_id,media"));
+
+        var root = doc.RootElement;
+        string? authorId = null;
+        string? authorName = root.TryGetProperty("username", out var username) ? username.GetString() : null;
+        if (root.TryGetProperty("from", out var from))
+        {
+            authorId = from.TryGetProperty("id", out var fromId) ? fromId.ToString() : null;
+            if (from.TryGetProperty("username", out var fromUser) && !string.IsNullOrWhiteSpace(fromUser.GetString()))
+                authorName = fromUser.GetString();
+        }
+
+        return new RemoteCommentSnapshot
+        {
+            ExternalId = root.TryGetProperty("id", out var id) ? id.GetString() ?? commentId : commentId,
+            Message = root.TryGetProperty("text", out var text) ? text.GetString() : null,
+            PostExternalId = root.TryGetProperty("media", out var media) && media.TryGetProperty("id", out var mediaId)
+                ? mediaId.ToString()
+                : null,
+            ParentExternalId = root.TryGetProperty("parent_id", out var parentId) ? parentId.ToString() : null,
+            AuthorId = authorId,
+            AuthorName = authorName,
+            AuthorUsername = authorName,
+            LikeCount = root.TryGetProperty("like_count", out var likes) && likes.TryGetInt32(out var likeCount) ? likeCount : 0,
+            CreatedTime = root.TryGetProperty("timestamp", out var timestamp) &&
+                          DateTime.TryParse(timestamp.GetString(), out var createdAt)
+                ? createdAt.ToUniversalTime()
+                : null
+        };
+    }
+
     public async Task ReplyCommentAsync(MetaCallContext context, string commentId, string message, CancellationToken cancellationToken = default)
     {
         using var _ = await _graph.PostAsync(GraphVersion, $"{commentId}/replies", context.AccessToken,
@@ -251,7 +288,7 @@ public class InstagramService : IInstagramService
 
     /// <summary>Subscribe the linked Facebook Page to comment and message webhook fields.</summary>
     public Task SubscribePageWebhooksAsync(string pageId, string pageAccessToken, CancellationToken cancellationToken = default)
-        => _graph.SubscribePageAsync(GraphVersion, pageId, pageAccessToken, MetaGraphClient.PageSubscribedFields, cancellationToken);
+        => _graph.SubscribePageAsync(GraphVersion, pageId, pageAccessToken, MetaGraphClient.InstagramPageSubscribedFields, cancellationToken);
 
     public Task UnsubscribePageWebhooksAsync(string pageId, string pageAccessToken, CancellationToken cancellationToken = default)
         => _graph.UnsubscribePageAsync(GraphVersion, pageId, pageAccessToken, cancellationToken);
@@ -400,52 +437,88 @@ public class InstagramService : IInstagramService
             var commentId = value.TryGetProperty("id", out var commentIdElement)
                 ? commentIdElement.ToString()
                 : null;
-            var mediaId = value.TryGetProperty("media", out var media) &&
-                          media.TryGetProperty("id", out var mediaIdElement)
-                ? mediaIdElement.ToString()
-                : null;
-            if (string.IsNullOrWhiteSpace(commentId) || string.IsNullOrWhiteSpace(mediaId))
+            if (string.IsNullOrWhiteSpace(commentId))
             {
-                result.Skip("Comment change is missing id or media.id.");
+                result.Skip("Comment change is missing id.");
                 continue;
             }
-            if (await _unitOfWork.Comments.GetByExternalCommentIdAsync(commentId, cancellationToken) is not null)
+
+            var pageToken = await ResolveAccessTokenAsync(account, cancellationToken);
+            RemoteCommentSnapshot? enriched = null;
+            try
             {
-                result.Skip($"Comment '{commentId}' already stored.");
+                if (!string.IsNullOrWhiteSpace(pageToken))
+                    enriched = await GetCommentSnapshotAsync(pageToken!, commentId!, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                result.Skip($"Graph comment enrich failed for '{commentId}': {ex.Message}");
+            }
+
+            var mediaId = FirstNonEmpty(
+                enriched?.PostExternalId,
+                value.TryGetProperty("media", out var media) && media.TryGetProperty("id", out var mediaIdElement)
+                    ? mediaIdElement.ToString()
+                    : null);
+            if (string.IsNullOrWhiteSpace(mediaId))
+            {
+                result.Skip("Comment change is missing media.id.");
+                continue;
+            }
+
+            var commentText = FirstNonEmpty(
+                enriched?.Message,
+                value.TryGetProperty("text", out var text) ? text.GetString() : null) ?? string.Empty;
+
+            var existing = await _unitOfWork.Comments.GetByExternalCommentIdAsync(commentId, cancellationToken);
+            if (existing is not null)
+            {
+                if (existing.Message == commentText)
+                {
+                    result.Skip($"Comment '{commentId}' already stored.");
+                    continue;
+                }
+
+                existing.Message = commentText;
+                if (enriched?.LikeCount > 0) existing.LikeCount = enriched.LikeCount;
+                existing.UpdatedAt = DateTime.UtcNow;
+                _unitOfWork.Comments.Update(existing);
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
+                result.Handled++;
                 continue;
             }
 
             // Attach to the stored post; otherwise read the media from Graph and store it first.
-            var pageToken = await ResolveAccessTokenAsync(account, cancellationToken);
             var post = await MetaPostStore.ResolveAsync(
                 _unitOfWork,
                 profile,
                 account.PlatformId,
                 mediaId!,
-                UnixSeconds(entry, "time") ?? DateTime.UtcNow,
+                enriched?.CreatedTime ?? UnixSeconds(entry, "time") ?? DateTime.UtcNow,
                 ct => GetMediaSnapshotAsync(pageToken ?? string.Empty, mediaId!, ct),
                 $"Instagram media {mediaId}",
                 cancellationToken);
 
-            var authorId = string.Empty;
-            var authorName = "Instagram user";
-            if (value.TryGetProperty("from", out var from))
-            {
-                authorId = from.TryGetProperty("id", out var fromId) ? fromId.ToString() : string.Empty;
-                authorName = from.TryGetProperty("username", out var username)
-                    ? username.GetString() ?? authorName
-                    : authorName;
-            }
-            Comment? parentComment = null;
-            if (value.TryGetProperty("parent_id", out var parentIdElement))
-            {
-                var parentId = parentIdElement.ToString();
-                if (!string.IsNullOrWhiteSpace(parentId))
-                    parentComment = await _unitOfWork.Comments.GetByExternalCommentIdAsync(parentId, cancellationToken);
-            }
+            var authorId = FirstNonEmpty(
+                enriched?.AuthorId,
+                value.TryGetProperty("from", out var from) && from.TryGetProperty("id", out var fromId)
+                    ? fromId.ToString()
+                    : null) ?? string.Empty;
+            var authorName = FirstNonEmpty(
+                enriched?.AuthorUsername,
+                enriched?.AuthorName,
+                value.TryGetProperty("from", out var fromUser) && fromUser.TryGetProperty("username", out var username)
+                    ? username.GetString()
+                    : null) ?? "Instagram user";
 
-            var commentText = value.TryGetProperty("text", out var text) ? text.GetString() ?? string.Empty : string.Empty;
-            var receivedAt = UnixSeconds(entry, "time") ?? DateTime.UtcNow;
+            Comment? parentComment = null;
+            var parentExternalId = FirstNonEmpty(
+                enriched?.ParentExternalId,
+                value.TryGetProperty("parent_id", out var parentIdElement) ? parentIdElement.ToString() : null);
+            if (!string.IsNullOrWhiteSpace(parentExternalId) && parentExternalId != mediaId)
+                parentComment = await _unitOfWork.Comments.GetByExternalCommentIdAsync(parentExternalId!, cancellationToken);
+
+            var receivedAt = enriched?.CreatedTime ?? UnixSeconds(entry, "time") ?? DateTime.UtcNow;
             var comment = new Comment
             {
                 PostId = post.Id,
@@ -454,6 +527,7 @@ public class InstagramService : IInstagramService
                 AuthorId = authorId,
                 AuthorName = authorName,
                 Message = commentText,
+                LikeCount = enriched?.LikeCount ?? 0,
                 PlatformCreatedAt = receivedAt
             };
             await _unitOfWork.Comments.AddAsync(comment, cancellationToken);
@@ -477,7 +551,7 @@ public class InstagramService : IInstagramService
                 IsRead = false,
                 IsOutgoing = !string.IsNullOrWhiteSpace(authorId) && authorId == profile.ExternalProfileId,
                 ReceivedAt = receivedAt,
-                CommentLikes = 0,
+                CommentLikes = comment.LikeCount,
                 ReplyCount = 0,
                 Post = new InboxPostMetaDto
                 {

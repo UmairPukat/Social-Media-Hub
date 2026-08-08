@@ -66,6 +66,23 @@ public class PostDto
 }
 
 /// <summary>
+/// A single comment read back from Graph to fill fields the webhook may omit.
+/// </summary>
+public class RemoteCommentSnapshot
+{
+    public string ExternalId { get; set; } = string.Empty;
+    public string? Message { get; set; }
+    public string? PostExternalId { get; set; }
+    public string? ParentExternalId { get; set; }
+    public string? AuthorId { get; set; }
+    public string? AuthorName { get; set; }
+    public string? AuthorUsername { get; set; }
+    public int LikeCount { get; set; }
+    public DateTime? CreatedTime { get; set; }
+    public bool IsHidden { get; set; }
+}
+
+/// <summary>
 /// A single post/media read back from Graph so a webhook comment can be shown with the
 /// same post context Meta displays: text, image, and engagement counts.
 /// </summary>

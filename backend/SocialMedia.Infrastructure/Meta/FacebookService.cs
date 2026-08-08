@@ -187,6 +187,43 @@ public class FacebookService : IFacebookService
             ? count
             : 0;
 
+    public async Task<RemoteCommentSnapshot?> GetCommentSnapshotAsync(string accessToken, string commentId, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(accessToken) || string.IsNullOrWhiteSpace(commentId))
+            return null;
+
+        using var doc = await _graph.GetAsync(_settings.GraphApiVersion, commentId, accessToken, cancellationToken,
+            ("fields", "id,message,from,created_time,parent,post,like_count,comment_count"));
+
+        var root = doc.RootElement;
+        string? authorId = null;
+        string? authorName = null;
+        if (root.TryGetProperty("from", out var from))
+        {
+            authorId = from.TryGetProperty("id", out var fromId) ? fromId.ToString() : null;
+            authorName = from.TryGetProperty("name", out var fromName) ? fromName.GetString() : null;
+        }
+
+        return new RemoteCommentSnapshot
+        {
+            ExternalId = root.TryGetProperty("id", out var id) ? id.GetString() ?? commentId : commentId,
+            Message = root.TryGetProperty("message", out var message) ? message.GetString() : null,
+            PostExternalId = root.TryGetProperty("post", out var post) && post.TryGetProperty("id", out var postId)
+                ? postId.ToString()
+                : null,
+            ParentExternalId = root.TryGetProperty("parent", out var parent) && parent.TryGetProperty("id", out var parentId)
+                ? parentId.ToString()
+                : null,
+            AuthorId = authorId,
+            AuthorName = authorName,
+            LikeCount = root.TryGetProperty("like_count", out var likes) && likes.TryGetInt32(out var likeCount) ? likeCount : 0,
+            CreatedTime = root.TryGetProperty("created_time", out var created) &&
+                          DateTime.TryParse(created.GetString(), out var createdAt)
+                ? createdAt.ToUniversalTime()
+                : null
+        };
+    }
+
     public async Task<IReadOnlyList<CommentDto>> GetCommentsAsync(MetaCallContext context, string postId, CancellationToken cancellationToken = default)
     {
         using var doc = await _graph.GetAsync(_settings.GraphApiVersion, $"{postId}/comments", context.AccessToken, cancellationToken,
@@ -367,6 +404,37 @@ public class FacebookService : IFacebookService
         WebhookProcessResult result,
         CancellationToken cancellationToken)
     {
+        // Match the working Meta flow: only store adds/edits; remove is handled separately.
+        if (verb is "remove")
+        {
+            var removeId = value.TryGetProperty("comment_id", out var removeIdElement) ? removeIdElement.ToString() : null;
+            if (string.IsNullOrWhiteSpace(removeId))
+            {
+                result.Skip("Comment remove has no comment_id.");
+                return;
+            }
+
+            var removed = await _unitOfWork.Comments.GetByExternalCommentIdAsync(removeId, cancellationToken);
+            if (removed is null)
+            {
+                result.Skip($"Comment '{removeId}' was removed but is not stored.");
+                return;
+            }
+
+            removed.IsDeleted = true;
+            removed.UpdatedAt = DateTime.UtcNow;
+            _unitOfWork.Comments.Update(removed);
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            result.Handled++;
+            return;
+        }
+
+        if (verb is not (null or "add" or "edited"))
+        {
+            result.Skip($"Comment verb '{verb}' is ignored.");
+            return;
+        }
+
         var commentId = value.TryGetProperty("comment_id", out var commentIdElement) ? commentIdElement.ToString() : null;
         if (string.IsNullOrWhiteSpace(commentId))
         {
@@ -374,33 +442,34 @@ public class FacebookService : IFacebookService
             return;
         }
 
-        var existing = await _unitOfWork.Comments.GetByExternalCommentIdAsync(commentId, cancellationToken);
-        var message = value.TryGetProperty("message", out var messageElement) ? messageElement.GetString() ?? string.Empty : string.Empty;
-
-        if (verb == "remove")
+        var pageToken = await ResolvePageTokenAsync(account, cancellationToken);
+        RemoteCommentSnapshot? enriched = null;
+        try
         {
-            if (existing is null)
-            {
-                result.Skip($"Comment '{commentId}' was removed but is not stored.");
-                return;
-            }
-            existing.IsDeleted = true;
-            existing.UpdatedAt = DateTime.UtcNow;
-            _unitOfWork.Comments.Update(existing);
-            await _unitOfWork.SaveChangesAsync(cancellationToken);
-            result.Handled++;
-            return;
+            if (!string.IsNullOrWhiteSpace(pageToken))
+                enriched = await GetCommentSnapshotAsync(pageToken!, commentId!, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            result.Skip($"Graph comment enrich failed for '{commentId}': {ex.Message}");
         }
 
+        var message = FirstNonEmpty(
+            enriched?.Message,
+            value.TryGetProperty("message", out var messageElement) ? messageElement.GetString() : null) ?? string.Empty;
+
+        var existing = await _unitOfWork.Comments.GetByExternalCommentIdAsync(commentId, cancellationToken);
         if (existing is not null)
         {
-            // "edited" replays the same comment id with new text.
-            if (existing.Message == message)
+            if (existing.Message == message && verb != "edited")
             {
                 result.Skip($"Comment '{commentId}' already stored.");
                 return;
             }
+
             existing.Message = message;
+            if (enriched?.LikeCount > 0) existing.LikeCount = enriched.LikeCount;
+            existing.IsHidden = enriched?.IsHidden ?? existing.IsHidden;
             existing.UpdatedAt = DateTime.UtcNow;
             _unitOfWork.Comments.Update(existing);
             await _unitOfWork.SaveChangesAsync(cancellationToken);
@@ -408,32 +477,37 @@ public class FacebookService : IFacebookService
             return;
         }
 
-        var postExternalId = value.TryGetProperty("post_id", out var postIdElement) ? postIdElement.ToString() : null;
+        var postExternalId = FirstNonEmpty(
+            enriched?.PostExternalId,
+            value.TryGetProperty("post_id", out var postIdElement) ? postIdElement.ToString() : null);
         if (string.IsNullOrWhiteSpace(postExternalId))
         {
             result.Skip($"Comment '{commentId}' has no post_id.");
             return;
         }
 
-        var receivedAt = UnixSeconds(value, "created_time") ?? UnixSeconds(entry, "time") ?? DateTime.UtcNow;
+        var receivedAt = enriched?.CreatedTime
+            ?? UnixSeconds(value, "created_time")
+            ?? UnixSeconds(entry, "time")
+            ?? DateTime.UtcNow;
         var post = await ResolvePostAsync(profile, account, postExternalId!, receivedAt, cancellationToken: cancellationToken);
 
-        var authorId = string.Empty;
-        var authorName = "Facebook user";
-        if (value.TryGetProperty("from", out var from))
-        {
-            authorId = from.TryGetProperty("id", out var fromId) ? fromId.ToString() : string.Empty;
-            authorName = from.TryGetProperty("name", out var fromName) ? fromName.GetString() ?? authorName : authorName;
-        }
+        var authorId = FirstNonEmpty(
+            enriched?.AuthorId,
+            value.TryGetProperty("from", out var from) && from.TryGetProperty("id", out var fromId) ? fromId.ToString() : null) ?? string.Empty;
+        var authorName = FirstNonEmpty(
+            enriched?.AuthorName,
+            value.TryGetProperty("from", out var fromNameObj) && fromNameObj.TryGetProperty("name", out var fromName)
+                ? fromName.GetString()
+                : null) ?? "Facebook user";
 
         // parent_id equals post_id for a top-level comment; only a real reply has a parent comment.
         Comment? parentComment = null;
-        if (value.TryGetProperty("parent_id", out var parentIdElement))
-        {
-            var parentId = parentIdElement.ToString();
-            if (!string.IsNullOrWhiteSpace(parentId) && parentId != postExternalId)
-                parentComment = await _unitOfWork.Comments.GetByExternalCommentIdAsync(parentId, cancellationToken);
-        }
+        var parentExternalId = FirstNonEmpty(
+            enriched?.ParentExternalId,
+            value.TryGetProperty("parent_id", out var parentIdElement) ? parentIdElement.ToString() : null);
+        if (!string.IsNullOrWhiteSpace(parentExternalId) && parentExternalId != postExternalId)
+            parentComment = await _unitOfWork.Comments.GetByExternalCommentIdAsync(parentExternalId!, cancellationToken);
 
         var comment = new Comment
         {
@@ -443,6 +517,8 @@ public class FacebookService : IFacebookService
             AuthorId = authorId,
             AuthorName = authorName,
             Message = message,
+            LikeCount = enriched?.LikeCount ?? 0,
+            IsHidden = enriched?.IsHidden ?? false,
             PlatformCreatedAt = receivedAt
         };
         await _unitOfWork.Comments.AddAsync(comment, cancellationToken);
@@ -463,11 +539,11 @@ public class FacebookService : IFacebookService
             AuthorName = comment.AuthorName,
             AuthorId = comment.AuthorId,
             Content = comment.Message,
-            IsHidden = false,
+            IsHidden = comment.IsHidden,
             IsRead = false,
             IsOutgoing = !string.IsNullOrWhiteSpace(authorId) && authorId == profile.ExternalProfileId,
             ReceivedAt = receivedAt,
-            CommentLikes = 0,
+            CommentLikes = comment.LikeCount,
             ReplyCount = 0,
             Post = new InboxPostMetaDto
             {

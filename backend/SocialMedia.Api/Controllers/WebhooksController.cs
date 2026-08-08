@@ -47,7 +47,9 @@ public class WebhooksController : ControllerBase
         var signatureValid = _webhookService.IsSignatureValid(resolved, payload, signature);
         var response = await _webhookService.ReceiveAsync(resolved, payload, signature, headersJson, signatureValid);
 
-        return signatureValid ? Ok(response) : Unauthorized(response);
+        // Always 200 so Meta does not retry or disable the subscription. Signature/process
+        // failures are already recorded on WebhookLogs / WebhookEvents.
+        return Ok("EVENT_RECEIVED");
     }
 
     /// <summary>Records webhook subscription settings for a platform (app API, not Meta callback).</summary>

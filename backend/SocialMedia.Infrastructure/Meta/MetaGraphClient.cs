@@ -14,8 +14,15 @@ public class MetaGraphClient
     private const string FacebookGraphHost = "https://graph.facebook.com";
     private const string InstagramGraphHost = "https://graph.instagram.com";
 
-    /// <summary>Webhook fields subscribed on a selected page: post comments plus messaging.</summary>
+    /// <summary>Webhook fields subscribed on a Facebook Page: feed carries comments; messages for Messenger.</summary>
     public const string PageSubscribedFields = "feed,messages,messaging_postbacks";
+
+    /// <summary>
+    /// Page-edge fields used when enabling Instagram via Facebook Login. Instagram <c>comments</c>
+    /// itself is subscribed on the Instagram object in the App Dashboard — Meta rejects it on
+    /// <c>/{page-id}/subscribed_apps</c>.
+    /// </summary>
+    public const string InstagramPageSubscribedFields = "feed,messages,messaging_postbacks";
 
     private readonly HttpClient _httpClient;
     private static readonly JsonSerializerOptions JsonOptions = new()

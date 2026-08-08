@@ -28,6 +28,9 @@ public interface IFacebookService
     /// <summary>Reads one page post so a webhook comment can be stored with its post context.</summary>
     Task<RemotePostSnapshot?> GetPostSnapshotAsync(string pageAccessToken, string postId, CancellationToken cancellationToken = default);
 
+    /// <summary>Reads one comment so webhook payloads missing text/author/post can still be stored.</summary>
+    Task<RemoteCommentSnapshot?> GetCommentSnapshotAsync(string accessToken, string commentId, CancellationToken cancellationToken = default);
+
     Task<IReadOnlyList<CommentDto>> GetCommentsAsync(MetaCallContext context, string postId, CancellationToken cancellationToken = default);
     Task ReplyCommentAsync(MetaCallContext context, string commentId, string message, CancellationToken cancellationToken = default);
     Task HideCommentAsync(MetaCallContext context, string commentId, bool hide, CancellationToken cancellationToken = default);
@@ -62,6 +65,9 @@ public interface IInstagramService
 
     /// <summary>Reads one media item so a webhook comment can be stored with its post context.</summary>
     Task<RemotePostSnapshot?> GetMediaSnapshotAsync(string accessToken, string mediaId, CancellationToken cancellationToken = default);
+
+    /// <summary>Reads one Instagram comment to fill fields the webhook may omit.</summary>
+    Task<RemoteCommentSnapshot?> GetCommentSnapshotAsync(string accessToken, string commentId, CancellationToken cancellationToken = default);
 
     Task ReplyCommentAsync(MetaCallContext context, string commentId, string message, CancellationToken cancellationToken = default);
     Task HideCommentAsync(MetaCallContext context, string commentId, bool hide, CancellationToken cancellationToken = default);

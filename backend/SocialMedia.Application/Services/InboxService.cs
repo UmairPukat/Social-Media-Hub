@@ -1,6 +1,7 @@
 using SocialMedia.Application.DTOs.Common;
 using SocialMedia.Application.DTOs.Inbox;
 using SocialMedia.Application.Interfaces;
+using SocialMedia.Domain.Entities;
 using SocialMedia.Domain.Enums;
 using SocialMedia.Domain.Interfaces;
 
@@ -12,17 +13,20 @@ public class InboxService : IInboxService
     private readonly IFacebookService _facebookService;
     private readonly IInstagramService _instagramService;
     private readonly IWhatsAppService _whatsAppService;
+    private readonly IInboxRealtimeNotifier _inboxRealtime;
 
     public InboxService(
         IUnitOfWork unitOfWork,
         IFacebookService facebookService,
         IInstagramService instagramService,
-        IWhatsAppService whatsAppService)
+        IWhatsAppService whatsAppService,
+        IInboxRealtimeNotifier inboxRealtime)
     {
         _unitOfWork = unitOfWork;
         _facebookService = facebookService;
         _instagramService = instagramService;
         _whatsAppService = whatsAppService;
+        _inboxRealtime = inboxRealtime;
     }
 
     public async Task<ApiResponse<IReadOnlyList<InboxItemDto>>> GetInboxAsync(Guid userId, InboxFilterRequest? filter = null, CancellationToken cancellationToken = default)
@@ -113,22 +117,156 @@ public class InboxService : IInboxService
     {
         try
         {
-            var (context, code) = await ResolveCommentContextAsync(userId, commentId, cancellationToken);
-            var comment = await _unitOfWork.Comments.GetByIdAsync(commentId, cancellationToken);
+            if (string.IsNullOrWhiteSpace(request.Message))
+                return ApiResponse<object>.Fail("Message is required.");
 
-            if (code == "facebook")
-                await _facebookService.ReplyCommentAsync(context, comment!.ExternalCommentId, request.Message, cancellationToken);
-            else if (code == "instagram")
-                await _instagramService.ReplyCommentAsync(context, comment!.ExternalCommentId, request.Message, cancellationToken);
-            else
-                return ApiResponse<object>.Fail("Platform does not support comment replies.");
+            var comment = await _unitOfWork.Comments.GetByIdAsync(commentId, cancellationToken)
+                ?? throw new InvalidOperationException("Comment not found.");
+            var post = await _unitOfWork.Posts.GetByIdAsync(comment.PostId, cancellationToken)
+                ?? throw new InvalidOperationException("Post not found.");
+            var profile = await _unitOfWork.SocialProfiles.GetByIdAsync(post.SocialProfileId, cancellationToken)
+                ?? throw new InvalidOperationException("Profile not found.");
+            var account = await _unitOfWork.SocialAccounts.GetWithAuthAndProfilesAsync(profile.SocialAccountId, cancellationToken)
+                ?? throw new InvalidOperationException("Account not found.");
+            if (account.UserId != userId || account.Auth is null)
+                throw new InvalidOperationException("Comment not found.");
 
-            return ApiResponse<object>.Ok(new { }, "Comment reply sent.");
+            var platform = await _unitOfWork.Platforms.GetByIdAsync(account.PlatformId, cancellationToken);
+            var code = platform?.Code?.ToLowerInvariant() ?? string.Empty;
+
+            // Instagram only allows replies on top-level comments — nested replies target the parent.
+            var replyTargetExternalId = code == "instagram"
+                ? await ResolveInstagramReplyTargetAsync(comment, cancellationToken)
+                : comment.ExternalCommentId;
+
+            var tokens = CandidateTokens(account.Auth);
+            if (tokens.Count == 0)
+                return ApiResponse<object>.Fail("No access token is available. Reconnect the account.");
+
+            Exception? lastError = null;
+            foreach (var token in tokens)
+            {
+                var context = new MetaCallContext
+                {
+                    AccessToken = token,
+                    ProfileExternalId = profile.ExternalProfileId,
+                    PageExternalId = ReadPageId(profile.MetadataJson)
+                };
+
+                try
+                {
+                    if (code == "facebook")
+                        await _facebookService.ReplyCommentAsync(context, replyTargetExternalId, request.Message, cancellationToken);
+                    else if (code == "instagram")
+                        await _instagramService.ReplyCommentAsync(context, replyTargetExternalId, request.Message, cancellationToken);
+                    else
+                        return ApiResponse<object>.Fail("Platform does not support comment replies.");
+
+                    lastError = null;
+                    break;
+                }
+                catch (Exception ex) when (IsOAuthTokenError(ex))
+                {
+                    lastError = ex;
+                }
+            }
+
+            if (lastError is not null)
+                return ApiResponse<object>.Fail(lastError.Message);
+
+            // Persist our reply so the Inbox shows it immediately (same as the working Meta app).
+            var reply = new Comment
+            {
+                PostId = post.Id,
+                ParentCommentId = comment.ParentCommentId ?? comment.Id,
+                ExternalCommentId = $"local_reply_{Guid.NewGuid():N}",
+                AuthorId = profile.ExternalProfileId,
+                AuthorName = profile.Name ?? "You",
+                Message = request.Message.Trim(),
+                PlatformCreatedAt = DateTime.UtcNow
+            };
+            await _unitOfWork.Comments.AddAsync(reply, cancellationToken);
+            post.CommentCount += 1;
+            post.UpdatedAt = DateTime.UtcNow;
+            _unitOfWork.Posts.Update(post);
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+            await _inboxRealtime.NotifyInboxItemAsync(userId, new InboxItemDto
+            {
+                Id = reply.Id,
+                ItemKind = "comment",
+                PlatformCode = code,
+                ExternalId = reply.ExternalCommentId,
+                AuthorName = reply.AuthorName,
+                AuthorId = reply.AuthorId,
+                Content = reply.Message,
+                IsHidden = false,
+                IsRead = true,
+                IsOutgoing = true,
+                ReceivedAt = reply.PlatformCreatedAt ?? DateTime.UtcNow,
+                CommentLikes = 0,
+                ReplyCount = 0,
+                Post = new InboxPostMetaDto
+                {
+                    PostId = post.ExternalPostId ?? post.Id.ToString(),
+                    PageName = profile.Name ?? profile.Username ?? code,
+                    PostText = post.Caption ?? post.Text ?? string.Empty,
+                    PostImageUrl = post.MediaItems.FirstOrDefault()?.Url,
+                    LikesCount = post.LikeCount,
+                    CommentsCount = post.CommentCount,
+                    SharesCount = post.ShareCount,
+                    PostedAt = post.PublishedAt ?? post.CreatedAt
+                }
+            }, cancellationToken);
+
+            return ApiResponse<object>.Ok(new { replyId = reply.Id }, "Comment reply sent.");
         }
         catch (Exception ex)
         {
             return ApiResponse<object>.Fail(ex.Message);
         }
+    }
+
+    /// <summary>
+    /// Page token first, then long-lived user token (RefreshToken). Meta may invalidate one while
+    /// the other still works ("session is invalid because the user logged out").
+    /// </summary>
+    private static List<string> CandidateTokens(SocialAuth auth)
+    {
+        var tokens = new List<string>();
+        void Add(string? token)
+        {
+            if (!string.IsNullOrWhiteSpace(token) && !tokens.Contains(token))
+                tokens.Add(token!);
+        }
+
+        Add(auth.AccessToken);
+        Add(auth.RefreshToken);
+        return tokens;
+    }
+
+    private static bool IsOAuthTokenError(Exception ex)
+    {
+        var text = ex.Message ?? string.Empty;
+        return text.Contains("OAuthException", StringComparison.OrdinalIgnoreCase)
+            || text.Contains("\"code\":190", StringComparison.OrdinalIgnoreCase)
+            || text.Contains("Error validating access token", StringComparison.OrdinalIgnoreCase)
+            || text.Contains("session is invalid", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>Walk parent links until the top-level comment — IG rejects replies on nested ones.</summary>
+    private async Task<string> ResolveInstagramReplyTargetAsync(Comment comment, CancellationToken cancellationToken)
+    {
+        var current = comment;
+        var guard = 0;
+        while (current.ParentCommentId.HasValue && guard++ < 20)
+        {
+            var parent = await _unitOfWork.Comments.GetByIdAsync(current.ParentCommentId.Value, cancellationToken);
+            if (parent is null) break;
+            current = parent;
+        }
+
+        return current.ExternalCommentId;
     }
 
     public async Task<ApiResponse<object>> HideCommentAsync(Guid userId, Guid commentId, HideCommentRequest request, CancellationToken cancellationToken = default)
