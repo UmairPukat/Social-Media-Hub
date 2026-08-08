@@ -1,9 +1,11 @@
+import { DatePipe } from '@angular/common';
 import { Component, ElementRef, OnInit, computed, inject, signal, viewChild } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { ApiService } from '../../core/services/api.service';
 import { MetaAuthUrlService, MetaPlatform } from '../../core/services/meta-auth-url.service';
-import { ApiResponse, MetaPage, PlatformCard } from '../../core/models/api.models';
+import { ApiResponse, ConnectionDetails, MetaPage, PlatformCard } from '../../core/models/api.models';
 
 export interface IntegrationCategoryGroup {
   id: string;
@@ -38,7 +40,7 @@ const CATEGORY_ORDER = [
 @Component({
   selector: 'app-integrations',
   standalone: true,
-  imports: [MatButtonModule, MatIconModule],
+  imports: [DatePipe, MatButtonModule, MatIconModule, MatTooltipModule],
   templateUrl: './integrations.component.html',
   styleUrl: './integrations.component.scss'
 })
@@ -56,6 +58,14 @@ export class IntegrationsComponent implements OnInit {
    * viewport — a `position: fixed` panel would anchor to the transformed `.page` wrapper.
    */
   private readonly pickerDialog = viewChild<ElementRef<HTMLDialogElement>>('pickerDialog');
+  private readonly detailsDialog = viewChild<ElementRef<HTMLDialogElement>>('detailsDialog');
+
+  /** Account information popup opened from the eye icon on a connected card. */
+  readonly detailsOpen = signal(false);
+  readonly detailsTitle = signal('');
+  readonly details = signal<ConnectionDetails | null>(null);
+  readonly detailsLoading = signal(false);
+  readonly detailsError = signal('');
 
   /** Page picker state — shown after Meta login so one page is connected at a time. */
   readonly pickerPlatform = signal<MetaPlatform | null>(null);
@@ -242,6 +252,51 @@ export class IntegrationsComponent implements OnInit {
         this.pagesError.set(err?.error?.message || 'Could not connect that page.');
       }
     });
+  }
+
+  openDetails(card: PlatformCard): void {
+    this.detailsTitle.set(card.displayName);
+    this.details.set(null);
+    this.detailsError.set('');
+    this.detailsLoading.set(true);
+    this.detailsOpen.set(true);
+
+    const dialog = this.detailsDialog()?.nativeElement;
+    if (dialog && !dialog.open) dialog.showModal();
+
+    this.api.getConnectionDetails(card.code).subscribe({
+      next: (res: ApiResponse<ConnectionDetails>) => {
+        this.detailsLoading.set(false);
+        if (!res.success) {
+          this.detailsError.set(res.message || 'Could not load account details.');
+          return;
+        }
+        this.details.set(res.data);
+      },
+      error: (err: { error?: { message?: string } }) => {
+        this.detailsLoading.set(false);
+        this.detailsError.set(err?.error?.message || 'Could not load account details.');
+      }
+    });
+  }
+
+  closeDetails(): void {
+    const dialog = this.detailsDialog()?.nativeElement;
+    if (dialog?.open) {
+      dialog.close();
+      return;
+    }
+    this.resetDetails();
+  }
+
+  onDetailsClosed(): void {
+    this.resetDetails();
+  }
+
+  private resetDetails(): void {
+    this.detailsOpen.set(false);
+    this.details.set(null);
+    this.detailsError.set('');
   }
 
   disconnect(card: PlatformCard): void {

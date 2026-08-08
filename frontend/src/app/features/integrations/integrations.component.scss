@@ -213,11 +213,44 @@
   height: 20px;
 }
 
+.stat-top-end {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .stat-label {
   font-size: 0.8rem;
   font-weight: 700;
   color: #64748b;
   text-align: right;
+}
+
+.eye-btn {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border-radius: 9px;
+  cursor: pointer;
+  color: var(--tone, #475569);
+  background: color-mix(in srgb, var(--tone, #475569) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--tone, #475569) 22%, transparent);
+  transition: background 140ms ease, transform 140ms ease;
+
+  &:hover {
+    background: color-mix(in srgb, var(--tone, #475569) 18%, transparent);
+    transform: translateY(-1px);
+  }
+}
+
+.eye-btn mat-icon {
+  font-size: 17px;
+  width: 17px;
+  height: 17px;
 }
 
 .stat.live .stat-label {
@@ -466,6 +499,138 @@
 
 .muted {
   color: var(--app-muted, #94a3b8);
+}
+
+/* Page information popup reuses the dialog chrome with a narrower body */
+.details {
+  width: min(620px, calc(100vw - 32px));
+}
+
+.details-body {
+  flex: 1;
+  overflow: auto;
+  padding: 16px 22px 4px;
+}
+
+.detail-grid {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 12px 18px;
+}
+
+.detail-grid dt {
+  margin: 0 0 3px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--app-muted, #64748b);
+}
+
+.detail-grid dd {
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 600;
+  word-break: break-word;
+}
+
+.detail-grid code {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--app-muted, #475569);
+}
+
+.webhook-block {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--app-border, rgba(15, 23, 42, 0.08));
+}
+
+.webhook-block h3 {
+  margin: 0 0 10px;
+  font-size: 0.95rem;
+  font-family: "Sora", "Space Grotesk", sans-serif;
+}
+
+.webhook-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.webhook-head h3 {
+  margin: 0;
+}
+
+.webhook-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 0.76rem;
+  font-weight: 700;
+  background: rgba(190, 18, 60, 0.1);
+  color: #be123c;
+}
+
+.webhook-state.on {
+  background: rgba(22, 163, 74, 0.12);
+  color: #15803d;
+}
+
+.webhook-state mat-icon {
+  font-size: 15px;
+  width: 15px;
+  height: 15px;
+}
+
+.field-list {
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.field-list li {
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 0.76rem;
+  font-weight: 600;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  background: rgba(37, 99, 235, 0.08);
+  color: #1d4ed8;
+}
+
+.profile-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 8px;
+}
+
+.profile-list li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 9px 12px;
+  border-radius: 10px;
+  font-size: 0.85rem;
+  background: var(--app-surface-soft, #f8fafc);
+}
+
+.profile-list code {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 0.74rem;
+  color: var(--app-muted, #475569);
 }
 
 .picker-foot {

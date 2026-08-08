@@ -228,6 +228,9 @@ public class InstagramService : IInstagramService
     public Task UnsubscribePageWebhooksAsync(string pageId, string pageAccessToken, CancellationToken cancellationToken = default)
         => _graph.UnsubscribePageAsync(GraphVersion, pageId, pageAccessToken, cancellationToken);
 
+    public Task<IReadOnlyList<string>> GetSubscribedFieldsAsync(string pageId, string pageAccessToken, CancellationToken cancellationToken = default)
+        => _graph.GetPageSubscribedFieldsAsync(GraphVersion, pageId, pageAccessToken, cancellationToken);
+
     public async Task ProcessWebhookPayloadAsync(WebhookEvent webhookEvent, CancellationToken cancellationToken = default)
     {
         try

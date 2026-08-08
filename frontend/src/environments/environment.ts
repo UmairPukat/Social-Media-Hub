@@ -5,10 +5,11 @@ export const environment = {
   // Frontend builds Meta auth URLs — backend only stores tokens after OAuth.
   meta: {
     facebook: {
-      appId: 'YOUR_FACEBOOK_APP_ID',
+      appId: '1106538287780623',
       redirectUri: 'http://localhost:4200/integrations/callback/facebook',
       graphVersion: 'v21.0',
-      scopes: 'pages_show_list,pages_read_engagement,pages_manage_posts,pages_manage_engagement,pages_messaging'
+      // pages_read_user_content reads visitor comments; pages_manage_metadata subscribes page webhooks.
+      scopes: 'pages_show_list,pages_read_engagement,pages_read_user_content,pages_manage_metadata,pages_manage_posts,pages_manage_engagement,pages_messaging,business_management'
     },
     instagram: {
       // Same Meta App Id as Facebook — Instagram uses Facebook Login.

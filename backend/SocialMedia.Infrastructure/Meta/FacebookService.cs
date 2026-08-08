@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using SocialMedia.Application.DTOs.Inbox;
 using SocialMedia.Application.DTOs.Meta;
 using SocialMedia.Application.Interfaces;
 using SocialMedia.Application.Settings;
@@ -18,13 +19,20 @@ public class FacebookService : IFacebookService
     private readonly MetaGraphClient _graph;
     private readonly FacebookSettings _settings;
     private readonly IUnitOfWork _unitOfWork;
+    private readonly IInboxRealtimeNotifier _inboxRealtime;
     private readonly ILogger<FacebookService> _logger;
 
-    public FacebookService(MetaGraphClient graph, IOptions<MetaSettings> options, IUnitOfWork unitOfWork, ILogger<FacebookService> logger)
+    public FacebookService(
+        MetaGraphClient graph,
+        IOptions<MetaSettings> options,
+        IUnitOfWork unitOfWork,
+        IInboxRealtimeNotifier inboxRealtime,
+        ILogger<FacebookService> logger)
     {
         _graph = graph;
         _settings = options.Value.Facebook;
         _unitOfWork = unitOfWork;
+        _inboxRealtime = inboxRealtime;
         _logger = logger;
     }
 
@@ -120,6 +128,9 @@ public class FacebookService : IFacebookService
     public Task UnsubscribePageWebhooksAsync(string pageId, string pageAccessToken, CancellationToken cancellationToken = default)
         => _graph.UnsubscribePageAsync(_settings.GraphApiVersion, pageId, pageAccessToken, cancellationToken);
 
+    public Task<IReadOnlyList<string>> GetSubscribedFieldsAsync(string pageId, string pageAccessToken, CancellationToken cancellationToken = default)
+        => _graph.GetPageSubscribedFieldsAsync(_settings.GraphApiVersion, pageId, pageAccessToken, cancellationToken);
+
     public async Task<PostDto> CreatePostAsync(MetaCallContext context, string content, string? mediaUrl, CancellationToken cancellationToken = default)
     {
         var fields = new Dictionary<string, string> { ["message"] = content };
@@ -168,9 +179,13 @@ public class FacebookService : IFacebookService
     public Task DeleteMessageAsync(MetaCallContext context, string messageId, CancellationToken cancellationToken = default)
         => _graph.DeleteAsync(_settings.GraphApiVersion, messageId, context.AccessToken, cancellationToken);
 
+    /// <summary>
+    /// Page webhooks: <c>changes[field=feed]</c> carries posts, comments, and reactions;
+    /// <c>messaging[]</c> carries Messenger threads. Rows are persisted, then pushed to the
+    /// connected Angular client over SignalR.
+    /// </summary>
     public async Task ProcessWebhookPayloadAsync(WebhookEvent webhookEvent, CancellationToken cancellationToken = default)
     {
-        // Persist structured rows from payload into Comment / Message tables when possible.
         try
         {
             using var doc = JsonDocument.Parse(webhookEvent.PayloadJson);
@@ -179,60 +194,27 @@ public class FacebookService : IFacebookService
 
             foreach (var entry in entries.EnumerateArray())
             {
-                var pageId = entry.TryGetProperty("id", out var idEl) ? idEl.GetString() : null;
-                if (pageId is null) continue;
-
-                var profile = await _unitOfWork.SocialProfiles.GetByExternalProfileIdAsync(pageId, cancellationToken);
-                if (profile is null) continue;
-
-                if (!entry.TryGetProperty("changes", out var changes))
+                var pageId = entry.TryGetProperty("id", out var idElement) ? idElement.ToString() : null;
+                if (string.IsNullOrWhiteSpace(pageId))
                     continue;
 
-                foreach (var change in changes.EnumerateArray())
+                var profile = await _unitOfWork.SocialProfiles.GetByExternalProfileIdAsync(pageId, cancellationToken);
+                if (profile is null)
                 {
-                    if (!change.TryGetProperty("value", out var value)) continue;
-                    var commentId = value.TryGetProperty("comment_id", out var cid) ? cid.GetString() : null;
-                    if (string.IsNullOrWhiteSpace(commentId)) continue;
-
-                    // Find or create a placeholder post for parent post_id
-                    var postExternalId = value.TryGetProperty("post_id", out var pid) ? pid.GetString() : pageId;
-                    var posts = await _unitOfWork.Posts.FindAsync(p => p.ExternalPostId == postExternalId, cancellationToken);
-                    var post = posts.FirstOrDefault();
-                    if (post is null)
-                    {
-                        post = new Post
-                        {
-                            SocialProfileId = profile.Id,
-                            PlatformId = profile.SocialAccount?.PlatformId ?? Guid.Empty,
-                            ExternalPostId = postExternalId,
-                            Status = ContentPostStatus.Published,
-                            Text = string.Empty
-                        };
-                        // PlatformId fallback from account
-                        if (post.PlatformId == Guid.Empty && profile.SocialAccountId != Guid.Empty)
-                        {
-                            var account = await _unitOfWork.SocialAccounts.GetByIdAsync(profile.SocialAccountId, cancellationToken);
-                            post.PlatformId = account?.PlatformId ?? Guid.Empty;
-                        }
-                        await _unitOfWork.Posts.AddAsync(post, cancellationToken);
-                        await _unitOfWork.SaveChangesAsync(cancellationToken);
-                    }
-
-                    await _unitOfWork.Comments.AddAsync(new Comment
-                    {
-                        PostId = post.Id,
-                        ExternalCommentId = commentId,
-                        AuthorName = value.TryGetProperty("from", out var from) && from.TryGetProperty("name", out var name)
-                            ? name.GetString() ?? "Unknown" : "Unknown",
-                        AuthorId = value.TryGetProperty("from", out var from2) && from2.TryGetProperty("id", out var fid)
-                            ? fid.GetString() : null,
-                        Message = value.TryGetProperty("message", out var msg) ? msg.GetString() ?? string.Empty : string.Empty,
-                        PlatformCreatedAt = DateTime.UtcNow
-                    }, cancellationToken);
+                    _logger.LogInformation("Facebook webhook ignored — page {PageId} is not connected.", pageId);
+                    continue;
                 }
-            }
 
-            await _unitOfWork.SaveChangesAsync(cancellationToken);
+                var account = await _unitOfWork.SocialAccounts.GetByIdAsync(profile.SocialAccountId, cancellationToken);
+                if (account is null)
+                    continue;
+
+                if (entry.TryGetProperty("changes", out var changes))
+                    await ProcessFeedChangesAsync(profile, account, entry, changes, cancellationToken);
+
+                if (entry.TryGetProperty("messaging", out var messaging))
+                    await ProcessMessagesAsync(profile, account, messaging, cancellationToken);
+            }
         }
         catch (Exception ex)
         {
@@ -240,6 +222,343 @@ public class FacebookService : IFacebookService
             throw;
         }
     }
+
+    private async Task ProcessFeedChangesAsync(
+        SocialProfile profile,
+        SocialAccount account,
+        JsonElement entry,
+        JsonElement changes,
+        CancellationToken cancellationToken)
+    {
+        foreach (var change in changes.EnumerateArray())
+        {
+            var field = change.TryGetProperty("field", out var fieldElement) ? fieldElement.GetString() : null;
+            if (field != "feed" || !change.TryGetProperty("value", out var value))
+                continue;
+
+            var item = value.TryGetProperty("item", out var itemElement) ? itemElement.GetString() : null;
+            var verb = value.TryGetProperty("verb", out var verbElement) ? verbElement.GetString() : "add";
+
+            switch (item)
+            {
+                case "comment":
+                    await ProcessCommentAsync(profile, account, entry, value, verb, cancellationToken);
+                    break;
+                case "reaction":
+                    await ProcessReactionAsync(profile, value, verb, cancellationToken);
+                    break;
+                case "status" or "photo" or "video" or "share" or "link" or "post":
+                    await UpsertPostAsync(profile, account, value, cancellationToken);
+                    break;
+            }
+        }
+    }
+
+    private async Task ProcessCommentAsync(
+        SocialProfile profile,
+        SocialAccount account,
+        JsonElement entry,
+        JsonElement value,
+        string? verb,
+        CancellationToken cancellationToken)
+    {
+        var commentId = value.TryGetProperty("comment_id", out var commentIdElement) ? commentIdElement.ToString() : null;
+        if (string.IsNullOrWhiteSpace(commentId))
+            return;
+
+        var existing = await _unitOfWork.Comments.GetByExternalCommentIdAsync(commentId, cancellationToken);
+        var message = value.TryGetProperty("message", out var messageElement) ? messageElement.GetString() ?? string.Empty : string.Empty;
+
+        if (verb == "remove")
+        {
+            if (existing is null) return;
+            existing.IsDeleted = true;
+            existing.UpdatedAt = DateTime.UtcNow;
+            _unitOfWork.Comments.Update(existing);
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            return;
+        }
+
+        if (existing is not null)
+        {
+            // "edited" replays the same comment id with new text.
+            if (existing.Message == message) return;
+            existing.Message = message;
+            existing.UpdatedAt = DateTime.UtcNow;
+            _unitOfWork.Comments.Update(existing);
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            return;
+        }
+
+        var postExternalId = value.TryGetProperty("post_id", out var postIdElement) ? postIdElement.ToString() : null;
+        if (string.IsNullOrWhiteSpace(postExternalId))
+            return;
+
+        var receivedAt = UnixSeconds(value, "created_time") ?? UnixSeconds(entry, "time") ?? DateTime.UtcNow;
+        var post = await ResolvePostAsync(profile, account, postExternalId!, receivedAt, cancellationToken);
+
+        var authorId = string.Empty;
+        var authorName = "Facebook user";
+        if (value.TryGetProperty("from", out var from))
+        {
+            authorId = from.TryGetProperty("id", out var fromId) ? fromId.ToString() : string.Empty;
+            authorName = from.TryGetProperty("name", out var fromName) ? fromName.GetString() ?? authorName : authorName;
+        }
+
+        // parent_id equals post_id for a top-level comment; only a real reply has a parent comment.
+        Comment? parentComment = null;
+        if (value.TryGetProperty("parent_id", out var parentIdElement))
+        {
+            var parentId = parentIdElement.ToString();
+            if (!string.IsNullOrWhiteSpace(parentId) && parentId != postExternalId)
+                parentComment = await _unitOfWork.Comments.GetByExternalCommentIdAsync(parentId, cancellationToken);
+        }
+
+        var comment = new Comment
+        {
+            PostId = post.Id,
+            ParentCommentId = parentComment?.Id,
+            ExternalCommentId = commentId!,
+            AuthorId = authorId,
+            AuthorName = authorName,
+            Message = message,
+            PlatformCreatedAt = receivedAt
+        };
+        await _unitOfWork.Comments.AddAsync(comment, cancellationToken);
+
+        post.CommentCount += 1;
+        post.UpdatedAt = DateTime.UtcNow;
+        _unitOfWork.Posts.Update(post);
+
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        await _inboxRealtime.NotifyInboxItemAsync(account.UserId, new InboxItemDto
+        {
+            Id = comment.Id,
+            ItemKind = "comment",
+            PlatformCode = "facebook",
+            ExternalId = comment.ExternalCommentId,
+            AuthorName = comment.AuthorName,
+            AuthorId = comment.AuthorId,
+            Content = comment.Message,
+            IsHidden = false,
+            IsRead = false,
+            IsOutgoing = !string.IsNullOrWhiteSpace(authorId) && authorId == profile.ExternalProfileId,
+            ReceivedAt = receivedAt,
+            CommentLikes = 0,
+            ReplyCount = 0,
+            Post = new InboxPostMetaDto
+            {
+                PostId = post.ExternalPostId ?? post.Id.ToString(),
+                PageName = profile.Name ?? profile.Username ?? "Facebook",
+                PostText = post.Text ?? post.Caption ?? string.Empty,
+                LikesCount = post.LikeCount,
+                CommentsCount = post.CommentCount,
+                SharesCount = post.ShareCount,
+                PostedAt = post.PublishedAt ?? post.CreatedAt
+            }
+        }, cancellationToken);
+    }
+
+    private async Task ProcessReactionAsync(
+        SocialProfile profile,
+        JsonElement value,
+        string? verb,
+        CancellationToken cancellationToken)
+    {
+        var postExternalId = value.TryGetProperty("post_id", out var postIdElement) ? postIdElement.ToString() : null;
+        if (string.IsNullOrWhiteSpace(postExternalId))
+            return;
+
+        var post = await _unitOfWork.Posts.GetByExternalPostIdAsync(profile.Id, postExternalId!, cancellationToken);
+        if (post is null)
+            return;
+
+        post.LikeCount = verb == "remove" ? Math.Max(0, post.LikeCount - 1) : post.LikeCount + 1;
+        post.UpdatedAt = DateTime.UtcNow;
+        _unitOfWork.Posts.Update(post);
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+    }
+
+    private async Task UpsertPostAsync(
+        SocialProfile profile,
+        SocialAccount account,
+        JsonElement value,
+        CancellationToken cancellationToken)
+    {
+        var postExternalId = value.TryGetProperty("post_id", out var postIdElement) ? postIdElement.ToString() : null;
+        if (string.IsNullOrWhiteSpace(postExternalId))
+            return;
+
+        var message = value.TryGetProperty("message", out var messageElement) ? messageElement.GetString() : null;
+        var publishedAt = UnixSeconds(value, "created_time") ?? DateTime.UtcNow;
+        var post = await _unitOfWork.Posts.GetByExternalPostIdAsync(profile.Id, postExternalId!, cancellationToken);
+
+        if (post is null)
+        {
+            await _unitOfWork.Posts.AddAsync(new Post
+            {
+                SocialProfileId = profile.Id,
+                PlatformId = account.PlatformId,
+                ExternalPostId = postExternalId,
+                Text = message ?? string.Empty,
+                Caption = message ?? string.Empty,
+                Type = ResolvePostType(value),
+                Status = ContentPostStatus.Published,
+                PublishedAt = publishedAt
+            }, cancellationToken);
+        }
+        else
+        {
+            if (!string.IsNullOrWhiteSpace(message))
+            {
+                post.Text = message;
+                post.Caption = message;
+            }
+            post.Status = ContentPostStatus.Published;
+            post.PublishedAt ??= publishedAt;
+            post.UpdatedAt = DateTime.UtcNow;
+            _unitOfWork.Posts.Update(post);
+        }
+
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+    }
+
+    /// <summary>Comments can arrive before the post is known — keep a stub so nothing is dropped.</summary>
+    private async Task<Post> ResolvePostAsync(
+        SocialProfile profile,
+        SocialAccount account,
+        string postExternalId,
+        DateTime publishedAt,
+        CancellationToken cancellationToken)
+    {
+        var post = await _unitOfWork.Posts.GetByExternalPostIdAsync(profile.Id, postExternalId, cancellationToken);
+        if (post is not null)
+            return post;
+
+        post = new Post
+        {
+            SocialProfileId = profile.Id,
+            PlatformId = account.PlatformId,
+            ExternalPostId = postExternalId,
+            Status = ContentPostStatus.Published,
+            PublishedAt = publishedAt,
+            Text = string.Empty,
+            Caption = string.Empty
+        };
+        await _unitOfWork.Posts.AddAsync(post, cancellationToken);
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+        return post;
+    }
+
+    private async Task ProcessMessagesAsync(
+        SocialProfile profile,
+        SocialAccount account,
+        JsonElement messaging,
+        CancellationToken cancellationToken)
+    {
+        foreach (var item in messaging.EnumerateArray())
+        {
+            if (!item.TryGetProperty("message", out var message))
+                continue;
+
+            var messageId = message.TryGetProperty("mid", out var mid) ? mid.GetString() : null;
+            if (string.IsNullOrWhiteSpace(messageId) ||
+                await _unitOfWork.Messages.GetByExternalMessageIdAsync(messageId, cancellationToken) is not null)
+                continue;
+
+            var senderId = item.TryGetProperty("sender", out var sender) && sender.TryGetProperty("id", out var senderValue)
+                ? senderValue.ToString()
+                : string.Empty;
+            var receiverId = item.TryGetProperty("recipient", out var recipient) && recipient.TryGetProperty("id", out var recipientValue)
+                ? recipientValue.ToString()
+                : string.Empty;
+
+            // Echoes are the page's own replies coming back through the webhook.
+            var isEcho = message.TryGetProperty("is_echo", out var echo) && echo.ValueKind == JsonValueKind.True;
+            var outbound = isEcho || senderId == profile.ExternalProfileId;
+            var customerId = outbound ? receiverId : senderId;
+            if (string.IsNullOrWhiteSpace(customerId))
+                continue;
+
+            var conversationKey = $"{profile.ExternalProfileId}:{customerId}";
+            var conversation = await _unitOfWork.Conversations.GetByExternalConversationIdAsync(
+                profile.Id, conversationKey, cancellationToken);
+            var isNewConversation = conversation is null;
+            if (conversation is null)
+            {
+                conversation = new Conversation
+                {
+                    SocialProfileId = profile.Id,
+                    ExternalConversationId = conversationKey,
+                    CustomerId = customerId,
+                    CustomerName = customerId,
+                    Status = ConversationStatus.Open
+                };
+                await _unitOfWork.Conversations.AddAsync(conversation, cancellationToken);
+            }
+
+            var receivedAt = UnixMilliseconds(item, "timestamp") ?? DateTime.UtcNow;
+            var body = message.TryGetProperty("text", out var text)
+                ? text.GetString()
+                : message.TryGetProperty("attachments", out _) ? "[Facebook attachment]" : string.Empty;
+
+            var row = new Message
+            {
+                ConversationId = conversation.Id,
+                ExternalMessageId = messageId!,
+                SenderId = senderId,
+                ReceiverId = receiverId,
+                Direction = outbound ? MessageDirection.Outbound : MessageDirection.Inbound,
+                MessageType = MessageContentType.Text,
+                Body = body,
+                Status = outbound ? MessageDeliveryStatus.Sent : MessageDeliveryStatus.Delivered,
+                PlatformCreatedAt = receivedAt
+            };
+            await _unitOfWork.Messages.AddAsync(row, cancellationToken);
+
+            conversation.LastMessageAt = receivedAt;
+            conversation.UpdatedAt = DateTime.UtcNow;
+            if (!outbound) conversation.UnreadCount += 1;
+            if (!isNewConversation) _unitOfWork.Conversations.Update(conversation);
+
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+            await _inboxRealtime.NotifyInboxItemAsync(account.UserId, new InboxItemDto
+            {
+                Id = row.Id,
+                ItemKind = "message",
+                PlatformCode = "facebook",
+                ExternalId = row.ExternalMessageId,
+                AuthorName = outbound ? "You" : conversation.CustomerName ?? senderId,
+                AuthorId = senderId,
+                Content = body ?? string.Empty,
+                IsHidden = false,
+                IsRead = outbound,
+                IsOutgoing = outbound,
+                ConversationId = conversation.Id,
+                ReceivedAt = receivedAt
+            }, cancellationToken);
+        }
+    }
+
+    private static ContentPostType ResolvePostType(JsonElement value) =>
+        value.TryGetProperty("item", out var item) ? item.GetString() switch
+        {
+            "photo" => ContentPostType.Image,
+            "video" => ContentPostType.Video,
+            _ => ContentPostType.Text
+        } : ContentPostType.Text;
+
+    private static DateTime? UnixSeconds(JsonElement element, string property)
+        => element.TryGetProperty(property, out var value) && value.TryGetInt64(out var seconds)
+            ? DateTimeOffset.FromUnixTimeSeconds(seconds).UtcDateTime
+            : null;
+
+    private static DateTime? UnixMilliseconds(JsonElement element, string property)
+        => element.TryGetProperty(property, out var value) && value.TryGetInt64(out var milliseconds)
+            ? DateTimeOffset.FromUnixTimeMilliseconds(milliseconds).UtcDateTime
+            : null;
 
     private static List<PostDto> ParsePosts(JsonDocument doc)
     {

@@ -29,4 +29,7 @@ public interface IIntegrationService
 
     /// <summary>Attaches the single page the user picked and subscribes its webhooks.</summary>
     Task<ApiResponse<SocialAccountDto>> SelectPageAsync(Guid userId, SelectPageRequest request, CancellationToken cancellationToken = default);
+
+    /// <summary>Connected page details plus its live webhook subscription, for the details popup.</summary>
+    Task<ApiResponse<ConnectionDetailsDto>> GetConnectionDetailsAsync(Guid userId, string platformCode, CancellationToken cancellationToken = default);
 }

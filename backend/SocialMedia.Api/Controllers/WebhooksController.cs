@@ -60,6 +60,18 @@ public class WebhooksController : ControllerBase
     public Task<IActionResult> InstagramEvents()
         => ReceivePlatformAsync("instagram");
 
+    /// <summary>Single callback URL used in Meta's Facebook Page webhook configuration.</summary>
+    [HttpGet("~/api/webhooks/facebook")]
+    public IActionResult FacebookVerification(
+        [FromQuery(Name = "hub.mode")] string mode,
+        [FromQuery(Name = "hub.challenge")] string challenge,
+        [FromQuery(Name = "hub.verify_token")] string verifyToken)
+        => Connection("facebook", mode, challenge, verifyToken);
+
+    [HttpPost("~/api/webhooks/facebook")]
+    public Task<IActionResult> FacebookEvents()
+        => ReceivePlatformAsync("facebook");
+
     /// <summary>
     /// Authenticated test endpoint — posts a Meta-shaped payload without signature checks.
     /// Use this to verify WebhookLogs + comment/message + SignalR before live Meta events.

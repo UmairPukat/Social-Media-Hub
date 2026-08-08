@@ -355,6 +355,95 @@ public class IntegrationService : IIntegrationService
         }
     }
 
+    public async Task<ApiResponse<ConnectionDetailsDto>> GetConnectionDetailsAsync(
+        Guid userId,
+        string platformCode,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var code = (platformCode ?? string.Empty).Trim().ToLowerInvariant();
+            var platform = await _unitOfWork.Platforms.GetByCodeAsync(code, cancellationToken);
+            if (platform is null)
+                return ApiResponse<ConnectionDetailsDto>.Fail("Unknown platform.");
+
+            var account = await _unitOfWork.SocialAccounts.GetByUserAndPlatformAsync(userId, platform.Id, cancellationToken);
+            if (account is null || account.Status != SocialAccountStatus.Connected)
+                return ApiResponse<ConnectionDetailsDto>.Fail($"{platform.Name} is not connected.");
+
+            var profile = account.Profiles.FirstOrDefault();
+            var pageId = ResolveSelectedPageId(account, code);
+            var isInstagram = code == "instagram";
+
+            var details = new ConnectionDetailsDto
+            {
+                PlatformCode = platform.Code,
+                PlatformName = platform.Name,
+                AccountName = account.DisplayName,
+                Status = account.Status,
+                ConnectedAt = account.ConnectedAt,
+                LastSyncAt = account.LastSyncAt,
+                PageId = pageId,
+                PageName = ReadJsonString(account.MetadataJson, "selectedPageName") ?? profile?.Name,
+                PageImage = profile?.ProfileImage,
+                InstagramId = isInstagram ? profile?.ExternalProfileId : null,
+                InstagramUsername = isInstagram ? profile?.Username : null,
+                Profiles = account.Profiles.Select(p => new SocialProfileDto
+                {
+                    Id = p.Id,
+                    ExternalProfileId = p.ExternalProfileId,
+                    ProfileType = p.ProfileType.ToString(),
+                    Name = p.Name,
+                    Username = p.Username
+                }).ToList()
+            };
+
+            await ApplyWebhookStatusAsync(details, code, pageId, account.Auth?.AccessToken, cancellationToken);
+            return ApiResponse<ConnectionDetailsDto>.Ok(details);
+        }
+        catch (Exception ex)
+        {
+            return ApiResponse<ConnectionDetailsDto>.Fail(ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// Reads the page's live subscription so the popup shows whether webhooks really arrive.
+    /// A failure here is reported in the DTO rather than failing the whole request.
+    /// </summary>
+    private async Task ApplyWebhookStatusAsync(
+        ConnectionDetailsDto details,
+        string platformCode,
+        string? pageId,
+        string? pageAccessToken,
+        CancellationToken cancellationToken)
+    {
+        if (!SupportsPageSelection(platformCode))
+            return;
+
+        if (string.IsNullOrWhiteSpace(pageId) || string.IsNullOrWhiteSpace(pageAccessToken))
+        {
+            details.WebhookError = "No page is selected yet, so no webhook subscription exists.";
+            return;
+        }
+
+        try
+        {
+            var fields = platformCode == "instagram"
+                ? await _instagramService.GetSubscribedFieldsAsync(pageId!, pageAccessToken!, cancellationToken)
+                : await _facebookService.GetSubscribedFieldsAsync(pageId!, pageAccessToken!, cancellationToken);
+
+            details.SubscribedFields = fields;
+            details.WebhookSubscribed = fields.Count > 0;
+            if (fields.Count == 0)
+                details.WebhookError = "The page is not subscribed to any webhook fields yet.";
+        }
+        catch (Exception ex)
+        {
+            details.WebhookError = ex.Message;
+        }
+    }
+
     /// <summary>
     /// Subscribes the picked page to webhook fields. Returns null on success, or the reason to
     /// surface — a failed subscription must not undo an otherwise successful connection.

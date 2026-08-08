@@ -58,4 +58,12 @@ public class IntegrationsController : ControllerBase
         var response = await _integrationService.SelectPageAsync(User.GetUserId(), model);
         return Ok(response);
     }
+
+    /// <summary>Connected page details and live webhook subscription for the details popup.</summary>
+    [HttpGet]
+    public async Task<IActionResult> GetConnectionDetails([FromQuery] string platformCode)
+    {
+        var response = await _integrationService.GetConnectionDetailsAsync(User.GetUserId(), platformCode);
+        return Ok(response);
+    }
 }

@@ -7,7 +7,7 @@ export const environment = {
       appId: "1106538287780623",
       redirectUri: "https://socialfrontend-production.up.railway.app/integrations/callback/facebook",
       graphVersion: "v21.0",
-      scopes: 'pages_show_list,pages_read_engagement,pages_manage_posts,pages_manage_engagement,pages_messaging'
+      scopes: 'pages_show_list,pages_read_engagement,pages_read_user_content,pages_manage_metadata,pages_manage_posts,pages_manage_engagement,pages_messaging,business_management'
     },
     instagram: {
       appId: "1106538287780623",

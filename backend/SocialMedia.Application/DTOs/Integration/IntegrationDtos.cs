@@ -85,6 +85,34 @@ public class SelectPageRequest
     public string PageId { get; set; } = string.Empty;
 }
 
+/// <summary>
+/// Everything shown in the connected-account details popup, including a live read of the
+/// page's webhook subscription so a broken setup is visible without opening Meta.
+/// </summary>
+public class ConnectionDetailsDto
+{
+    public string PlatformCode { get; set; } = string.Empty;
+    public string PlatformName { get; set; } = string.Empty;
+    public string AccountName { get; set; } = string.Empty;
+    public SocialAccountStatus Status { get; set; }
+    public DateTime? ConnectedAt { get; set; }
+    public DateTime? LastSyncAt { get; set; }
+
+    public string? PageId { get; set; }
+    public string? PageName { get; set; }
+    public string? PageImage { get; set; }
+    public string? InstagramId { get; set; }
+    public string? InstagramUsername { get; set; }
+
+    public bool WebhookSubscribed { get; set; }
+    public IReadOnlyList<string> SubscribedFields { get; set; } = Array.Empty<string>();
+
+    /// <summary>Why the live subscription check failed, when it did.</summary>
+    public string? WebhookError { get; set; }
+
+    public IReadOnlyList<SocialProfileDto> Profiles { get; set; } = Array.Empty<SocialProfileDto>();
+}
+
 public class SocialProfileDto
 {
     public Guid Id { get; set; }

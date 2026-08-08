@@ -65,6 +65,25 @@ export interface SocialAccount {
   requiresPageSelection?: boolean;
 }
 
+/** Connected page details shown in the account information popup. */
+export interface ConnectionDetails {
+  platformCode: string;
+  platformName: string;
+  accountName: string;
+  status: number;
+  connectedAt?: string;
+  lastSyncAt?: string;
+  pageId?: string;
+  pageName?: string;
+  pageImage?: string;
+  instagramId?: string;
+  instagramUsername?: string;
+  webhookSubscribed: boolean;
+  subscribedFields: string[];
+  webhookError?: string;
+  profiles: SocialProfile[];
+}
+
 /** A Facebook Page offered in the page picker after Meta login. */
 export interface MetaPage {
   pageId: string;

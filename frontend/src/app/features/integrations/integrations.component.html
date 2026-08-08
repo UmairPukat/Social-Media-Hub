@@ -66,9 +66,21 @@
                 <span class="stat-ico">
                   <mat-icon>{{ platformIcon(card.code) }}</mat-icon>
                 </span>
-                <span class="stat-label">
-                  {{ card.isConnected ? 'Connected' : card.canConnect ? 'Ready' : 'Soon' }}
-                </span>
+                <div class="stat-top-end">
+                  <span class="stat-label">
+                    {{ card.isConnected ? 'Connected' : card.canConnect ? 'Ready' : 'Soon' }}
+                  </span>
+                  @if (card.isConnected && supportsPageSelection(card.code)) {
+                    <button
+                      type="button"
+                      class="eye-btn"
+                      matTooltip="View page information"
+                      [attr.aria-label]="'View ' + card.displayName + ' page information'"
+                      (click)="openDetails(card)">
+                      <mat-icon>visibility</mat-icon>
+                    </button>
+                  }
+                </div>
               </div>
 
               <strong class="stat-value">{{ card.displayName }}</strong>
@@ -213,6 +225,114 @@
             (click)="confirmPage()">
             {{ savingPage() ? 'Connecting…' : 'Continue' }}
           </button>
+        </div>
+      </footer>
+    }
+  </dialog>
+
+  <dialog #detailsDialog class="picker details" aria-labelledby="page-details-title" (close)="onDetailsClosed()">
+    @if (detailsOpen()) {
+      <header class="picker-head">
+        <div>
+          <p class="eyebrow">{{ detailsTitle() }}</p>
+          <h2 id="page-details-title">Page information</h2>
+          <p class="picker-lede">Connection, page identity, and the webhook fields Meta is sending right now.</p>
+        </div>
+        <button type="button" class="picker-close" aria-label="Close" (click)="closeDetails()">
+          <mat-icon>close</mat-icon>
+        </button>
+      </header>
+
+      <div class="details-body">
+        @if (detailsLoading()) {
+          <p class="picker-empty">Loading page information…</p>
+        } @else if (detailsError()) {
+          <p class="picker-error">{{ detailsError() }}</p>
+        }
+
+        @if (details(); as info) {
+          <dl class="detail-grid">
+            <div>
+              <dt>Meta login</dt>
+              <dd>{{ info.accountName || '—' }}</dd>
+            </div>
+            <div>
+              <dt>Page name</dt>
+              <dd>{{ info.pageName || 'No page selected' }}</dd>
+            </div>
+            <div>
+              <dt>Page ID</dt>
+              <dd><code>{{ info.pageId || '—' }}</code></dd>
+            </div>
+            @if (info.platformCode.toLowerCase() === 'instagram') {
+              <div>
+                <dt>Instagram account</dt>
+                <dd>
+                  @if (info.instagramUsername) {
+                    <span class="ig-handle">&#64;{{ info.instagramUsername }}</span>
+                  } @else {
+                    <span class="muted">Not linked</span>
+                  }
+                </dd>
+              </div>
+              <div>
+                <dt>Instagram ID</dt>
+                <dd><code>{{ info.instagramId || '—' }}</code></dd>
+              </div>
+            }
+            <div>
+              <dt>Connected</dt>
+              <dd>{{ info.connectedAt ? (info.connectedAt | date: 'medium') : '—' }}</dd>
+            </div>
+            <div>
+              <dt>Last sync</dt>
+              <dd>{{ info.lastSyncAt ? (info.lastSyncAt | date: 'medium') : 'Not synced yet' }}</dd>
+            </div>
+          </dl>
+
+          <section class="webhook-block">
+            <div class="webhook-head">
+              <h3>Webhooks</h3>
+              <span class="webhook-state" [class.on]="info.webhookSubscribed">
+                <mat-icon>{{ info.webhookSubscribed ? 'check_circle' : 'error_outline' }}</mat-icon>
+                {{ info.webhookSubscribed ? 'Subscribed' : 'Not subscribed' }}
+              </span>
+            </div>
+
+            @if (info.subscribedFields.length) {
+              <ul class="field-list">
+                @for (field of info.subscribedFields; track field) {
+                  <li>{{ field }}</li>
+                }
+              </ul>
+            }
+
+            @if (info.webhookError) {
+              <p class="picker-error">{{ info.webhookError }}</p>
+            }
+          </section>
+
+          @if (info.profiles.length) {
+            <section class="webhook-block">
+              <h3>Connected profiles</h3>
+              <ul class="profile-list">
+                @for (profile of info.profiles; track profile.id) {
+                  <li>
+                    <strong>{{ profile.name }}</strong>
+                    <span class="muted">{{ profile.profileType }}</span>
+                    <code>{{ profile.externalProfileId }}</code>
+                  </li>
+                }
+              </ul>
+            </section>
+          }
+        }
+      </div>
+
+      <footer class="picker-foot">
+        <span class="picker-count">Read-only view</span>
+        <div class="picker-actions">
+          <button mat-flat-button color="primary" type="button" (click)="closeDetails()">Close</button>
         </div>
       </footer>
     }

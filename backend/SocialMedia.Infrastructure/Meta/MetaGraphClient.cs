@@ -263,7 +263,38 @@ public class MetaGraphClient
         return SendWithBearerAsync(HttpMethod.Delete, url, pageAccessToken, cancellationToken);
     }
 
-    private async Task SendWithBearerAsync(
+    /// <summary>GET {pageId}/subscribed_apps — the webhook fields this app currently receives.</summary>
+    public async Task<IReadOnlyList<string>> GetPageSubscribedFieldsAsync(
+        string version,
+        string pageId,
+        string pageAccessToken,
+        CancellationToken cancellationToken)
+    {
+        var url = BuildUrl(FacebookGraphHost, version, $"{pageId}/subscribed_apps", string.Empty);
+        var body = await SendWithBearerAsync(HttpMethod.Get, url, pageAccessToken, cancellationToken);
+
+        var fields = new List<string>();
+        using var doc = JsonDocument.Parse(body);
+        if (!doc.RootElement.TryGetProperty("data", out var data))
+            return fields;
+
+        foreach (var app in data.EnumerateArray())
+        {
+            if (!app.TryGetProperty("subscribed_fields", out var subscribed))
+                continue;
+
+            foreach (var field in subscribed.EnumerateArray())
+            {
+                var name = field.GetString();
+                if (!string.IsNullOrWhiteSpace(name) && !fields.Contains(name!))
+                    fields.Add(name!);
+            }
+        }
+
+        return fields;
+    }
+
+    private async Task<string> SendWithBearerAsync(
         HttpMethod method,
         string url,
         string accessToken,
@@ -277,6 +308,8 @@ public class MetaGraphClient
 
         if (!response.IsSuccessStatusCode)
             throw new InvalidOperationException($"Meta Graph {method} failed ({(int)response.StatusCode}): {body}");
+
+        return body;
     }
 
     private async Task<JsonDocument> GetUrlAsync(string url, CancellationToken cancellationToken)

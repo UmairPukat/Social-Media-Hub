@@ -4,6 +4,7 @@ import { Observable } from 'rxjs';
 import { environment } from '../../../environments/environment';
 import {
   ApiResponse,
+  ConnectionDetails,
   DashboardSummary,
   InboxItem,
   MetaPage,
@@ -52,6 +53,12 @@ export class ApiService {
       platformCode,
       pageId
     });
+  }
+
+  getConnectionDetails(platformCode: string): Observable<ApiResponse<ConnectionDetails>> {
+    return this.http.get<ApiResponse<ConnectionDetails>>(
+      `${this.base}/Integrations/GetConnectionDetails?platformCode=${encodeURIComponent(platformCode)}`
+    );
   }
 
   disconnect(platformCode: string): Observable<ApiResponse<object>> {

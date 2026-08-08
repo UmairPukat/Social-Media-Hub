@@ -41,6 +41,9 @@ public interface IFacebookService
 
     /// <summary>DELETE {pageId}/subscribed_apps — drops the page subscription on disconnect.</summary>
     Task UnsubscribePageWebhooksAsync(string pageId, string pageAccessToken, CancellationToken cancellationToken = default);
+
+    /// <summary>GET {pageId}/subscribed_apps — webhook fields the page currently sends.</summary>
+    Task<IReadOnlyList<string>> GetSubscribedFieldsAsync(string pageId, string pageAccessToken, CancellationToken cancellationToken = default);
 }
 
 public interface IInstagramService
@@ -68,6 +71,9 @@ public interface IInstagramService
 
     /// <summary>DELETE {pageId}/subscribed_apps — drops the page subscription on disconnect.</summary>
     Task UnsubscribePageWebhooksAsync(string pageId, string pageAccessToken, CancellationToken cancellationToken = default);
+
+    /// <summary>GET {pageId}/subscribed_apps — webhook fields the page currently sends.</summary>
+    Task<IReadOnlyList<string>> GetSubscribedFieldsAsync(string pageId, string pageAccessToken, CancellationToken cancellationToken = default);
 }
 
 public interface IWhatsAppService
