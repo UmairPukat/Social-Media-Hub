@@ -41,15 +41,12 @@ App: http://localhost:4200
 
 1. Create a Meta App in developers.facebook.com
 2. Put App Id / Secret into `backend/SocialMedia.Api/appsettings.json` → `MetaSettings`
-3. Add OAuth redirect URIs:
-   - http://localhost:4200/oauth/facebook/callback
-   - http://localhost:4200/oauth/instagram/callback
-   - http://localhost:4200/oauth/whatsapp/callback
-4. Point webhooks to your public HTTPS URL:
-   - GET/POST `/api/webhooks/facebook`
-   - GET/POST `/api/webhooks/instagram`
-   - GET/POST `/api/webhooks/whatsapp`
-5. Match verify tokens with `MetaSettings.*WebhookVerifyToken`
+3. Add **one** OAuth redirect URI (Facebook Login → Valid OAuth Redirect URIs):
+   - Local: `http://localhost:4200/integrations/callback`
+   - Production: `https://<your-frontend>/integrations/callback`
+4. Point **all** product webhooks to one Callback URL:
+   - `GET/POST https://<your-backend>/api/webhooks`
+5. Use the same verify token in Meta for each product, or any of the tokens in `MetaSettings.*WebhookVerifyToken` (the shared endpoint accepts all of them).
 
 ## Implemented platform capabilities
 

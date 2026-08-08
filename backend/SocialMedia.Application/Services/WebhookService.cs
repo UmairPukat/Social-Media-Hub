@@ -37,9 +37,27 @@ public class WebhookService : IWebhookService
         _meta = metaOptions.Value;
     }
 
-    public string? VerifyConnection(string platformCode, string mode, string challenge, string verifyToken)
+    public string? VerifyConnection(string? platformCode, string mode, string challenge, string verifyToken)
     {
-        var expected = platformCode.ToLowerInvariant() switch
+        if (mode != "subscribe" || string.IsNullOrWhiteSpace(verifyToken) || string.IsNullOrWhiteSpace(challenge))
+            return null;
+
+        var code = platformCode?.Trim().ToLowerInvariant();
+        if (string.IsNullOrWhiteSpace(code) || code is "meta" or "all")
+        {
+            // Shared callback: accept whichever product Meta is verifying.
+            var tokens = new[]
+            {
+                _meta.Facebook.WebhookVerifyToken,
+                _meta.Instagram.WebhookVerifyToken,
+                _meta.WhatsApp.WebhookVerifyToken
+            };
+            return tokens.Any(t => !string.IsNullOrWhiteSpace(t) && t == verifyToken)
+                ? challenge
+                : null;
+        }
+
+        var expected = code switch
         {
             "facebook" => _meta.Facebook.WebhookVerifyToken,
             "instagram" => _meta.Instagram.WebhookVerifyToken,
@@ -47,25 +65,12 @@ public class WebhookService : IWebhookService
             _ => null
         };
 
-        if (mode == "subscribe" && expected is not null && verifyToken == expected)
-            return challenge;
-
-        return null;
+        return expected is not null && verifyToken == expected ? challenge : null;
     }
 
-    public bool IsSignatureValid(string platformCode, string payloadJson, string? signature)
+    public bool IsSignatureValid(string? platformCode, string payloadJson, string? signature)
     {
-        var appSecret = platformCode.ToLowerInvariant() switch
-        {
-            "facebook" => _meta.Facebook.AppSecret,
-            "instagram" => !string.IsNullOrWhiteSpace(_meta.Instagram.AppSecret)
-                ? _meta.Instagram.AppSecret
-                : _meta.Facebook.AppSecret,
-            "whatsapp" => _meta.WhatsApp.AppSecret,
-            _ => string.Empty
-        };
-        if (string.IsNullOrWhiteSpace(appSecret) ||
-            string.IsNullOrWhiteSpace(signature) ||
+        if (string.IsNullOrWhiteSpace(signature) ||
             !signature.StartsWith("sha256=", StringComparison.OrdinalIgnoreCase))
             return false;
 
@@ -79,10 +84,76 @@ public class WebhookService : IWebhookService
             return false;
         }
 
-        using var hmac = new HMACSHA256(Encoding.UTF8.GetBytes(appSecret));
-        var expected = hmac.ComputeHash(Encoding.UTF8.GetBytes(payloadJson));
-        return supplied.Length == expected.Length &&
-               CryptographicOperations.FixedTimeEquals(supplied, expected);
+        foreach (var appSecret in ResolveAppSecrets(platformCode, payloadJson))
+        {
+            using var hmac = new HMACSHA256(Encoding.UTF8.GetBytes(appSecret));
+            var expected = hmac.ComputeHash(Encoding.UTF8.GetBytes(payloadJson));
+            if (supplied.Length == expected.Length &&
+                CryptographicOperations.FixedTimeEquals(supplied, expected))
+                return true;
+        }
+
+        return false;
+    }
+
+    public string? DetectPlatformFromPayload(string payloadJson)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(payloadJson);
+            if (!doc.RootElement.TryGetProperty("object", out var objectElement))
+                return null;
+
+            return objectElement.GetString() switch
+            {
+                "page" => "facebook",
+                "instagram" => "instagram",
+                "whatsapp_business_account" => "whatsapp",
+                _ => null
+            };
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    private IEnumerable<string> ResolveAppSecrets(string? platformCode, string payloadJson)
+    {
+        var code = platformCode?.Trim().ToLowerInvariant();
+        if (string.IsNullOrWhiteSpace(code) || code is "meta" or "all")
+            code = DetectPlatformFromPayload(payloadJson);
+
+        var secrets = new List<string>();
+        void Add(string? secret)
+        {
+            if (!string.IsNullOrWhiteSpace(secret) && !secrets.Contains(secret))
+                secrets.Add(secret);
+        }
+
+        switch (code)
+        {
+            case "facebook":
+                Add(_meta.Facebook.AppSecret);
+                break;
+            case "instagram":
+                Add(!string.IsNullOrWhiteSpace(_meta.Instagram.AppSecret)
+                    ? _meta.Instagram.AppSecret
+                    : _meta.Facebook.AppSecret);
+                Add(_meta.Facebook.AppSecret);
+                break;
+            case "whatsapp":
+                Add(_meta.WhatsApp.AppSecret);
+                Add(_meta.Facebook.AppSecret);
+                break;
+            default:
+                Add(_meta.Facebook.AppSecret);
+                Add(_meta.Instagram.AppSecret);
+                Add(_meta.WhatsApp.AppSecret);
+                break;
+        }
+
+        return secrets;
     }
 
     public async Task<ApiResponse<object>> SubscribeAsync(string platformCode, string? callbackUrl, CancellationToken cancellationToken = default)

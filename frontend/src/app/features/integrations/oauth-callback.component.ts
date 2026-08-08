@@ -4,8 +4,8 @@ import { ApiService } from '../../core/services/api.service';
 import { META_OAUTH_MESSAGE, MetaAuthUrlService, MetaPlatform } from '../../core/services/meta-auth-url.service';
 
 /**
- * Meta redirects here with ?code=...&state=...
- * Exchanges the code via Integrations/*Callback, then notifies the opener popup parent.
+ * Shared Meta OAuth landing page for Facebook, Instagram, and WhatsApp.
+ * Meta redirects here with ?code=...&state=facebook.<nonce> (platform lives in state).
  */
 @Component({
   selector: 'app-oauth-callback',
@@ -36,13 +36,17 @@ export class OAuthCallbackComponent implements OnInit {
   readonly status = signal('Connecting your account…');
 
   ngOnInit(): void {
-    const platform = (this.route.snapshot.paramMap.get('platform') || '').toLowerCase() as MetaPlatform;
+    const params = this.route.snapshot.queryParamMap;
+    const pathPlatform = (this.route.snapshot.paramMap.get('platform') || '').toLowerCase();
+    const parsed = this.metaAuth.parseState(params.get('state'));
+
+    // Prefer platform encoded in OAuth state; fall back to legacy /callback/:platform route.
+    const platform = (parsed?.platform || pathPlatform) as MetaPlatform;
     if (!['facebook', 'instagram', 'whatsapp'].includes(platform)) {
       this.fail(platform || 'unknown', 'Unknown platform.');
       return;
     }
 
-    const params = this.route.snapshot.queryParamMap;
     const error = params.get('error_description') || params.get('error');
     if (error) {
       this.fail(platform, error);
@@ -50,18 +54,27 @@ export class OAuthCallbackComponent implements OnInit {
     }
 
     const code = params.get('code');
-    const state = params.get('state');
-    const expected = sessionStorage.getItem(`smh_oauth_state_${platform}`);
     if (!code) {
       this.fail(platform, 'Missing authorization code.');
       return;
     }
-    if (!expected || !state || expected !== state) {
+
+    if (parsed && !parsed.valid) {
       this.fail(platform, 'Invalid OAuth state.');
       return;
     }
 
-    sessionStorage.removeItem(`smh_oauth_state_${platform}`);
+    // Legacy path-only callback: still require the old per-platform session key.
+    if (!parsed) {
+      const expected = sessionStorage.getItem(`smh_oauth_state_${platform}`);
+      const state = params.get('state');
+      if (!expected || !state || expected !== state) {
+        this.fail(platform, 'Invalid OAuth state.');
+        return;
+      }
+    }
+
+    this.metaAuth.clearState(platform);
 
     this.api.oauthCallback(platform, {
       code,

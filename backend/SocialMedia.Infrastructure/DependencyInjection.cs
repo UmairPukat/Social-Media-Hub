@@ -23,29 +23,7 @@ public static class DependencyInjection
 
         services.AddDbContext<AppDbContext>(options =>
         {
-            // Prefer DATABASE_URL when Railway (or other hosts) provide it.
-            var databaseUrl = Environment.GetEnvironmentVariable("DATABASE_URL");
-            string connectionString;
-
-            if (!string.IsNullOrWhiteSpace(databaseUrl))
-            {
-                connectionString = BuildNpgsqlFromUrl(databaseUrl);
-            }
-            else
-            {
-                var host = Environment.GetEnvironmentVariable("PGHOST") ?? "localhost";
-                var port = Environment.GetEnvironmentVariable("PGPORT") ?? "5432";
-                var user = Environment.GetEnvironmentVariable("PGUSER") ?? "postgres";
-                var password = Environment.GetEnvironmentVariable("PGPASSWORD") ?? "";
-                var database = Environment.GetEnvironmentVariable("PGDATABASE") ?? "postgres";
-                // Prefer = try SSL, fall back if server has no SSL (fixes local / some Railway setups).
-                // Override with PGSSLMODE=Require|Disable|VerifyFull as needed.
-                var sslMode = Environment.GetEnvironmentVariable("PGSSLMODE") ?? "Prefer";
-                connectionString =
-                    $"Host={host};Port={port};Username={user};Password={password};Database={database};SSL Mode={sslMode};Trust Server Certificate=true";
-            }
-
-            options.UseNpgsql(connectionString);
+            options.UseNpgsql(ResolveConnectionString(configuration));
         });
 
         services.AddScoped<IUserRepository, UserRepository>();
@@ -105,6 +83,31 @@ public static class DependencyInjection
 
         services.AddAuthorization();
         return services;
+    }
+
+    /// <summary>
+    /// Resolves Postgres in order: DATABASE_URL → ConnectionStrings:Default → PG* env vars.
+    /// </summary>
+    private static string ResolveConnectionString(IConfiguration configuration)
+    {
+        var databaseUrl = Environment.GetEnvironmentVariable("DATABASE_URL");
+        if (!string.IsNullOrWhiteSpace(databaseUrl))
+            return BuildNpgsqlFromUrl(databaseUrl);
+
+        var fromConfig = configuration.GetConnectionString("Default")
+            ?? configuration.GetConnectionString("DefaultConnection");
+        if (!string.IsNullOrWhiteSpace(fromConfig))
+            return fromConfig;
+
+        var host = Environment.GetEnvironmentVariable("PGHOST") ?? "localhost";
+        var port = Environment.GetEnvironmentVariable("PGPORT") ?? "5432";
+        var user = Environment.GetEnvironmentVariable("PGUSER") ?? "postgres";
+        var password = Environment.GetEnvironmentVariable("PGPASSWORD") ?? "";
+        var database = Environment.GetEnvironmentVariable("PGDATABASE") ?? "postgres";
+        // Prefer = try SSL, fall back if server has no SSL (fixes local / some Railway setups).
+        var sslMode = Environment.GetEnvironmentVariable("PGSSLMODE") ?? "Prefer";
+        return
+            $"Host={host};Port={port};Username={user};Password={password};Database={database};SSL Mode={sslMode};Trust Server Certificate=true";
     }
 
     /// <summary>

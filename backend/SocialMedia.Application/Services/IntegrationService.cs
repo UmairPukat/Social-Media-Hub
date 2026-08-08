@@ -141,18 +141,28 @@ public class IntegrationService : IIntegrationService
         }
     }
 
-    private string ResolveRedirectUri(string platformCode, string? fromRequest) =>
-        !string.IsNullOrWhiteSpace(fromRequest)
-            ? fromRequest!
-            : platformCode switch
-            {
-                "facebook" => _meta.Facebook.RedirectUri,
-                "instagram" => string.IsNullOrWhiteSpace(_meta.Instagram.RedirectUri)
-                    ? _meta.Facebook.RedirectUri
-                    : _meta.Instagram.RedirectUri,
-                "whatsapp" => _meta.WhatsApp.RedirectUri,
-                _ => string.Empty
-            };
+    private string ResolveRedirectUri(string platformCode, string? fromRequest)
+    {
+        if (!string.IsNullOrWhiteSpace(fromRequest))
+            return fromRequest!;
+
+        // Prefer a single shared callback URI; fall back to the first configured value.
+        var shared = FirstNonEmpty(
+            _meta.Facebook.RedirectUri,
+            _meta.Instagram.RedirectUri,
+            _meta.WhatsApp.RedirectUri);
+
+        return platformCode switch
+        {
+            "facebook" => FirstNonEmpty(_meta.Facebook.RedirectUri, shared),
+            "instagram" => FirstNonEmpty(_meta.Instagram.RedirectUri, _meta.Facebook.RedirectUri, shared),
+            "whatsapp" => FirstNonEmpty(_meta.WhatsApp.RedirectUri, shared),
+            _ => string.Empty
+        };
+    }
+
+    private static string FirstNonEmpty(params string?[] values)
+        => values.FirstOrDefault(v => !string.IsNullOrWhiteSpace(v)) ?? string.Empty;
 
     private async Task<ApiResponse<SocialAccountDto>> PersistConnectedAccountAsync(
         Guid userId,

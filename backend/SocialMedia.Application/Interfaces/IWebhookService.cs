@@ -8,11 +8,20 @@ namespace SocialMedia.Application.Interfaces;
 /// </summary>
 public interface IWebhookService
 {
-    /// <summary>Returns challenge when Meta verifies the webhook subscription.</summary>
-    string? VerifyConnection(string platformCode, string mode, string challenge, string verifyToken);
+    /// <summary>
+    /// Returns the challenge when Meta verifies a webhook subscription.
+    /// Pass <paramref name="platformCode"/> as null/"meta" to accept any configured verify token
+    /// (used by the shared <c>/api/webhooks</c> callback).
+    /// </summary>
+    string? VerifyConnection(string? platformCode, string mode, string challenge, string verifyToken);
 
-    /// <summary>Validates Meta's X-Hub-Signature-256 against the raw request body.</summary>
-    bool IsSignatureValid(string platformCode, string payloadJson, string? signature);
+    /// <summary>
+    /// Validates Meta's X-Hub-Signature-256. When platform is unknown, tries every configured app secret.
+    /// </summary>
+    bool IsSignatureValid(string? platformCode, string payloadJson, string? signature);
+
+    /// <summary>Reads Meta's <c>object</c> field so a shared webhook URL can route the delivery.</summary>
+    string? DetectPlatformFromPayload(string payloadJson);
 
     /// <summary>Registers webhook subscription intent (stores verify config status).</summary>
     Task<ApiResponse<object>> SubscribeAsync(string platformCode, string? callbackUrl, CancellationToken cancellationToken = default);

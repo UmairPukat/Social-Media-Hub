@@ -7,7 +7,14 @@ export const routes: Routes = [
     loadComponent: () => import('./features/auth/login/login.component').then(m => m.LoginComponent)
   },
   {
-    // Meta OAuth popup lands here (must match environment.meta.*.redirectUri).
+    // Shared Meta OAuth popup landing (must match environment.meta.redirectUri).
+    path: 'integrations/callback',
+    canActivate: [authGuard],
+    loadComponent: () =>
+      import('./features/integrations/oauth-callback.component').then(m => m.OAuthCallbackComponent)
+  },
+  {
+    // Legacy per-platform callback — kept so old Meta Valid OAuth Redirect URIs still work.
     path: 'integrations/callback/:platform',
     canActivate: [authGuard],
     loadComponent: () =>

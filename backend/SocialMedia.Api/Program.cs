@@ -8,6 +8,12 @@ using SocialMedia.Infrastructure.Persistence;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Local secrets (gitignored): appsettings.Development.local.json, etc.
+builder.Configuration.AddJsonFile(
+    $"appsettings.{builder.Environment.EnvironmentName}.local.json",
+    optional: true,
+    reloadOnChange: true);
+
 // Map flat Railway env vars (instagramAppId, JwtSecretKey, …) into nested settings.
 builder.Configuration.AddRailwayFlatEnv();
 

@@ -21,6 +21,10 @@ public static class RailwayEnvConfiguration
         MapPlatform(mapped, "instagram", "Instagram");
         MapPlatform(mapped, "whatsapp", "WhatsApp");
 
+        // One shared OAuth callback for every Meta product when metaRedirectUri is set.
+        MapSharedRedirect(mapped, "metaRedirectUri");
+        MapSharedRedirect(mapped, "META_REDIRECT_URI");
+
         Map(mapped, "whatsappPhoneNumberId", "MetaSettings:WhatsApp:PhoneNumberId");
         Map(mapped, "whatsappWabaId", "MetaSettings:WhatsApp:WabaId");
 
@@ -37,6 +41,24 @@ public static class RailwayEnvConfiguration
         Map(mapped, $"{prefix}RedirectUri", $"MetaSettings:{section}:RedirectUri");
         Map(mapped, $"{prefix}GraphApiVersion", $"MetaSettings:{section}:GraphApiVersion");
         Map(mapped, $"{prefix}WebhookVerifyToken", $"MetaSettings:{section}:WebhookVerifyToken");
+    }
+
+    private static void MapSharedRedirect(IDictionary<string, string?> mapped, string envName)
+    {
+        var value = Environment.GetEnvironmentVariable(envName);
+        if (string.IsNullOrWhiteSpace(value))
+            return;
+
+        foreach (var section in new[] { "Facebook", "Instagram", "WhatsApp" })
+        {
+            var configKey = $"MetaSettings:{section}:RedirectUri";
+            var nestedEnv = configKey.Replace(":", "__");
+            if (!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(nestedEnv)))
+                continue;
+            if (mapped.ContainsKey(configKey))
+                continue;
+            mapped[configKey] = value.Trim();
+        }
     }
 
     private static void Map(IDictionary<string, string?> mapped, string envName, string configKey)
