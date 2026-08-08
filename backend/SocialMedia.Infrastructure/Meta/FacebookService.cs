@@ -148,6 +148,45 @@ public class FacebookService : IFacebookService
         return ParsePosts(doc);
     }
 
+    public async Task<RemotePostSnapshot?> GetPostSnapshotAsync(string pageAccessToken, string postId, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(pageAccessToken) || string.IsNullOrWhiteSpace(postId))
+            return null;
+
+        using var doc = await _graph.GetAsync(_settings.GraphApiVersion, postId, pageAccessToken, cancellationToken,
+            ("fields", "id,message,story,permalink_url,created_time,full_picture,shares,likes.summary(true),comments.summary(true)"));
+
+        var root = doc.RootElement;
+        return new RemotePostSnapshot
+        {
+            ExternalId = root.TryGetProperty("id", out var id) ? id.GetString() ?? postId : postId,
+            Text = FirstNonEmpty(
+                root.TryGetProperty("message", out var message) ? message.GetString() : null,
+                root.TryGetProperty("story", out var story) ? story.GetString() : null),
+            Permalink = root.TryGetProperty("permalink_url", out var permalink) ? permalink.GetString() : null,
+            MediaUrl = root.TryGetProperty("full_picture", out var picture) ? picture.GetString() : null,
+            LikeCount = ReadSummaryCount(root, "likes"),
+            CommentCount = ReadSummaryCount(root, "comments"),
+            ShareCount = root.TryGetProperty("shares", out var shares) &&
+                         shares.TryGetProperty("count", out var shareCount) &&
+                         shareCount.TryGetInt32(out var shareValue)
+                ? shareValue
+                : 0,
+            CreatedTime = root.TryGetProperty("created_time", out var created) &&
+                          DateTime.TryParse(created.GetString(), out var createdAt)
+                ? createdAt.ToUniversalTime()
+                : null
+        };
+    }
+
+    private static int ReadSummaryCount(JsonElement root, string edge)
+        => root.TryGetProperty(edge, out var element) &&
+           element.TryGetProperty("summary", out var summary) &&
+           summary.TryGetProperty("total_count", out var total) &&
+           total.TryGetInt32(out var count)
+            ? count
+            : 0;
+
     public async Task<IReadOnlyList<CommentDto>> GetCommentsAsync(MetaCallContext context, string postId, CancellationToken cancellationToken = default)
     {
         using var doc = await _graph.GetAsync(_settings.GraphApiVersion, $"{postId}/comments", context.AccessToken, cancellationToken,
@@ -205,13 +244,9 @@ public class FacebookService : IFacebookService
                     continue;
                 }
 
-                var profile = await _unitOfWork.SocialProfiles.GetByExternalProfileIdAsync(pageId, cancellationToken);
+                var profile = await ResolveProfileAsync(pageId!, result, cancellationToken);
                 if (profile is null)
-                {
-                    _logger.LogInformation("Facebook webhook ignored — page {PageId} is not connected.", pageId);
-                    result.Skip($"No connected Facebook page matches entry id '{pageId}'.");
                     continue;
-                }
 
                 var account = await _unitOfWork.SocialAccounts.GetByIdAsync(profile.SocialAccountId, cancellationToken);
                 if (account is null)
@@ -236,6 +271,41 @@ public class FacebookService : IFacebookService
             throw;
         }
     }
+
+    /// <summary>
+    /// Matches the delivery to a connected page. Meta's "Send to My Server" test tool always sends
+    /// <c>entry.id = "0"</c>, so those fall back to a connected page instead of being dropped.
+    /// </summary>
+    private async Task<SocialProfile?> ResolveProfileAsync(
+        string pageId,
+        WebhookProcessResult result,
+        CancellationToken cancellationToken)
+    {
+        var profile = await _unitOfWork.SocialProfiles.GetByExternalProfileIdAsync(pageId, cancellationToken);
+        if (profile is not null)
+            return profile;
+
+        if (IsTestDeliveryId(pageId))
+        {
+            var pages = await _unitOfWork.SocialProfiles.FindAsync(
+                p => p.ProfileType == ProfileType.FacebookPage, cancellationToken);
+            profile = pages.OrderByDescending(p => p.CreatedAt).FirstOrDefault();
+
+            if (profile is not null)
+            {
+                result.Skip($"Test delivery (entry id '{pageId}') applied to connected page '{profile.Name}'.");
+                return profile;
+            }
+        }
+
+        _logger.LogInformation("Facebook webhook ignored — page {PageId} is not connected.", pageId);
+        result.Skip($"No connected Facebook page matches entry id '{pageId}'.");
+        return null;
+    }
+
+    /// <summary>Meta's webhook test tool sends placeholder ids rather than a real page id.</summary>
+    private static bool IsTestDeliveryId(string? id)
+        => string.IsNullOrWhiteSpace(id) || id == "0";
 
     private async Task ProcessChangesAsync(
         SocialProfile profile,
@@ -346,7 +416,7 @@ public class FacebookService : IFacebookService
         }
 
         var receivedAt = UnixSeconds(value, "created_time") ?? UnixSeconds(entry, "time") ?? DateTime.UtcNow;
-        var post = await ResolvePostAsync(profile, account, postExternalId!, receivedAt, cancellationToken);
+        var post = await ResolvePostAsync(profile, account, postExternalId!, receivedAt, cancellationToken: cancellationToken);
 
         var authorId = string.Empty;
         var authorName = "Facebook user";
@@ -457,64 +527,58 @@ public class FacebookService : IFacebookService
 
         var message = value.TryGetProperty("message", out var messageElement) ? messageElement.GetString() : null;
         var publishedAt = UnixSeconds(value, "created_time") ?? DateTime.UtcNow;
-        var post = await _unitOfWork.Posts.GetByExternalPostIdAsync(profile.Id, postExternalId!, cancellationToken);
 
-        if (post is null)
+        var post = await ResolvePostAsync(profile, account, postExternalId!, publishedAt, message, cancellationToken: cancellationToken);
+
+        // The payload is authoritative for feed updates, since edits arrive as a new change.
+        if (!string.IsNullOrWhiteSpace(message) && post.Text != message)
         {
-            await _unitOfWork.Posts.AddAsync(new Post
-            {
-                SocialProfileId = profile.Id,
-                PlatformId = account.PlatformId,
-                ExternalPostId = postExternalId,
-                Text = message ?? string.Empty,
-                Caption = message ?? string.Empty,
-                Type = ResolvePostType(value),
-                Status = ContentPostStatus.Published,
-                PublishedAt = publishedAt
-            }, cancellationToken);
+            post.Text = message;
+            post.Caption = message;
         }
-        else
-        {
-            if (!string.IsNullOrWhiteSpace(message))
-            {
-                post.Text = message;
-                post.Caption = message;
-            }
-            post.Status = ContentPostStatus.Published;
-            post.PublishedAt ??= publishedAt;
-            post.UpdatedAt = DateTime.UtcNow;
-            _unitOfWork.Posts.Update(post);
-        }
+
+        post.Type = ResolvePostType(value);
+        post.Status = ContentPostStatus.Published;
+        post.PublishedAt ??= publishedAt;
+        post.UpdatedAt = DateTime.UtcNow;
+        _unitOfWork.Posts.Update(post);
 
         await _unitOfWork.SaveChangesAsync(cancellationToken);
         result.Handled++;
     }
 
-    /// <summary>Comments can arrive before the post is known — keep a stub so nothing is dropped.</summary>
+    /// <summary>
+    /// Comments can arrive before the post is stored, so the post is read from Graph and saved
+    /// first. Placeholder ids from the webhook test tool keep a readable stub instead.
+    /// </summary>
     private async Task<Post> ResolvePostAsync(
         SocialProfile profile,
         SocialAccount account,
         string postExternalId,
         DateTime publishedAt,
-        CancellationToken cancellationToken)
+        string? knownText = null,
+        CancellationToken cancellationToken = default)
     {
-        var post = await _unitOfWork.Posts.GetByExternalPostIdAsync(profile.Id, postExternalId, cancellationToken);
-        if (post is not null)
-            return post;
+        var pageToken = await ResolvePageTokenAsync(account, cancellationToken);
 
-        post = new Post
-        {
-            SocialProfileId = profile.Id,
-            PlatformId = account.PlatformId,
-            ExternalPostId = postExternalId,
-            Status = ContentPostStatus.Published,
-            PublishedAt = publishedAt,
-            Text = string.Empty,
-            Caption = string.Empty
-        };
-        await _unitOfWork.Posts.AddAsync(post, cancellationToken);
-        await _unitOfWork.SaveChangesAsync(cancellationToken);
-        return post;
+        return await MetaPostStore.ResolveAsync(
+            _unitOfWork,
+            profile,
+            account.PlatformId,
+            postExternalId,
+            publishedAt,
+            ct => GetPostSnapshotAsync(pageToken ?? string.Empty, postExternalId, ct),
+            string.IsNullOrWhiteSpace(knownText) ? $"Facebook post {postExternalId}" : knownText!,
+            cancellationToken);
+    }
+
+    private async Task<string?> ResolvePageTokenAsync(SocialAccount account, CancellationToken cancellationToken)
+    {
+        if (!string.IsNullOrWhiteSpace(account.Auth?.AccessToken))
+            return account.Auth!.AccessToken;
+
+        var auth = await _unitOfWork.SocialAuths.GetBySocialAccountIdAsync(account.Id, cancellationToken);
+        return string.IsNullOrWhiteSpace(auth?.AccessToken) ? null : auth!.AccessToken;
     }
 
     private static string FirstNonEmpty(params string?[] values)

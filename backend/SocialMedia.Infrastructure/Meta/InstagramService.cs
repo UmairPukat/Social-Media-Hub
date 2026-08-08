@@ -168,6 +168,34 @@ public class InstagramService : IInstagramService
         };
     }
 
+    public async Task<RemotePostSnapshot?> GetMediaSnapshotAsync(string accessToken, string mediaId, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(accessToken) || string.IsNullOrWhiteSpace(mediaId))
+            return null;
+
+        using var doc = await _graph.GetAsync(GraphVersion, mediaId, accessToken, cancellationToken,
+            ("fields", "id,caption,media_type,media_url,thumbnail_url,permalink,timestamp,like_count,comments_count"));
+
+        var root = doc.RootElement;
+        var mediaType = root.TryGetProperty("media_type", out var type) ? type.GetString() : null;
+
+        return new RemotePostSnapshot
+        {
+            ExternalId = root.TryGetProperty("id", out var id) ? id.GetString() ?? mediaId : mediaId,
+            Text = root.TryGetProperty("caption", out var caption) ? caption.GetString() : null,
+            Permalink = root.TryGetProperty("permalink", out var permalink) ? permalink.GetString() : null,
+            MediaUrl = root.TryGetProperty("media_url", out var mediaUrl) ? mediaUrl.GetString() : null,
+            ThumbnailUrl = root.TryGetProperty("thumbnail_url", out var thumbnail) ? thumbnail.GetString() : null,
+            IsVideo = string.Equals(mediaType, "VIDEO", StringComparison.OrdinalIgnoreCase),
+            LikeCount = root.TryGetProperty("like_count", out var likes) && likes.TryGetInt32(out var likeCount) ? likeCount : 0,
+            CommentCount = root.TryGetProperty("comments_count", out var comments) && comments.TryGetInt32(out var commentCount) ? commentCount : 0,
+            CreatedTime = root.TryGetProperty("timestamp", out var timestamp) &&
+                          DateTime.TryParse(timestamp.GetString(), out var createdAt)
+                ? createdAt.ToUniversalTime()
+                : null
+        };
+    }
+
     public async Task<IReadOnlyList<PostDto>> GetPostsAsync(MetaCallContext context, CancellationToken cancellationToken = default)
     {
         using var doc = await _graph.GetAsync(GraphVersion, $"{context.ProfileExternalId}/media", context.AccessToken, cancellationToken,
@@ -252,15 +280,9 @@ public class InstagramService : IInstagramService
                     continue;
                 }
 
-                // Facebook Login webhooks may key entry.id to IG user or Page id.
-                var profile = await _unitOfWork.SocialProfiles.GetByExternalProfileIdAsync(igUserId, cancellationToken)
-                    ?? await FindProfileByPageIdAsync(igUserId, cancellationToken);
+                var profile = await ResolveProfileAsync(igUserId!, result, cancellationToken);
                 if (profile is null)
-                {
-                    _logger.LogInformation("Instagram webhook ignored — no profile matches entry {EntryId}.", igUserId);
-                    result.Skip($"No connected Instagram profile matches entry id '{igUserId}'.");
                     continue;
-                }
 
                 if (entry.TryGetProperty("changes", out var changes))
                     await ProcessChangesAsync(profile, entry, changes, result, cancellationToken);
@@ -277,6 +299,47 @@ public class InstagramService : IInstagramService
             _logger.LogError(ex, "Instagram webhook processing failed for {Id}", webhookEvent.Id);
             throw;
         }
+    }
+
+    /// <summary>
+    /// Facebook Login webhooks key <c>entry.id</c> to the IG user or the linked Page. Meta's
+    /// "Send to My Server" test tool sends <c>"0"</c>, so those fall back to a connected profile.
+    /// </summary>
+    private async Task<SocialProfile?> ResolveProfileAsync(
+        string entryId,
+        WebhookProcessResult result,
+        CancellationToken cancellationToken)
+    {
+        var profile = await _unitOfWork.SocialProfiles.GetByExternalProfileIdAsync(entryId, cancellationToken)
+            ?? await FindProfileByPageIdAsync(entryId, cancellationToken);
+        if (profile is not null)
+            return profile;
+
+        if (string.IsNullOrWhiteSpace(entryId) || entryId == "0")
+        {
+            var profiles = await _unitOfWork.SocialProfiles.FindAsync(
+                p => p.ProfileType == ProfileType.InstagramBusiness, cancellationToken);
+            profile = profiles.OrderByDescending(p => p.CreatedAt).FirstOrDefault();
+
+            if (profile is not null)
+            {
+                result.Skip($"Test delivery (entry id '{entryId}') applied to connected profile '{profile.Name}'.");
+                return profile;
+            }
+        }
+
+        _logger.LogInformation("Instagram webhook ignored — no profile matches entry {EntryId}.", entryId);
+        result.Skip($"No connected Instagram profile matches entry id '{entryId}'.");
+        return null;
+    }
+
+    private async Task<string?> ResolveAccessTokenAsync(SocialAccount account, CancellationToken cancellationToken)
+    {
+        if (!string.IsNullOrWhiteSpace(account.Auth?.AccessToken))
+            return account.Auth!.AccessToken;
+
+        var auth = await _unitOfWork.SocialAuths.GetBySocialAccountIdAsync(account.Id, cancellationToken);
+        return string.IsNullOrWhiteSpace(auth?.AccessToken) ? null : auth!.AccessToken;
     }
 
     private async Task<SocialProfile?> FindProfileByPageIdAsync(string pageId, CancellationToken cancellationToken)
@@ -352,23 +415,17 @@ public class InstagramService : IInstagramService
                 continue;
             }
 
-            // Attach to existing post by media/post id; create a stub post if missing.
-            var post = await _unitOfWork.Posts.GetByExternalPostIdAsync(profile.Id, mediaId, cancellationToken);
-            var isNewPost = post is null;
-            if (post is null)
-            {
-                post = new Post
-                {
-                    SocialProfileId = profile.Id,
-                    PlatformId = account.PlatformId,
-                    ExternalPostId = mediaId,
-                    Status = ContentPostStatus.Published,
-                    PublishedAt = UnixSeconds(entry, "time"),
-                    Text = string.Empty,
-                    Caption = string.Empty
-                };
-                await _unitOfWork.Posts.AddAsync(post, cancellationToken);
-            }
+            // Attach to the stored post; otherwise read the media from Graph and store it first.
+            var pageToken = await ResolveAccessTokenAsync(account, cancellationToken);
+            var post = await MetaPostStore.ResolveAsync(
+                _unitOfWork,
+                profile,
+                account.PlatformId,
+                mediaId!,
+                UnixSeconds(entry, "time") ?? DateTime.UtcNow,
+                ct => GetMediaSnapshotAsync(pageToken ?? string.Empty, mediaId!, ct),
+                $"Instagram media {mediaId}",
+                cancellationToken);
 
             var authorId = string.Empty;
             var authorName = "Instagram user";
@@ -401,7 +458,8 @@ public class InstagramService : IInstagramService
             };
             await _unitOfWork.Comments.AddAsync(comment, cancellationToken);
             post.CommentCount += 1;
-            if (!isNewPost) _unitOfWork.Posts.Update(post);
+            post.UpdatedAt = DateTime.UtcNow;
+            _unitOfWork.Posts.Update(post);
 
             await _unitOfWork.SaveChangesAsync(cancellationToken);
             result.Handled++;

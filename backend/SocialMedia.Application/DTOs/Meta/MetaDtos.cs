@@ -64,3 +64,21 @@ public class PostDto
     public string? Permalink { get; set; }
     public DateTime? CreatedTime { get; set; }
 }
+
+/// <summary>
+/// A single post/media read back from Graph so a webhook comment can be shown with the
+/// same post context Meta displays: text, image, and engagement counts.
+/// </summary>
+public class RemotePostSnapshot
+{
+    public string ExternalId { get; set; } = string.Empty;
+    public string? Text { get; set; }
+    public string? Permalink { get; set; }
+    public string? MediaUrl { get; set; }
+    public string? ThumbnailUrl { get; set; }
+    public bool IsVideo { get; set; }
+    public int LikeCount { get; set; }
+    public int CommentCount { get; set; }
+    public int ShareCount { get; set; }
+    public DateTime? CreatedTime { get; set; }
+}
