@@ -14,13 +14,6 @@ export const routes: Routes = [
       import('./features/integrations/oauth-callback.component').then(m => m.OAuthCallbackComponent)
   },
   {
-    // Legacy per-platform callback — kept so old Meta Valid OAuth Redirect URIs still work.
-    path: 'integrations/callback/:platform',
-    canActivate: [authGuard],
-    loadComponent: () =>
-      import('./features/integrations/oauth-callback.component').then(m => m.OAuthCallbackComponent)
-  },
-  {
     path: 'app',
     canActivate: [authGuard],
     loadComponent: () => import('./layout/shell/shell.component').then(m => m.ShellComponent),

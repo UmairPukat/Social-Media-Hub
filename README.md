@@ -59,13 +59,12 @@ Configure Meta App credentials:
 SQL Server: `DefaultConnection` → `SocialMediaHubDb` on `DESKTOP-6L1G3DP`.
 
 ### Webhook endpoints (backend only)
-- Shared (preferred): `GET/POST /api/webhooks`
-- Legacy aliases: `/api/webhooks/facebook`, `/api/webhooks/instagram`, `/api/webhooks/whatsapp`
+- Shared Meta callback: `GET/POST /api/webhooks`
 
 ### Connect flow
 1. User clicks **Connect** → frontend opens Meta Login popup
 2. Meta redirects to `/integrations/callback?code=...&state=facebook.<nonce>` (same URL for Instagram / WhatsApp)
-3. Callback page POSTs the code to `Integrations/FacebookCallback` (or Instagram / WhatsApp)
+3. Callback page POSTs the code plus its platform to `Integrations/ExchangeAuthCode`
 4. Backend exchanges code (with App Secret), stores SocialAccount → SocialAuth → SocialProfiles → SyncJob
 
 Account listing / disconnect live on `SocialAccounts` (`GetPlatformCards`, `GetConnectedAccounts`, `Disconnect`).

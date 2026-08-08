@@ -22,7 +22,7 @@ export class MetaAuthUrlService {
   buildAuthUrl(platform: MetaPlatform, state: string): string {
     const cfg = environment.meta[platform];
     const version = cfg.graphVersion || 'v21.0';
-    const redirectUri = this.getRedirectUri(platform);
+    const redirectUri = this.getRedirectUri();
     // Instagram uses Facebook Login (same dialog) — not Instagram Business Login.
     return `https://www.facebook.com/${version}/dialog/oauth`
       + `?client_id=${encodeURIComponent(cfg.appId)}`
@@ -32,16 +32,14 @@ export class MetaAuthUrlService {
       + `&response_type=code`;
   }
 
-  getRedirectUri(_platform?: MetaPlatform): string {
+  getRedirectUri(): string {
     return sharedMetaRedirectUri();
   }
 
   /** Encodes platform into state so the shared callback can finish the right flow. */
   createState(platform: MetaPlatform): string {
-    const nonce = crypto.randomUUID();
-    const state = `${platform}.${nonce}`;
+    const state = `${platform}.${crypto.randomUUID()}`;
     sessionStorage.setItem('smh_oauth_state', state);
-    sessionStorage.setItem(`smh_oauth_state_${platform}`, state);
     return state;
   }
 
@@ -53,15 +51,12 @@ export class MetaAuthUrlService {
     const platform = state.slice(0, dot).toLowerCase() as MetaPlatform;
     if (!['facebook', 'instagram', 'whatsapp'].includes(platform)) return null;
 
-    const expected =
-      sessionStorage.getItem('smh_oauth_state') ||
-      sessionStorage.getItem(`smh_oauth_state_${platform}`);
+    const expected = sessionStorage.getItem('smh_oauth_state');
     return { platform, valid: !!expected && expected === state };
   }
 
-  clearState(platform: MetaPlatform): void {
+  clearState(_platform?: MetaPlatform): void {
     sessionStorage.removeItem('smh_oauth_state');
-    sessionStorage.removeItem(`smh_oauth_state_${platform}`);
   }
 
   isConfigured(platform: MetaPlatform): boolean {

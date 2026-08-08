@@ -37,13 +37,16 @@ export class OAuthCallbackComponent implements OnInit {
 
   ngOnInit(): void {
     const params = this.route.snapshot.queryParamMap;
-    const pathPlatform = (this.route.snapshot.paramMap.get('platform') || '').toLowerCase();
     const parsed = this.metaAuth.parseState(params.get('state'));
 
-    // Prefer platform encoded in OAuth state; fall back to legacy /callback/:platform route.
-    const platform = (parsed?.platform || pathPlatform) as MetaPlatform;
-    if (!['facebook', 'instagram', 'whatsapp'].includes(platform)) {
-      this.fail(platform || 'unknown', 'Unknown platform.');
+    if (!parsed) {
+      this.fail('unknown', 'Missing or invalid OAuth state.');
+      return;
+    }
+
+    const platform = parsed.platform;
+    if (!parsed.valid) {
+      this.fail(platform, 'Invalid OAuth state.');
       return;
     }
 
@@ -59,26 +62,11 @@ export class OAuthCallbackComponent implements OnInit {
       return;
     }
 
-    if (parsed && !parsed.valid) {
-      this.fail(platform, 'Invalid OAuth state.');
-      return;
-    }
-
-    // Legacy path-only callback: still require the old per-platform session key.
-    if (!parsed) {
-      const expected = sessionStorage.getItem(`smh_oauth_state_${platform}`);
-      const state = params.get('state');
-      if (!expected || !state || expected !== state) {
-        this.fail(platform, 'Invalid OAuth state.');
-        return;
-      }
-    }
-
     this.metaAuth.clearState(platform);
 
-    this.api.oauthCallback(platform, {
+    this.api.exchangeAuthCode(platform, {
       code,
-      redirectUri: this.metaAuth.getRedirectUri(platform)
+      redirectUri: this.metaAuth.getRedirectUri()
     }).subscribe({
       next: (res) => {
         if (!res.success) {

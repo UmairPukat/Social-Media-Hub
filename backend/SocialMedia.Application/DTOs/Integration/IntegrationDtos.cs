@@ -26,6 +26,9 @@ public class PlatformCardDto
 /// </summary>
 public class OAuthCallbackRequest
 {
+    /// <summary>Which Meta product the code belongs to: facebook, instagram, or whatsapp.</summary>
+    public string PlatformCode { get; set; } = string.Empty;
+
     /// <summary>Authorization code returned by Meta in the redirect query string.</summary>
     public string Code { get; set; } = string.Empty;
 

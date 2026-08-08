@@ -96,8 +96,9 @@ export interface MetaPage {
   isSelected: boolean;
 }
 
-/** Sent to Integrations/*Callback after Meta popup returns `code`. */
+/** Sent to Integrations/ExchangeAuthCode after Meta redirects to /integrations/callback. */
 export interface OAuthCallbackRequest {
+  platformCode?: string;
   code: string;
   redirectUri?: string;
 }

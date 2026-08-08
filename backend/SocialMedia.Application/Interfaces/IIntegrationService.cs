@@ -15,14 +15,11 @@ public interface IIntegrationService
 
     Task<ApiResponse<object>> DisconnectAsync(Guid userId, string platformCode, CancellationToken cancellationToken = default);
 
-    /// <summary>Facebook Login popup callback — exchanges code and connects the account.</summary>
-    Task<ApiResponse<SocialAccountDto>> FacebookCallbackAsync(Guid userId, OAuthCallbackRequest request, CancellationToken cancellationToken = default);
-
-    /// <summary>Instagram via Facebook Login popup callback.</summary>
-    Task<ApiResponse<SocialAccountDto>> InstagramCallbackAsync(Guid userId, OAuthCallbackRequest request, CancellationToken cancellationToken = default);
-
-    /// <summary>WhatsApp Facebook Login popup callback.</summary>
-    Task<ApiResponse<SocialAccountDto>> WhatsAppCallbackAsync(Guid userId, OAuthCallbackRequest request, CancellationToken cancellationToken = default);
+    /// <summary>
+    /// Exchanges a Meta authorization code for Facebook, Instagram, or WhatsApp.
+    /// Called by the frontend after Meta redirects to <c>/integrations/callback</c>.
+    /// </summary>
+    Task<ApiResponse<SocialAccountDto>> ExchangeAuthCodeAsync(Guid userId, OAuthCallbackRequest request, CancellationToken cancellationToken = default);
 
     /// <summary>Facebook Pages granted by the stored user token, for the page picker.</summary>
     Task<ApiResponse<IReadOnlyList<MetaPageDto>>> GetPagesAsync(Guid userId, string platformCode, CancellationToken cancellationToken = default);

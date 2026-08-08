@@ -22,24 +22,15 @@ public class IntegrationsController : ControllerBase
         _integrationService = integrationService;
     }
 
+    /// <summary>
+    /// Exchanges a Meta authorization code for tokens and connects the account.
+    /// Not Meta's redirect URI — that is the frontend page
+    /// <c>/integrations/callback</c>. This API is called by that page after Meta redirects.
+    /// </summary>
     [HttpPost]
-    public async Task<IActionResult> FacebookCallback([FromBody] OAuthCallbackRequest model)
+    public async Task<IActionResult> Callback([FromBody] OAuthCallbackRequest model)
     {
-        var response = await _integrationService.FacebookCallbackAsync(User.GetUserId(), model);
-        return Ok(response);
-    }
-
-    [HttpPost]
-    public async Task<IActionResult> InstagramCallback([FromBody] OAuthCallbackRequest model)
-    {
-        var response = await _integrationService.InstagramCallbackAsync(User.GetUserId(), model);
-        return Ok(response);
-    }
-
-    [HttpPost]
-    public async Task<IActionResult> WhatsAppCallback([FromBody] OAuthCallbackRequest model)
-    {
-        var response = await _integrationService.WhatsAppCallbackAsync(User.GetUserId(), model);
+        var response = await _integrationService.ExchangeAuthCodeAsync(User.GetUserId(), model);
         return Ok(response);
     }
 

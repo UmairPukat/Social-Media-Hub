@@ -34,12 +34,12 @@ export class ApiService {
     return this.http.get<ApiResponse<SocialAccount[]>>(`${this.base}/SocialAccounts/GetConnectedAccounts`);
   }
 
-  oauthCallback(platform: MetaPlatform, body: OAuthCallbackRequest): Observable<ApiResponse<SocialAccount>> {
-    const action =
-      platform === 'facebook' ? 'FacebookCallback'
-      : platform === 'instagram' ? 'InstagramCallback'
-      : 'WhatsAppCallback';
-    return this.http.post<ApiResponse<SocialAccount>>(`${this.base}/Integrations/${action}`, body);
+  /** Called by the frontend OAuth page after Meta redirects with a code. Not Meta's redirect URI. */
+  exchangeAuthCode(platform: MetaPlatform, body: OAuthCallbackRequest): Observable<ApiResponse<SocialAccount>> {
+    return this.http.post<ApiResponse<SocialAccount>>(`${this.base}/Integrations/ExchangeAuthCode`, {
+      ...body,
+      platformCode: platform
+    });
   }
 
   getMetaPages(platformCode: string): Observable<ApiResponse<MetaPage[]>> {

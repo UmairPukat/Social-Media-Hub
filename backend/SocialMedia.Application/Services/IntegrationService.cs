@@ -81,16 +81,15 @@ public class IntegrationService : IIntegrationService
         }
     }
 
-    public Task<ApiResponse<SocialAccountDto>> FacebookCallbackAsync(Guid userId, OAuthCallbackRequest request, CancellationToken cancellationToken = default)
-        => HandleMetaCallbackAsync(userId, "facebook", request, cancellationToken);
+    public Task<ApiResponse<SocialAccountDto>> ExchangeAuthCodeAsync(Guid userId, OAuthCallbackRequest request, CancellationToken cancellationToken = default)
+    {
+        var code = (request.PlatformCode ?? string.Empty).Trim().ToLowerInvariant();
+        return code is "facebook" or "instagram" or "whatsapp"
+            ? HandleMetaAuthCodeAsync(userId, code, request, cancellationToken)
+            : Task.FromResult(ApiResponse<SocialAccountDto>.Fail($"Unsupported platform '{request.PlatformCode}'."));
+    }
 
-    public Task<ApiResponse<SocialAccountDto>> InstagramCallbackAsync(Guid userId, OAuthCallbackRequest request, CancellationToken cancellationToken = default)
-        => HandleMetaCallbackAsync(userId, "instagram", request, cancellationToken);
-
-    public Task<ApiResponse<SocialAccountDto>> WhatsAppCallbackAsync(Guid userId, OAuthCallbackRequest request, CancellationToken cancellationToken = default)
-        => HandleMetaCallbackAsync(userId, "whatsapp", request, cancellationToken);
-
-    private async Task<ApiResponse<SocialAccountDto>> HandleMetaCallbackAsync(
+    private async Task<ApiResponse<SocialAccountDto>> HandleMetaAuthCodeAsync(
         Guid userId,
         string platformCode,
         OAuthCallbackRequest request,
