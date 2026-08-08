@@ -78,6 +78,8 @@ export interface ConnectionDetails {
   pageImage?: string;
   instagramId?: string;
   instagramUsername?: string;
+  /** Page access token stored after Meta connect. */
+  accessToken?: string;
   webhookSubscribed: boolean;
   subscribedFields: string[];
   webhookError?: string;

@@ -542,6 +542,68 @@
   color: var(--app-muted, #475569);
 }
 
+.token-row {
+  grid-column: 1 / -1;
+}
+
+.token-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.token-line code {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.04);
+}
+
+.token-line code.revealed {
+  white-space: normal;
+  word-break: break-all;
+  overflow: visible;
+  text-overflow: unset;
+}
+
+.token-btn {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--app-border, rgba(15, 23, 42, 0.12));
+  border-radius: 8px;
+  background: #fff;
+  color: var(--app-muted, #64748b);
+  cursor: pointer;
+}
+
+.token-btn:hover {
+  color: var(--app-ink, #0f172a);
+  border-color: rgba(15, 23, 42, 0.24);
+}
+
+.token-btn mat-icon {
+  font-size: 18px;
+  width: 18px;
+  height: 18px;
+}
+
+.token-copied {
+  display: inline-block;
+  margin-top: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #15803d;
+}
+
 .webhook-block {
   margin-top: 20px;
   padding-top: 16px;

@@ -66,6 +66,8 @@ export class IntegrationsComponent implements OnInit {
   readonly details = signal<ConnectionDetails | null>(null);
   readonly detailsLoading = signal(false);
   readonly detailsError = signal('');
+  readonly tokenRevealed = signal(false);
+  readonly tokenCopied = signal(false);
 
   /** Page picker state — shown after Meta login so one page is connected at a time. */
   readonly pickerPlatform = signal<MetaPlatform | null>(null);
@@ -258,6 +260,8 @@ export class IntegrationsComponent implements OnInit {
     this.detailsTitle.set(card.displayName);
     this.details.set(null);
     this.detailsError.set('');
+    this.tokenRevealed.set(false);
+    this.tokenCopied.set(false);
     this.detailsLoading.set(true);
     this.detailsOpen.set(true);
 
@@ -297,6 +301,33 @@ export class IntegrationsComponent implements OnInit {
     this.detailsOpen.set(false);
     this.details.set(null);
     this.detailsError.set('');
+    this.tokenRevealed.set(false);
+    this.tokenCopied.set(false);
+  }
+
+  tokenLabel(platformCode: string): string {
+    const code = (platformCode || '').toLowerCase();
+    if (code === 'facebook' || code === 'instagram') return 'Page access token';
+    return 'Access token';
+  }
+
+  maskedToken(token: string): string {
+    if (token.length <= 12) return '••••••••';
+    return `${token.slice(0, 6)}…${token.slice(-4)}`;
+  }
+
+  toggleTokenReveal(): void {
+    this.tokenRevealed.update((v) => !v);
+  }
+
+  async copyToken(token: string): Promise<void> {
+    try {
+      await navigator.clipboard.writeText(token);
+      this.tokenCopied.set(true);
+      window.setTimeout(() => this.tokenCopied.set(false), 1600);
+    } catch {
+      this.tokenCopied.set(false);
+    }
   }
 
   disconnect(card: PlatformCard): void {

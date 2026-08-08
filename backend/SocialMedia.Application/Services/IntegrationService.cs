@@ -541,6 +541,9 @@ public class IntegrationService : IIntegrationService
                 PageImage = profile?.ProfileImage,
                 InstagramId = isInstagram ? profile?.ExternalProfileId : null,
                 InstagramUsername = isInstagram ? profile?.Username : null,
+                AccessToken = string.IsNullOrWhiteSpace(account.Auth?.AccessToken)
+                    ? null
+                    : account.Auth!.AccessToken,
                 Profiles = account.Profiles.Select(p => new SocialProfileDto
                 {
                     Id = p.Id,

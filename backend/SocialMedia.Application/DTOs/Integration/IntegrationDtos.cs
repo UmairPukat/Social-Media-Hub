@@ -129,6 +129,12 @@ public class ConnectionDetailsDto
     public string? InstagramId { get; set; }
     public string? InstagramUsername { get; set; }
 
+    /// <summary>
+    /// Page access token stored after Meta connect (Facebook Page token for both Facebook and Instagram).
+    /// Empty when the account is connected but the token was cleared.
+    /// </summary>
+    public string? AccessToken { get; set; }
+
     public bool WebhookSubscribed { get; set; }
     public IReadOnlyList<string> SubscribedFields { get; set; } = Array.Empty<string>();
 
