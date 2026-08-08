@@ -1,3 +1,5 @@
+using System.Text;
+using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using SocialMedia.Api.Extensions;
@@ -7,8 +9,8 @@ using SocialMedia.Application.Interfaces;
 namespace SocialMedia.Api.Controllers;
 
 /// <summary>
-/// Meta OAuth callbacks only. Frontend opens a Meta popup; Meta redirects with <c>code</c>;
-/// these actions exchange the code server-side and connect the account.
+/// Meta OAuth. Valid OAuth Redirect URI in Meta must be:
+/// <c>GET /api/Integrations/Callback</c> on this backend.
 /// </summary>
 [Authorize]
 [Route("api/[controller]/[action]")]
@@ -23,15 +25,33 @@ public class IntegrationsController : ControllerBase
     }
 
     /// <summary>
-    /// Exchanges a Meta authorization code for tokens and connects the account.
-    /// Not Meta's redirect URI — that is the frontend page
-    /// <c>/integrations/callback</c>. This API is called by that page after Meta redirects.
+    /// Authenticated start — builds the Meta Login URL that redirects back to Callback.
     /// </summary>
     [HttpPost]
-    public async Task<IActionResult> Callback([FromBody] OAuthCallbackRequest model)
+    public async Task<IActionResult> BeginOAuth([FromBody] BeginOAuthRequest model)
     {
-        var response = await _integrationService.ExchangeAuthCodeAsync(User.GetUserId(), model);
+        var response = await _integrationService.BeginOAuthAsync(User.GetUserId(), model);
         return Ok(response);
+    }
+
+    /// <summary>
+    /// Meta Valid OAuth Redirect URI target. Meta redirects the browser here with ?code=&amp;state=.
+    /// Returns a tiny HTML page that notifies the opener popup and closes.
+    /// </summary>
+    [AllowAnonymous]
+    [HttpGet]
+    public async Task<IActionResult> Callback(
+        [FromQuery] string? code = null,
+        [FromQuery] string? state = null,
+        [FromQuery] string? error = null,
+        [FromQuery(Name = "error_description")] string? errorDescription = null)
+    {
+        var result = await _integrationService.CompleteMetaRedirectAsync(
+            code,
+            state,
+            errorDescription ?? error);
+
+        return Content(BuildPopupHtml(result), "text/html", Encoding.UTF8);
     }
 
     /// <summary>Facebook Pages granted by the stored Meta login, shown in the page picker.</summary>
@@ -56,5 +76,48 @@ public class IntegrationsController : ControllerBase
     {
         var response = await _integrationService.GetConnectionDetailsAsync(User.GetUserId(), platformCode);
         return Ok(response);
+    }
+
+    private static string BuildPopupHtml(MetaRedirectResult result)
+    {
+        var payload = JsonSerializer.Serialize(new
+        {
+            type = "smh-meta-oauth",
+            platform = result.PlatformCode,
+            ok = result.Ok,
+            message = result.Message
+        });
+
+        var originsJson = JsonSerializer.Serialize(result.FrontendOrigins);
+        var statusText = System.Net.WebUtility.HtmlEncode(result.Message);
+
+        return $$"""
+            <!DOCTYPE html>
+            <html lang="en">
+            <head>
+              <meta charset="utf-8" />
+              <title>SocialHub Connect</title>
+              <style>
+                body { font-family: Segoe UI, system-ui, sans-serif; display: grid; place-items: center;
+                       min-height: 100vh; margin: 0; background: #f8fafc; color: #1e293b; text-align: center; }
+              </style>
+            </head>
+            <body>
+              <p>{{statusText}}</p>
+              <script>
+                (function () {
+                  var payload = {{payload}};
+                  var origins = {{originsJson}};
+                  if (window.opener && !window.opener.closed) {
+                    for (var i = 0; i < origins.length; i++) {
+                      try { window.opener.postMessage(payload, origins[i]); } catch (e) {}
+                    }
+                  }
+                  setTimeout(function () { window.close(); }, 700);
+                })();
+              </script>
+            </body>
+            </html>
+            """;
     }
 }

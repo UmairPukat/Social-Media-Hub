@@ -7,13 +7,6 @@ export const routes: Routes = [
     loadComponent: () => import('./features/auth/login/login.component').then(m => m.LoginComponent)
   },
   {
-    // Shared Meta OAuth popup landing (must match environment.meta.redirectUri).
-    path: 'integrations/callback',
-    canActivate: [authGuard],
-    loadComponent: () =>
-      import('./features/integrations/oauth-callback.component').then(m => m.OAuthCallbackComponent)
-  },
-  {
     path: 'app',
     canActivate: [authGuard],
     loadComponent: () => import('./layout/shell/shell.component').then(m => m.ShellComponent),

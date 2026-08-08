@@ -1,5 +1,7 @@
 using System.Text.Json;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Options;
+using SocialMedia.Application.Auth;
 using SocialMedia.Application.Catalog;
 using SocialMedia.Application.DTOs.Common;
 using SocialMedia.Application.DTOs.Integration;
@@ -12,28 +14,41 @@ using SocialMedia.Domain.Interfaces;
 namespace SocialMedia.Application.Services;
 
 /// <summary>
-/// OAuth callbacks exchange Meta authorization codes, then store SocialAccount / SocialAuth / profiles.
+/// OAuth: Meta redirects to the shared backend Callback, which exchanges the code and stores the account.
 /// </summary>
 public class IntegrationService : IIntegrationService
 {
+    private static readonly Dictionary<string, string> PlatformScopes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["facebook"] = "pages_show_list,pages_read_engagement,pages_read_user_content,pages_manage_metadata,pages_manage_posts,pages_manage_engagement,pages_messaging,business_management",
+        ["instagram"] = "pages_show_list,pages_read_engagement,pages_manage_metadata,pages_messaging,instagram_basic,instagram_content_publish,instagram_manage_comments,instagram_manage_messages,business_management",
+        ["whatsapp"] = "whatsapp_business_management,whatsapp_business_messaging,business_management"
+    };
+
     private readonly IUnitOfWork _unitOfWork;
     private readonly IFacebookService _facebookService;
     private readonly IInstagramService _instagramService;
     private readonly IWhatsAppService _whatsAppService;
     private readonly MetaSettings _meta;
+    private readonly JwtSettings _jwt;
+    private readonly IConfiguration _configuration;
 
     public IntegrationService(
         IUnitOfWork unitOfWork,
         IFacebookService facebookService,
         IInstagramService instagramService,
         IWhatsAppService whatsAppService,
-        IOptions<MetaSettings> metaOptions)
+        IOptions<MetaSettings> metaOptions,
+        IOptions<JwtSettings> jwtOptions,
+        IConfiguration configuration)
     {
         _unitOfWork = unitOfWork;
         _facebookService = facebookService;
         _instagramService = instagramService;
         _whatsAppService = whatsAppService;
         _meta = metaOptions.Value;
+        _jwt = jwtOptions.Value;
+        _configuration = configuration;
     }
 
     public async Task<ApiResponse<IReadOnlyList<PlatformCardDto>>> GetPlatformCardsAsync(Guid userId, CancellationToken cancellationToken = default)
@@ -81,12 +96,141 @@ public class IntegrationService : IIntegrationService
         }
     }
 
+    public Task<ApiResponse<BeginOAuthResponse>> BeginOAuthAsync(
+        Guid userId,
+        BeginOAuthRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var platformCode = (request.PlatformCode ?? string.Empty).Trim().ToLowerInvariant();
+        if (platformCode is not ("facebook" or "instagram" or "whatsapp"))
+            return Task.FromResult(ApiResponse<BeginOAuthResponse>.Fail($"Unsupported platform '{request.PlatformCode}'."));
+
+        var appId = ResolveAppId(platformCode);
+        if (string.IsNullOrWhiteSpace(appId) || appId.StartsWith("YOUR_", StringComparison.OrdinalIgnoreCase))
+            return Task.FromResult(ApiResponse<BeginOAuthResponse>.Fail($"Meta App Id is not configured for {platformCode}."));
+
+        var redirectUri = ResolveRedirectUri(platformCode, null);
+        if (string.IsNullOrWhiteSpace(redirectUri))
+            return Task.FromResult(ApiResponse<BeginOAuthResponse>.Fail("Redirect URI is not configured. Set metaRedirectUri to the backend Callback URL."));
+
+        var version = ResolveGraphVersion(platformCode);
+        var scopes = PlatformScopes[platformCode];
+        var state = MetaOAuthState.Create(userId, platformCode, _jwt.SecretKey);
+
+        var authUrl =
+            $"https://www.facebook.com/{version}/dialog/oauth"
+            + $"?client_id={Uri.EscapeDataString(appId)}"
+            + $"&redirect_uri={Uri.EscapeDataString(redirectUri)}"
+            + $"&state={Uri.EscapeDataString(state)}"
+            + $"&scope={Uri.EscapeDataString(scopes)}"
+            + "&response_type=code";
+
+        return Task.FromResult(ApiResponse<BeginOAuthResponse>.Ok(new BeginOAuthResponse
+        {
+            AuthUrl = authUrl,
+            RedirectUri = redirectUri,
+            PlatformCode = platformCode
+        }));
+    }
+
+    public async Task<MetaRedirectResult> CompleteMetaRedirectAsync(
+        string? code,
+        string? state,
+        string? error,
+        CancellationToken cancellationToken = default)
+    {
+        var origins = ResolveFrontendOrigins();
+
+        if (!string.IsNullOrWhiteSpace(error))
+        {
+            return new MetaRedirectResult
+            {
+                Ok = false,
+                Message = error!,
+                FrontendOrigins = origins
+            };
+        }
+
+        if (!MetaOAuthState.TryValidate(state, _jwt.SecretKey, out var userId, out var platformCode, out var stateError))
+        {
+            return new MetaRedirectResult
+            {
+                Ok = false,
+                Message = stateError,
+                FrontendOrigins = origins
+            };
+        }
+
+        if (string.IsNullOrWhiteSpace(code))
+        {
+            return new MetaRedirectResult
+            {
+                Ok = false,
+                PlatformCode = platformCode,
+                Message = "Missing authorization code.",
+                FrontendOrigins = origins
+            };
+        }
+
+        var response = await ExchangeAuthCodeAsync(userId, new OAuthCallbackRequest
+        {
+            PlatformCode = platformCode,
+            Code = code!
+        }, cancellationToken);
+
+        return new MetaRedirectResult
+        {
+            Ok = response.Success,
+            PlatformCode = platformCode,
+            Message = response.Success
+                ? (response.Message ?? "Connected. You can close this window.")
+                : (response.Message ?? "Connection failed."),
+            FrontendOrigins = origins
+        };
+    }
+
     public Task<ApiResponse<SocialAccountDto>> ExchangeAuthCodeAsync(Guid userId, OAuthCallbackRequest request, CancellationToken cancellationToken = default)
     {
         var code = (request.PlatformCode ?? string.Empty).Trim().ToLowerInvariant();
         return code is "facebook" or "instagram" or "whatsapp"
             ? HandleMetaAuthCodeAsync(userId, code, request, cancellationToken)
             : Task.FromResult(ApiResponse<SocialAccountDto>.Fail($"Unsupported platform '{request.PlatformCode}'."));
+    }
+
+    private string ResolveAppId(string platformCode) => platformCode switch
+    {
+        "facebook" => _meta.Facebook.AppId,
+        "instagram" => string.IsNullOrWhiteSpace(_meta.Instagram.AppId) ? _meta.Facebook.AppId : _meta.Instagram.AppId,
+        "whatsapp" => _meta.WhatsApp.AppId,
+        _ => string.Empty
+    };
+
+    private string ResolveGraphVersion(string platformCode) => platformCode switch
+    {
+        "facebook" => FirstNonEmpty(_meta.Facebook.GraphApiVersion, "v21.0"),
+        "instagram" => FirstNonEmpty(_meta.Instagram.GraphApiVersion, _meta.Facebook.GraphApiVersion, "v21.0"),
+        "whatsapp" => FirstNonEmpty(_meta.WhatsApp.GraphApiVersion, "v21.0"),
+        _ => "v21.0"
+    };
+
+    private IReadOnlyList<string> ResolveFrontendOrigins()
+    {
+        var fromConfig = _configuration.GetSection("Cors:Origins").GetChildren()
+            .Select(c => c.Value)
+            .Where(v => !string.IsNullOrWhiteSpace(v))
+            .Select(v => v!);
+        var fromEnv = (_configuration["corsOrigins"] ?? string.Empty)
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var frontendBase = _configuration["frontendBaseUrl"];
+
+        return fromConfig
+            .Concat(fromEnv)
+            .Append(frontendBase)
+            .Where(o => !string.IsNullOrWhiteSpace(o))
+            .Select(o => o!.TrimEnd('/'))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .DefaultIfEmpty("http://localhost:4200")
+            .ToList();
     }
 
     private async Task<ApiResponse<SocialAccountDto>> HandleMetaAuthCodeAsync(

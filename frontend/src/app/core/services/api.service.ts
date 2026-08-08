@@ -8,13 +8,11 @@ import {
   DashboardSummary,
   InboxItem,
   MetaPage,
-  OAuthCallbackRequest,
   PlatformCard,
   PublishPostResponse,
   SocialAccount,
   SocialPost
 } from '../models/api.models';
-import { MetaPlatform } from './meta-auth-url.service';
 
 @Injectable({ providedIn: 'root' })
 export class ApiService {
@@ -32,14 +30,6 @@ export class ApiService {
 
   getAccounts(): Observable<ApiResponse<SocialAccount[]>> {
     return this.http.get<ApiResponse<SocialAccount[]>>(`${this.base}/SocialAccounts/GetConnectedAccounts`);
-  }
-
-  /** Called by the frontend OAuth page after Meta redirects with a code. Not Meta's redirect URI. */
-  exchangeAuthCode(platform: MetaPlatform, body: OAuthCallbackRequest): Observable<ApiResponse<SocialAccount>> {
-    return this.http.post<ApiResponse<SocialAccount>>(`${this.base}/Integrations/ExchangeAuthCode`, {
-      ...body,
-      platformCode: platform
-    });
   }
 
   getMetaPages(platformCode: string): Observable<ApiResponse<MetaPage[]>> {

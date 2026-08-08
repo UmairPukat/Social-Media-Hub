@@ -62,9 +62,9 @@ SQL Server: `DefaultConnection` → `SocialMediaHubDb` on `DESKTOP-6L1G3DP`.
 - Shared Meta callback: `GET/POST /api/webhooks`
 
 ### Connect flow
-1. User clicks **Connect** → frontend opens Meta Login popup
-2. Meta redirects to `/integrations/callback?code=...&state=facebook.<nonce>` (same URL for Instagram / WhatsApp)
-3. Callback page POSTs the code plus its platform to `Integrations/ExchangeAuthCode`
-4. Backend exchanges code (with App Secret), stores SocialAccount → SocialAuth → SocialProfiles → SyncJob
+1. User clicks **Connect** → frontend asks `Integrations/BeginOAuth` for the Meta Login URL and opens it in a popup
+2. Meta redirects the popup to the backend: `GET /api/Integrations/Callback?code=...&state=...` (one URL for all platforms; user and platform are inside the signed state)
+3. Backend exchanges the code (with App Secret), stores SocialAccount → SocialAuth → SocialProfiles → SyncJob
+4. The Callback page posts the result to the app window and closes the popup
 
 Account listing / disconnect live on `SocialAccounts` (`GetPlatformCards`, `GetConnectedAccounts`, `Disconnect`).

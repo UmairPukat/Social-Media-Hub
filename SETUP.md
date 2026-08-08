@@ -41,9 +41,9 @@ App: http://localhost:4200
 
 1. Create a Meta App in developers.facebook.com
 2. Put App Id / Secret into `backend/SocialMedia.Api/appsettings.json` → `MetaSettings`
-3. Add **one** OAuth redirect URI (Facebook Login → Valid OAuth Redirect URIs):
-   - Local: `http://localhost:4200/integrations/callback`
-   - Production: `https://<your-frontend>/integrations/callback`
+3. Add **one** OAuth redirect URI (Facebook Login → Valid OAuth Redirect URIs) — the backend Callback:
+   - Local: `http://localhost:5080/api/Integrations/Callback`
+   - Production: `https://<your-backend>/api/Integrations/Callback`
 4. Point **all** product webhooks to one Callback URL:
    - `GET/POST https://<your-backend>/api/webhooks`
 5. Use the same verify token in Meta for each product, or any of the tokens in `MetaSettings.*WebhookVerifyToken` (the shared endpoint accepts all of them).

@@ -16,8 +16,18 @@ public interface IIntegrationService
     Task<ApiResponse<object>> DisconnectAsync(Guid userId, string platformCode, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Exchanges a Meta authorization code for Facebook, Instagram, or WhatsApp.
-    /// Called by the frontend after Meta redirects to <c>/integrations/callback</c>.
+    /// Builds the Meta Login URL using the shared backend Callback as redirect_uri.
+    /// Put that Callback URL in Meta's Valid OAuth Redirect URIs.
+    /// </summary>
+    Task<ApiResponse<BeginOAuthResponse>> BeginOAuthAsync(Guid userId, BeginOAuthRequest request, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Completes OAuth after Meta redirects the browser to GET /api/Integrations/Callback.
+    /// </summary>
+    Task<MetaRedirectResult> CompleteMetaRedirectAsync(string? code, string? state, string? error, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Exchanges a Meta authorization code for Facebook, Instagram, or WhatsApp (API clients).
     /// </summary>
     Task<ApiResponse<SocialAccountDto>> ExchangeAuthCodeAsync(Guid userId, OAuthCallbackRequest request, CancellationToken cancellationToken = default);
 

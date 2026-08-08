@@ -39,6 +39,28 @@ public class OAuthCallbackRequest
     public string? RedirectUri { get; set; }
 }
 
+/// <summary>Starts Meta Login — returns the dialog URL that uses the backend Callback redirect.</summary>
+public class BeginOAuthRequest
+{
+    public string PlatformCode { get; set; } = string.Empty;
+}
+
+public class BeginOAuthResponse
+{
+    public string AuthUrl { get; set; } = string.Empty;
+    public string RedirectUri { get; set; } = string.Empty;
+    public string PlatformCode { get; set; } = string.Empty;
+}
+
+/// <summary>Result of Meta's browser redirect to the shared backend Callback URL.</summary>
+public class MetaRedirectResult
+{
+    public bool Ok { get; set; }
+    public string PlatformCode { get; set; } = string.Empty;
+    public string Message { get; set; } = string.Empty;
+    public IReadOnlyList<string> FrontendOrigins { get; set; } = Array.Empty<string>();
+}
+
 public class SocialAccountDto
 {
     public Guid Id { get; set; }

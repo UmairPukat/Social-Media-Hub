@@ -1,63 +1,34 @@
-import { Injectable } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
 import { environment } from '../../../environments/environment';
 
 export type MetaPlatform = 'facebook' | 'instagram' | 'whatsapp';
 
 export const META_OAUTH_MESSAGE = 'smh-meta-oauth';
 
-/** Shared OAuth redirect for Facebook, Instagram, and WhatsApp. */
-export function sharedMetaRedirectUri(): string {
-  return environment.meta.redirectUri
-    || environment.meta.facebook.redirectUri
-    || `${window.location.origin}/integrations/callback`;
+interface BeginOAuthResponse {
+  authUrl: string;
+  redirectUri: string;
+  platformCode: string;
+}
+
+interface ApiResponse<T> {
+  success: boolean;
+  message?: string;
+  data?: T;
 }
 
 /**
- * Builds Meta / Facebook Login URLs and opens the OAuth popup.
- * Authorization code is sent to the backend — never exchange App Secret in the browser.
- * Platform is encoded in OAuth state so one callback URL serves every product.
+ * Meta Login popup. The backend builds the auth URL and owns the OAuth redirect:
+ * Meta redirects to GET /api/Integrations/Callback, which exchanges the code and
+ * posts a success/error message back to this window.
  */
 @Injectable({ providedIn: 'root' })
 export class MetaAuthUrlService {
-  buildAuthUrl(platform: MetaPlatform, state: string): string {
-    const cfg = environment.meta[platform];
-    const version = cfg.graphVersion || 'v21.0';
-    const redirectUri = this.getRedirectUri();
-    // Instagram uses Facebook Login (same dialog) — not Instagram Business Login.
-    return `https://www.facebook.com/${version}/dialog/oauth`
-      + `?client_id=${encodeURIComponent(cfg.appId)}`
-      + `&redirect_uri=${encodeURIComponent(redirectUri)}`
-      + `&state=${encodeURIComponent(state)}`
-      + `&scope=${encodeURIComponent(cfg.scopes)}`
-      + `&response_type=code`;
-  }
+  private readonly http = inject(HttpClient);
 
-  getRedirectUri(): string {
-    return sharedMetaRedirectUri();
-  }
-
-  /** Encodes platform into state so the shared callback can finish the right flow. */
-  createState(platform: MetaPlatform): string {
-    const state = `${platform}.${crypto.randomUUID()}`;
-    sessionStorage.setItem('smh_oauth_state', state);
-    return state;
-  }
-
-  /** Reads platform from Meta's returned state (`facebook.<nonce>`). */
-  parseState(state: string | null): { platform: MetaPlatform; valid: boolean } | null {
-    if (!state) return null;
-    const dot = state.indexOf('.');
-    if (dot <= 0) return null;
-    const platform = state.slice(0, dot).toLowerCase() as MetaPlatform;
-    if (!['facebook', 'instagram', 'whatsapp'].includes(platform)) return null;
-
-    const expected = sessionStorage.getItem('smh_oauth_state');
-    return { platform, valid: !!expected && expected === state };
-  }
-
-  clearState(_platform?: MetaPlatform): void {
-    sessionStorage.removeItem('smh_oauth_state');
-  }
+  /** Origin of the backend API — the OAuth result message comes from this origin. */
+  private readonly backendOrigin = new URL(environment.apiUrl).origin;
 
   isConfigured(platform: MetaPlatform): boolean {
     const id = environment.meta[platform].appId;
@@ -65,19 +36,18 @@ export class MetaAuthUrlService {
   }
 
   /**
-   * Opens Meta Login in a popup. Resolves when the callback page posts a success/error message.
+   * Opens Meta Login in a popup. Resolves when the backend Callback page posts
+   * a success/error message, or rejects if the window closes early.
    */
   openPopup(platform: MetaPlatform): Promise<{ ok: boolean; message?: string }> {
-    const state = this.createState(platform);
-
-    const url = this.buildAuthUrl(platform, state);
     const width = 600;
     const height = 720;
     const left = Math.max(0, (window.screen.width - width) / 2);
     const top = Math.max(0, (window.screen.height - height) / 2);
     const features = `width=${width},height=${height},left=${left},top=${top},scrollbars=yes,resizable=yes`;
 
-    const popup = window.open(url, `meta_oauth_${platform}`, features);
+    // Open synchronously on the click so popup blockers allow it, then navigate.
+    const popup = window.open('about:blank', `meta_oauth_${platform}`, features);
     if (!popup) {
       return Promise.reject(new Error('Popup was blocked. Allow popups for this site and try again.'));
     }
@@ -98,9 +68,11 @@ export class MetaAuthUrlService {
       };
 
       const onMessage = (event: MessageEvent) => {
-        if (event.origin !== window.location.origin) return;
+        if (event.origin !== this.backendOrigin) return;
         const data = event.data;
-        if (!data || data.type !== META_OAUTH_MESSAGE || data.platform !== platform) return;
+        if (!data || data.type !== META_OAUTH_MESSAGE) return;
+        // Error results may not carry a platform (e.g. invalid state) — accept those too.
+        if (data.platform && data.platform !== platform) return;
         if (data.ok) settle(() => resolve({ ok: true }));
         else settle(() => resolve({ ok: false, message: data.message || 'Connection failed' }));
       };
@@ -115,6 +87,26 @@ export class MetaAuthUrlService {
       }, 500);
 
       window.addEventListener('message', onMessage);
+
+      this.http
+        .post<ApiResponse<BeginOAuthResponse>>(`${environment.apiUrl}/Integrations/BeginOAuth`, {
+          platformCode: platform
+        })
+        .subscribe({
+          next: (res) => {
+            if (!res.success || !res.data?.authUrl) {
+              popup.close();
+              settle(() => resolve({ ok: false, message: res.message || 'Could not start Meta login.' }));
+              return;
+            }
+            popup.location.href = res.data.authUrl;
+          },
+          error: (err: { error?: { message?: string } }) => {
+            popup.close();
+            settle(() =>
+              resolve({ ok: false, message: err?.error?.message || 'Could not start Meta login.' }));
+          }
+        });
     });
   }
 }
