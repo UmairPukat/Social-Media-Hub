@@ -30,7 +30,7 @@ public interface IFacebookService
     Task DeleteCommentAsync(MetaCallContext context, string commentId, CancellationToken cancellationToken = default);
     Task SendMessageAsync(MetaCallContext context, string recipientId, string message, CancellationToken cancellationToken = default);
     Task DeleteMessageAsync(MetaCallContext context, string messageId, CancellationToken cancellationToken = default);
-    Task ProcessWebhookPayloadAsync(WebhookEvent webhookEvent, CancellationToken cancellationToken = default);
+    Task<WebhookProcessResult> ProcessWebhookPayloadAsync(WebhookEvent webhookEvent, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<SocialProfileDraft>> DiscoverProfilesAsync(string userAccessToken, CancellationToken cancellationToken = default);
 
     /// <summary>Lists the Facebook Pages the user granted, so one can be chosen before connecting.</summary>
@@ -60,7 +60,7 @@ public interface IInstagramService
     Task DeleteCommentAsync(MetaCallContext context, string commentId, CancellationToken cancellationToken = default);
     Task SendMessageAsync(MetaCallContext context, string recipientId, string message, CancellationToken cancellationToken = default);
     Task DeleteMessageAsync(MetaCallContext context, string messageId, CancellationToken cancellationToken = default);
-    Task ProcessWebhookPayloadAsync(WebhookEvent webhookEvent, CancellationToken cancellationToken = default);
+    Task<WebhookProcessResult> ProcessWebhookPayloadAsync(WebhookEvent webhookEvent, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<SocialProfileDraft>> DiscoverProfilesAsync(string userAccessToken, CancellationToken cancellationToken = default);
 
     /// <summary>Lists Facebook Pages with their linked Instagram Business account, for page selection.</summary>
@@ -84,8 +84,27 @@ public interface IWhatsAppService
 
     Task SendMessageAsync(MetaCallContext context, string recipientId, string message, CancellationToken cancellationToken = default);
     Task DeleteMessageAsync(MetaCallContext context, string messageId, CancellationToken cancellationToken = default);
-    Task ProcessWebhookPayloadAsync(WebhookEvent webhookEvent, CancellationToken cancellationToken = default);
+    Task<WebhookProcessResult> ProcessWebhookPayloadAsync(WebhookEvent webhookEvent, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<SocialProfileDraft>> DiscoverProfilesAsync(string userAccessToken, string? phoneNumberId, string? wabaId, CancellationToken cancellationToken = default);
+}
+
+/// <summary>
+/// What a webhook delivery actually produced. Recorded on the WebhookEvent so a delivery that
+/// parsed but matched nothing is visible instead of silently looking successful.
+/// </summary>
+public class WebhookProcessResult
+{
+    /// <summary>Rows created or updated (posts, comments, messages).</summary>
+    public int Handled { get; set; }
+
+    /// <summary>Why parts of the payload were skipped.</summary>
+    public List<string> Notes { get; } = new();
+
+    public void Skip(string note)
+    {
+        if (!Notes.Contains(note))
+            Notes.Add(note);
+    }
 }
 
 /// <summary>Result of exchanging a Meta OAuth authorization code.</summary>

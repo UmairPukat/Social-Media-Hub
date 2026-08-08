@@ -91,13 +91,13 @@ public class WebhooksController : ControllerBase
     {
         var payload = await new StreamReader(Request.Body).ReadToEndAsync();
         var signature = Request.Headers["X-Hub-Signature-256"].FirstOrDefault();
-        if (!_webhookService.IsSignatureValid(platformCode, payload, signature))
-            return Unauthorized();
-
         var headersJson = System.Text.Json.JsonSerializer.Serialize(
             Request.Headers.ToDictionary(h => h.Key, h => h.Value.ToString()));
 
-        var response = await _webhookService.ReceiveAsync(platformCode, payload, signature, headersJson);
-        return Ok(response);
+        // Record the delivery before judging the signature so rejections stay visible in WebhookLogs.
+        var signatureValid = _webhookService.IsSignatureValid(platformCode, payload, signature);
+        var response = await _webhookService.ReceiveAsync(platformCode, payload, signature, headersJson, signatureValid);
+
+        return signatureValid ? Ok(response) : Unauthorized(response);
     }
 }

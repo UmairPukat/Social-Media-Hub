@@ -126,13 +126,17 @@ public class WhatsAppService : IWhatsAppService
         await _unitOfWork.SaveChangesAsync(cancellationToken);
     }
 
-    public async Task ProcessWebhookPayloadAsync(WebhookEvent webhookEvent, CancellationToken cancellationToken = default)
+    public async Task<WebhookProcessResult> ProcessWebhookPayloadAsync(WebhookEvent webhookEvent, CancellationToken cancellationToken = default)
     {
+        var result = new WebhookProcessResult();
         try
         {
             using var doc = JsonDocument.Parse(webhookEvent.PayloadJson);
             if (!doc.RootElement.TryGetProperty("entry", out var entries))
-                return;
+            {
+                result.Skip("Payload has no 'entry' array — not a Meta webhook delivery.");
+                return result;
+            }
 
             foreach (var entry in entries.EnumerateArray())
             {
@@ -192,11 +196,13 @@ public class WhatsAppService : IWhatsAppService
                             Status = MessageDeliveryStatus.Delivered,
                             PlatformCreatedAt = DateTime.UtcNow
                         }, cancellationToken);
+                        result.Handled++;
                     }
                 }
             }
 
             await _unitOfWork.SaveChangesAsync(cancellationToken);
+            return result;
         }
         catch (Exception ex)
         {

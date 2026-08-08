@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using Microsoft.Extensions.Options;
 using SocialMedia.Application.DTOs.Common;
 using SocialMedia.Application.Interfaces;
@@ -129,6 +130,7 @@ public class WebhookService : IWebhookService
         string payloadJson,
         string? signature,
         string? headersJson,
+        bool signatureValid = true,
         CancellationToken cancellationToken = default)
     {
         try
@@ -148,12 +150,20 @@ public class WebhookService : IWebhookService
             await _unitOfWork.WebhookLogs.AddAsync(log, cancellationToken);
             await _unitOfWork.SaveChangesAsync(cancellationToken);
 
-            // 2) Track processing status on WebhookEvents.
+            // 2) Track processing status on WebhookEvents. Meta names the source in "object", which is
+            // trusted over the endpoint that was hit so a mis-mapped callback URL still routes correctly.
+            var descriptor = Describe(payloadJson);
+            var targetCode = descriptor.PlatformCode ?? platformCode;
+            var targetPlatform = string.Equals(targetCode, platformCode, StringComparison.OrdinalIgnoreCase)
+                ? platform
+                : await _unitOfWork.Platforms.GetByCodeAsync(targetCode, cancellationToken);
+
             var webhookEvent = new WebhookEvent
             {
-                PlatformId = platform?.Id,
-                EventType = "received",
-                ObjectType = platformCode,
+                PlatformId = targetPlatform?.Id ?? platform?.Id,
+                EventType = descriptor.EventType,
+                ObjectType = targetCode,
+                ExternalObjectId = descriptor.EntryId,
                 PayloadJson = payloadJson,
                 Signature = signature,
                 HeadersJson = headersJson,
@@ -163,27 +173,42 @@ public class WebhookService : IWebhookService
             await _unitOfWork.WebhookEvents.AddAsync(webhookEvent, cancellationToken);
             await _unitOfWork.SaveChangesAsync(cancellationToken);
 
+            // 3) A rejected signature is recorded rather than dropped, so a delivery is never invisible.
+            if (!signatureValid)
+            {
+                webhookEvent.Status = WebhookEventStatus.Failed;
+                webhookEvent.Error = "Rejected: X-Hub-Signature-256 missing or does not match the configured app secret.";
+                webhookEvent.ProcessedAt = DateTime.UtcNow;
+                _unitOfWork.WebhookEvents.Update(webhookEvent);
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+                return ApiResponse<object>.Fail("Invalid webhook signature.");
+            }
+
             webhookEvent.Status = WebhookEventStatus.Processing;
             _unitOfWork.WebhookEvents.Update(webhookEvent);
             await _unitOfWork.SaveChangesAsync(cancellationToken);
 
             try
             {
-                switch (platformCode.ToLowerInvariant())
+                var result = targetCode.ToLowerInvariant() switch
                 {
-                    case "facebook":
-                        await _facebookService.ProcessWebhookPayloadAsync(webhookEvent, cancellationToken);
-                        break;
-                    case "instagram":
-                        await _instagramService.ProcessWebhookPayloadAsync(webhookEvent, cancellationToken);
-                        break;
-                    case "whatsapp":
-                        await _whatsAppService.ProcessWebhookPayloadAsync(webhookEvent, cancellationToken);
-                        break;
-                }
+                    "facebook" => await _facebookService.ProcessWebhookPayloadAsync(webhookEvent, cancellationToken),
+                    "instagram" => await _instagramService.ProcessWebhookPayloadAsync(webhookEvent, cancellationToken),
+                    "whatsapp" => await _whatsAppService.ProcessWebhookPayloadAsync(webhookEvent, cancellationToken),
+                    _ => null
+                };
 
                 webhookEvent.Status = WebhookEventStatus.Processed;
                 webhookEvent.ProcessedAt = DateTime.UtcNow;
+
+                // Nothing stored is the common silent failure, so the reason is written to the event.
+                if (result is null)
+                    webhookEvent.Error = $"No processor is registered for platform '{targetCode}'.";
+                else if (result.Handled == 0)
+                    webhookEvent.Error = result.Notes.Count > 0
+                        ? "Nothing stored. " + string.Join(" | ", result.Notes)
+                        : "Nothing stored. Payload contained no recognised items.";
             }
             catch (Exception ex)
             {
@@ -199,12 +224,69 @@ public class WebhookService : IWebhookService
             {
                 logId = log.Id,
                 webhookEvent.Id,
-                webhookEvent.Status
+                webhookEvent.Status,
+                note = webhookEvent.Error
             }, "Webhook received.");
         }
         catch (Exception ex)
         {
             return ApiResponse<object>.Fail(ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// Pulls the source platform, entry id and subscribed field names out of a delivery so a
+    /// WebhookEvent row can be identified at a glance instead of only by its raw payload.
+    /// </summary>
+    private static (string EventType, string? EntryId, string? PlatformCode) Describe(string payloadJson)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(payloadJson);
+
+            var platformCode = doc.RootElement.TryGetProperty("object", out var objectElement)
+                ? objectElement.GetString() switch
+                {
+                    "page" => "facebook",
+                    "instagram" => "instagram",
+                    "whatsapp_business_account" => "whatsapp",
+                    _ => null
+                }
+                : null;
+
+            if (!doc.RootElement.TryGetProperty("entry", out var entries) ||
+                entries.ValueKind != JsonValueKind.Array)
+                return ("received", null, platformCode);
+
+            string? entryId = null;
+            var fields = new List<string>();
+
+            foreach (var entry in entries.EnumerateArray())
+            {
+                entryId ??= entry.TryGetProperty("id", out var id) ? id.ToString() : null;
+
+                if (entry.TryGetProperty("changes", out var changes) && changes.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var change in changes.EnumerateArray())
+                    {
+                        var field = change.TryGetProperty("field", out var f) ? f.GetString() : null;
+                        if (!string.IsNullOrWhiteSpace(field) && !fields.Contains(field!))
+                            fields.Add(field!);
+                    }
+                }
+
+                if (entry.TryGetProperty("messaging", out var messaging) &&
+                    messaging.ValueKind == JsonValueKind.Array &&
+                    !fields.Contains("messaging"))
+                    fields.Add("messaging");
+            }
+
+            var eventType = fields.Count > 0 ? string.Join(",", fields) : "received";
+            return (eventType.Length > 100 ? eventType[..100] : eventType, entryId, platformCode);
+        }
+        catch (JsonException)
+        {
+            return ("received", null, null);
         }
     }
 }

@@ -231,32 +231,46 @@ public class InstagramService : IInstagramService
     public Task<IReadOnlyList<string>> GetSubscribedFieldsAsync(string pageId, string pageAccessToken, CancellationToken cancellationToken = default)
         => _graph.GetPageSubscribedFieldsAsync(GraphVersion, pageId, pageAccessToken, cancellationToken);
 
-    public async Task ProcessWebhookPayloadAsync(WebhookEvent webhookEvent, CancellationToken cancellationToken = default)
+    public async Task<WebhookProcessResult> ProcessWebhookPayloadAsync(WebhookEvent webhookEvent, CancellationToken cancellationToken = default)
     {
+        var result = new WebhookProcessResult();
         try
         {
             using var doc = JsonDocument.Parse(webhookEvent.PayloadJson);
             if (!doc.RootElement.TryGetProperty("entry", out var entries))
-                return;
+            {
+                result.Skip("Payload has no 'entry' array — not a Meta webhook delivery.");
+                return result;
+            }
 
             foreach (var entry in entries.EnumerateArray())
             {
                 var igUserId = entry.TryGetProperty("id", out var idEl) ? idEl.ToString() : null;
-                if (igUserId is null) continue;
+                if (string.IsNullOrWhiteSpace(igUserId))
+                {
+                    result.Skip("Entry has no id.");
+                    continue;
+                }
 
                 // Facebook Login webhooks may key entry.id to IG user or Page id.
                 var profile = await _unitOfWork.SocialProfiles.GetByExternalProfileIdAsync(igUserId, cancellationToken)
                     ?? await FindProfileByPageIdAsync(igUserId, cancellationToken);
-                if (profile is null) continue;
+                if (profile is null)
+                {
+                    _logger.LogInformation("Instagram webhook ignored — no profile matches entry {EntryId}.", igUserId);
+                    result.Skip($"No connected Instagram profile matches entry id '{igUserId}'.");
+                    continue;
+                }
 
                 if (entry.TryGetProperty("changes", out var changes))
-                    await ProcessCommentChangesAsync(profile, entry, changes, cancellationToken);
+                    await ProcessChangesAsync(profile, entry, changes, result, cancellationToken);
 
                 if (entry.TryGetProperty("messaging", out var messaging))
-                    await ProcessMessagesAsync(profile, messaging, cancellationToken);
+                    await ProcessMessagesAsync(profile, messaging, result, cancellationToken);
             }
 
             await _unitOfWork.SaveChangesAsync(cancellationToken);
+            return result;
         }
         catch (Exception ex)
         {
@@ -284,21 +298,41 @@ public class InstagramService : IInstagramService
         });
     }
 
-    private async Task ProcessCommentChangesAsync(
+    private async Task ProcessChangesAsync(
         SocialProfile profile,
         JsonElement entry,
         JsonElement changes,
+        WebhookProcessResult result,
         CancellationToken cancellationToken)
     {
         var account = await _unitOfWork.SocialAccounts.GetByIdAsync(profile.SocialAccountId, cancellationToken);
-        if (account is null) return;
+        if (account is null)
+        {
+            result.Skip($"Profile '{profile.Id}' has no owning account.");
+            return;
+        }
 
         foreach (var change in changes.EnumerateArray())
         {
             var field = change.TryGetProperty("field", out var fieldElement) ? fieldElement.GetString() : null;
-            if (field is not ("comments" or "live_comments") ||
-                !change.TryGetProperty("value", out var value))
+            if (!change.TryGetProperty("value", out var value))
+            {
+                result.Skip($"Change '{field}' has no value object.");
                 continue;
+            }
+
+            // Instagram messaging can arrive as a change with field=messages rather than entry.messaging.
+            if (field is "messages" or "messaging_postbacks" or "message_reactions")
+            {
+                await ProcessMessageAsync(profile, account, value, result, cancellationToken);
+                continue;
+            }
+
+            if (field is not ("comments" or "live_comments"))
+            {
+                result.Skip($"Field '{field}' is not handled.");
+                continue;
+            }
 
             var commentId = value.TryGetProperty("id", out var commentIdElement)
                 ? commentIdElement.ToString()
@@ -308,9 +342,15 @@ public class InstagramService : IInstagramService
                 ? mediaIdElement.ToString()
                 : null;
             if (string.IsNullOrWhiteSpace(commentId) || string.IsNullOrWhiteSpace(mediaId))
+            {
+                result.Skip("Comment change is missing id or media.id.");
                 continue;
+            }
             if (await _unitOfWork.Comments.GetByExternalCommentIdAsync(commentId, cancellationToken) is not null)
+            {
+                result.Skip($"Comment '{commentId}' already stored.");
                 continue;
+            }
 
             // Attach to existing post by media/post id; create a stub post if missing.
             var post = await _unitOfWork.Posts.GetByExternalPostIdAsync(profile.Id, mediaId, cancellationToken);
@@ -364,6 +404,7 @@ public class InstagramService : IInstagramService
             if (!isNewPost) _unitOfWork.Posts.Update(post);
 
             await _unitOfWork.SaveChangesAsync(cancellationToken);
+            result.Handled++;
 
             var inboxItem = new InboxItemDto
             {
@@ -399,96 +440,130 @@ public class InstagramService : IInstagramService
     private async Task ProcessMessagesAsync(
         SocialProfile profile,
         JsonElement messaging,
+        WebhookProcessResult result,
         CancellationToken cancellationToken)
     {
         var account = await _unitOfWork.SocialAccounts.GetByIdAsync(profile.SocialAccountId, cancellationToken);
-        if (account is null) return;
+        if (account is null)
+        {
+            result.Skip($"Profile '{profile.Id}' has no owning account.");
+            return;
+        }
 
         foreach (var item in messaging.EnumerateArray())
+            await ProcessMessageAsync(profile, account, item, result, cancellationToken);
+    }
+
+    /// <summary>
+    /// Handles one messaging item. Accepts both delivery shapes: an element of
+    /// <c>entry.messaging[]</c> and the <c>changes[field=messages].value</c> object.
+    /// </summary>
+    private async Task ProcessMessageAsync(
+        SocialProfile profile,
+        SocialAccount account,
+        JsonElement item,
+        WebhookProcessResult result,
+        CancellationToken cancellationToken)
+    {
+        if (!item.TryGetProperty("message", out var message))
         {
-            if (!item.TryGetProperty("message", out var message)) continue;
-            var messageId = message.TryGetProperty("mid", out var mid) ? mid.GetString() : null;
-            if (string.IsNullOrWhiteSpace(messageId) ||
-                await _unitOfWork.Messages.GetByExternalMessageIdAsync(messageId, cancellationToken) is not null)
-                continue;
-
-            var senderId = item.TryGetProperty("sender", out var sender) &&
-                           sender.TryGetProperty("id", out var senderValue)
-                ? senderValue.ToString()
-                : string.Empty;
-            var receiverId = item.TryGetProperty("recipient", out var recipient) &&
-                             recipient.TryGetProperty("id", out var recipientValue)
-                ? recipientValue.ToString()
-                : string.Empty;
-            var isEcho = message.TryGetProperty("is_echo", out var echo) && echo.ValueKind == JsonValueKind.True;
-            var pageId = TryReadPageId(profile.MetadataJson);
-            var outbound = isEcho ||
-                           senderId == profile.ExternalProfileId ||
-                           (!string.IsNullOrWhiteSpace(pageId) && senderId == pageId);
-            var customerId = outbound ? receiverId : senderId;
-            if (string.IsNullOrWhiteSpace(customerId)) continue;
-
-            var conversationKey = $"{profile.ExternalProfileId}:{customerId}";
-            var conversation = await _unitOfWork.Conversations.GetByExternalConversationIdAsync(
-                profile.Id, conversationKey, cancellationToken);
-            var isNewConversation = conversation is null;
-            if (conversation is null)
-            {
-                conversation = new Conversation
-                {
-                    SocialProfileId = profile.Id,
-                    ExternalConversationId = conversationKey,
-                    CustomerId = customerId,
-                    CustomerName = customerId,
-                    Status = ConversationStatus.Open
-                };
-                await _unitOfWork.Conversations.AddAsync(conversation, cancellationToken);
-            }
-
-            var receivedAt = UnixMilliseconds(item, "timestamp") ?? DateTime.UtcNow;
-            var body = message.TryGetProperty("text", out var text)
-                ? text.GetString()
-                : message.TryGetProperty("attachments", out _) ? "[Instagram attachment]" : string.Empty;
-
-            var msg = new Message
-            {
-                ConversationId = conversation.Id,
-                ExternalMessageId = messageId,
-                SenderId = senderId,
-                ReceiverId = receiverId,
-                Direction = outbound ? MessageDirection.Outbound : MessageDirection.Inbound,
-                MessageType = MessageContentType.Text,
-                Body = body,
-                Status = outbound ? MessageDeliveryStatus.Sent : MessageDeliveryStatus.Delivered,
-                PlatformCreatedAt = receivedAt
-            };
-            await _unitOfWork.Messages.AddAsync(msg, cancellationToken);
-
-            conversation.LastMessageAt = receivedAt;
-            conversation.UpdatedAt = DateTime.UtcNow;
-            if (!outbound) conversation.UnreadCount += 1;
-            if (!isNewConversation) _unitOfWork.Conversations.Update(conversation);
-
-            await _unitOfWork.SaveChangesAsync(cancellationToken);
-
-            var inboxItem = new InboxItemDto
-            {
-                Id = msg.Id,
-                ItemKind = "message",
-                PlatformCode = "instagram",
-                ExternalId = msg.ExternalMessageId,
-                AuthorName = outbound ? "You" : conversation.CustomerName ?? senderId,
-                AuthorId = senderId,
-                Content = body ?? string.Empty,
-                IsHidden = false,
-                IsRead = outbound,
-                IsOutgoing = outbound,
-                ConversationId = conversation.Id,
-                ReceivedAt = receivedAt
-            };
-
-            await _inboxRealtime.NotifyInboxItemAsync(account.UserId, inboxItem, cancellationToken);
+            result.Skip("Messaging item has no message object.");
+            return;
         }
+
+        var messageId = message.TryGetProperty("mid", out var mid) ? mid.ToString() : null;
+        if (string.IsNullOrWhiteSpace(messageId))
+        {
+            result.Skip("Message has no mid.");
+            return;
+        }
+        if (await _unitOfWork.Messages.GetByExternalMessageIdAsync(messageId, cancellationToken) is not null)
+        {
+            result.Skip($"Message '{messageId}' already stored.");
+            return;
+        }
+
+        var senderId = item.TryGetProperty("sender", out var sender) &&
+                       sender.TryGetProperty("id", out var senderValue)
+            ? senderValue.ToString()
+            : string.Empty;
+        var receiverId = item.TryGetProperty("recipient", out var recipient) &&
+                         recipient.TryGetProperty("id", out var recipientValue)
+            ? recipientValue.ToString()
+            : string.Empty;
+        var isEcho = message.TryGetProperty("is_echo", out var echo) && echo.ValueKind == JsonValueKind.True;
+        var pageId = TryReadPageId(profile.MetadataJson);
+        var outbound = isEcho ||
+                       senderId == profile.ExternalProfileId ||
+                       (!string.IsNullOrWhiteSpace(pageId) && senderId == pageId);
+        var customerId = outbound ? receiverId : senderId;
+        if (string.IsNullOrWhiteSpace(customerId))
+        {
+            result.Skip($"Message '{messageId}' has no sender/recipient id.");
+            return;
+        }
+
+        var conversationKey = $"{profile.ExternalProfileId}:{customerId}";
+        var conversation = await _unitOfWork.Conversations.GetByExternalConversationIdAsync(
+            profile.Id, conversationKey, cancellationToken);
+        var isNewConversation = conversation is null;
+        if (conversation is null)
+        {
+            conversation = new Conversation
+            {
+                SocialProfileId = profile.Id,
+                ExternalConversationId = conversationKey,
+                CustomerId = customerId,
+                CustomerName = customerId,
+                Status = ConversationStatus.Open
+            };
+            await _unitOfWork.Conversations.AddAsync(conversation, cancellationToken);
+        }
+
+        var receivedAt = ReadTimestamp(item) ?? DateTime.UtcNow;
+        var body = message.TryGetProperty("text", out var text)
+            ? text.GetString()
+            : message.TryGetProperty("attachments", out _) ? "[Instagram attachment]" : string.Empty;
+
+        var msg = new Message
+        {
+            ConversationId = conversation.Id,
+            ExternalMessageId = messageId,
+            SenderId = senderId,
+            ReceiverId = receiverId,
+            Direction = outbound ? MessageDirection.Outbound : MessageDirection.Inbound,
+            MessageType = MessageContentType.Text,
+            Body = body,
+            Status = outbound ? MessageDeliveryStatus.Sent : MessageDeliveryStatus.Delivered,
+            PlatformCreatedAt = receivedAt
+        };
+        await _unitOfWork.Messages.AddAsync(msg, cancellationToken);
+
+        conversation.LastMessageAt = receivedAt;
+        conversation.UpdatedAt = DateTime.UtcNow;
+        if (!outbound) conversation.UnreadCount += 1;
+        if (!isNewConversation) _unitOfWork.Conversations.Update(conversation);
+
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+        result.Handled++;
+
+        var inboxItem = new InboxItemDto
+        {
+            Id = msg.Id,
+            ItemKind = "message",
+            PlatformCode = "instagram",
+            ExternalId = msg.ExternalMessageId,
+            AuthorName = outbound ? "You" : conversation.CustomerName ?? senderId,
+            AuthorId = senderId,
+            Content = body ?? string.Empty,
+            IsHidden = false,
+            IsRead = outbound,
+            IsOutgoing = outbound,
+            ConversationId = conversation.Id,
+            ReceivedAt = receivedAt
+        };
+
+        await _inboxRealtime.NotifyInboxItemAsync(account.UserId, inboxItem, cancellationToken);
     }
 
     private static string? TryReadPageId(string? metadataJson)
@@ -510,8 +585,29 @@ public class InstagramService : IInstagramService
             ? DateTimeOffset.FromUnixTimeSeconds(seconds).UtcDateTime
             : null;
 
-    private static DateTime? UnixMilliseconds(JsonElement element, string property)
-        => element.TryGetProperty(property, out var value) && value.TryGetInt64(out var milliseconds)
-            ? DateTimeOffset.FromUnixTimeMilliseconds(milliseconds).UtcDateTime
-            : null;
+    /// <summary>
+    /// Reads a messaging timestamp. Meta sends it as a number or a string, and in seconds or
+    /// milliseconds depending on the product, so both are normalised here.
+    /// </summary>
+    private static DateTime? ReadTimestamp(JsonElement element)
+    {
+        if (!element.TryGetProperty("timestamp", out var value))
+            return null;
+
+        long raw;
+        if (value.ValueKind == JsonValueKind.Number)
+        {
+            if (!value.TryGetInt64(out raw)) return null;
+        }
+        else if (value.ValueKind != JsonValueKind.String || !long.TryParse(value.GetString(), out raw))
+        {
+            return null;
+        }
+
+        if (raw <= 0) return null;
+
+        return raw > 100_000_000_000L
+            ? DateTimeOffset.FromUnixTimeMilliseconds(raw).UtcDateTime
+            : DateTimeOffset.FromUnixTimeSeconds(raw).UtcDateTime;
+    }
 }
