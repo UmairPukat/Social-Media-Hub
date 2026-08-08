@@ -425,7 +425,8 @@ public class InstagramService : IInstagramService
                 {
                     PostId = post.ExternalPostId ?? post.Id.ToString(),
                     PageName = profile.Name ?? profile.Username ?? "Instagram",
-                    PostText = post.Caption ?? post.Text ?? string.Empty,
+                    PostText = FirstNonEmpty(post.Caption, post.Text),
+                    PostImageUrl = post.MediaItems.FirstOrDefault()?.Url,
                     LikesCount = post.LikeCount,
                     CommentsCount = post.CommentCount,
                     SharesCount = post.ShareCount,
@@ -436,6 +437,9 @@ public class InstagramService : IInstagramService
             await _inboxRealtime.NotifyInboxItemAsync(account.UserId, inboxItem, cancellationToken);
         }
     }
+
+    private static string FirstNonEmpty(params string?[] values)
+        => values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)) ?? string.Empty;
 
     private async Task ProcessMessagesAsync(
         SocialProfile profile,

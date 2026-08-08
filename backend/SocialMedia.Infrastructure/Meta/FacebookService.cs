@@ -403,7 +403,8 @@ public class FacebookService : IFacebookService
             {
                 PostId = post.ExternalPostId ?? post.Id.ToString(),
                 PageName = profile.Name ?? profile.Username ?? "Facebook",
-                PostText = post.Text ?? post.Caption ?? string.Empty,
+                PostText = FirstNonEmpty(post.Text, post.Caption),
+                PostImageUrl = post.MediaItems.FirstOrDefault()?.Url,
                 LikesCount = post.LikeCount,
                 CommentsCount = post.CommentCount,
                 SharesCount = post.ShareCount,
@@ -515,6 +516,9 @@ public class FacebookService : IFacebookService
         await _unitOfWork.SaveChangesAsync(cancellationToken);
         return post;
     }
+
+    private static string FirstNonEmpty(params string?[] values)
+        => values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)) ?? string.Empty;
 
     private async Task ProcessMessagesAsync(
         SocialProfile profile,

@@ -130,7 +130,7 @@ public class PostRepository : Repository<Post>, IPostRepository
     }
 
     public Task<Post?> GetByExternalPostIdAsync(Guid socialProfileId, string externalPostId, CancellationToken cancellationToken = default)
-        => DbSet.FirstOrDefaultAsync(
+        => DbSet.Include(p => p.MediaItems).FirstOrDefaultAsync(
             p => p.SocialProfileId == socialProfileId && p.ExternalPostId == externalPostId,
             cancellationToken);
 }

@@ -69,7 +69,7 @@ public class InboxService : IInboxService
                     {
                         PostId = c.Post.ExternalPostId ?? c.Post.Id.ToString(),
                         PageName = c.Post.SocialProfile?.Name ?? c.Post.SocialProfile?.Username ?? "Instagram",
-                        PostText = c.Post.Caption ?? c.Post.Text ?? string.Empty,
+                        PostText = FirstNonEmpty(c.Post.Caption, c.Post.Text),
                         PostImageUrl = c.Post.MediaItems.FirstOrDefault()?.Url,
                         LikesCount = c.Post.LikeCount,
                         CommentsCount = c.Post.CommentCount,
@@ -252,6 +252,9 @@ public class InboxService : IInboxService
             return ApiResponse<object>.Fail(ex.Message);
         }
     }
+
+    private static string FirstNonEmpty(params string?[] values)
+        => values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)) ?? string.Empty;
 
     private async Task<(MetaCallContext Context, string Code)> ResolveCommentContextAsync(Guid userId, Guid commentId, CancellationToken cancellationToken)
     {
