@@ -14,10 +14,14 @@ namespace SocialMedia.Api.Controllers;
 public class WebhooksController : ControllerBase
 {
     private readonly IWebhookService _webhookService;
+    private readonly ILogger<WebhooksController> _logger;
 
-    public WebhooksController(IWebhookService webhookService)
+    public WebhooksController(
+        IWebhookService webhookService,
+        ILogger<WebhooksController> logger)
     {
         _webhookService = webhookService;
+        _logger = logger;
     }
 
     /// <summary>Shared Meta webhook verification for all products.</summary>
@@ -38,14 +42,27 @@ public class WebhooksController : ControllerBase
     [HttpPost("~/api/webhooks")]
     public async Task<IActionResult> MetaEvents()
     {
-        var payload = await new StreamReader(Request.Body).ReadToEndAsync();
+        var rawBody = await new StreamReader(Request.Body).ReadToEndAsync();
+
+        _logger.LogInformation(
+            "META WEBHOOK RECEIVED | Time={Time} | Body={Body}",
+            DateTime.UtcNow,
+            rawBody);
+
+        if (Request.Headers.TryGetValue("X-Hub-Signature-256", out var receivedSignature))
+        {
+            _logger.LogInformation(
+                "META WEBHOOK SIGNATURE: {Signature}",
+                receivedSignature.ToString());
+        }
+
         var signature = Request.Headers["X-Hub-Signature-256"].FirstOrDefault();
         var headersJson = System.Text.Json.JsonSerializer.Serialize(
             Request.Headers.ToDictionary(h => h.Key, h => h.Value.ToString()));
 
-        var resolved = _webhookService.DetectPlatformFromPayload(payload) ?? "meta";
-        var signatureValid = _webhookService.IsSignatureValid(resolved, payload, signature);
-        var response = await _webhookService.ReceiveAsync(resolved, payload, signature, headersJson, signatureValid);
+        var resolved = _webhookService.DetectPlatformFromPayload(rawBody) ?? "meta";
+        var signatureValid = _webhookService.IsSignatureValid(resolved, rawBody, signature);
+        var response = await _webhookService.ReceiveAsync(resolved, rawBody, signature, headersJson, signatureValid);
 
         // Always 200 so Meta does not retry or disable the subscription. Signature/process
         // failures are already recorded on WebhookLogs / WebhookEvents.
