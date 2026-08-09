@@ -21,7 +21,7 @@ public class IntegrationService : IIntegrationService
     private static readonly Dictionary<string, string> PlatformScopes = new(StringComparer.OrdinalIgnoreCase)
     {
         ["facebook"] = "public_profile,pages_show_list,pages_read_engagement,pages_read_user_content,pages_manage_engagement,pages_manage_metadata,pages_messaging,business_management,ads_management",
-        ["instagram"] = "instagram_basic,instagram_manage_messages,instagram_manage_comments,pages_show_list,pages_read_engagement,pages_manage_metadata,business_management",
+        ["instagram"] = "instagram_basic,instagram_manage_messages,instagram_manage_comments",
         ["whatsapp"] = "whatsapp_business_management,whatsapp_business_messaging,business_management"
     };
 
