@@ -788,9 +788,10 @@
   }
 }
 
+/* row-reverse flips the main axis, so flex-start is the visual right edge. */
 .bubble-row.out {
-  justify-content: flex-end;
   flex-direction: row-reverse;
+  justify-content: flex-start;
 }
 
 /* Reserves the avatar column so stacked bubbles stay aligned. */
