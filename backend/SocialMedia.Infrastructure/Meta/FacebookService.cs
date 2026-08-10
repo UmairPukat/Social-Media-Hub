@@ -644,8 +644,9 @@ public class FacebookService : IFacebookService
             postExternalId,
             publishedAt,
             ct => GetPostSnapshotAsync(pageToken ?? string.Empty, postExternalId, ct),
-            string.IsNullOrWhiteSpace(knownText) ? $"Facebook post {postExternalId}" : knownText!,
-            cancellationToken);
+            string.IsNullOrWhiteSpace(knownText) ? "Facebook post" : knownText!,
+            requireMedia: false,
+            cancellationToken: cancellationToken);
     }
 
     private async Task<string?> ResolvePageTokenAsync(SocialAccount account, CancellationToken cancellationToken)

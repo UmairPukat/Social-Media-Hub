@@ -28,12 +28,15 @@ internal static class MetaPostStore
         DateTime fallbackPublishedAt,
         Func<CancellationToken, Task<RemotePostSnapshot?>> fetchSnapshot,
         string placeholderText,
+        bool requireMedia,
         CancellationToken cancellationToken)
     {
         var post = await unitOfWork.Posts.GetByExternalPostIdAsync(profile.Id, externalPostId, cancellationToken);
         if (post is not null)
         {
-            if (IsAwaitingGraphFetch(post))
+            // Instagram posts always have media. A previously stored row may predate media
+            // enrichment, so fill it before attaching the incoming comment.
+            if (IsAwaitingGraphFetch(post) || (requireMedia && post.MediaItems.Count == 0))
                 await EnrichAsync(unitOfWork, post, fetchSnapshot, cancellationToken);
             return post;
         }

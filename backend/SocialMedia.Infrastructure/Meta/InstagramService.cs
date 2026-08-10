@@ -174,18 +174,52 @@ public class InstagramService : IInstagramService
             return null;
 
         using var doc = await _graph.GetAsync(GraphVersion, mediaId, accessToken, cancellationToken,
-            ("fields", "id,caption,media_type,media_url,thumbnail_url,permalink,timestamp,like_count,comments_count"));
+            ("fields", "id,caption,media_type,media_url,thumbnail_url,permalink,timestamp,like_count,comments_count,children{id,media_type,media_url,thumbnail_url}"));
 
         var root = doc.RootElement;
         var mediaType = root.TryGetProperty("media_type", out var type) ? type.GetString() : null;
+        var mediaUrl = root.TryGetProperty("media_url", out var rootMediaUrl)
+            ? rootMediaUrl.GetString()
+            : null;
+        var thumbnailUrl = root.TryGetProperty("thumbnail_url", out var rootThumbnail)
+            ? rootThumbnail.GetString()
+            : null;
+
+        // Carousel albums may not expose a usable URL on the parent. Use the first child
+        // as the inbox preview so the attachment is still persisted and displayed.
+        if (string.IsNullOrWhiteSpace(mediaUrl) &&
+            string.IsNullOrWhiteSpace(thumbnailUrl) &&
+            root.TryGetProperty("children", out var children) &&
+            children.TryGetProperty("data", out var childData) &&
+            childData.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var child in childData.EnumerateArray())
+            {
+                var childMedia = child.TryGetProperty("media_url", out var childMediaUrl)
+                    ? childMediaUrl.GetString()
+                    : null;
+                var childThumb = child.TryGetProperty("thumbnail_url", out var childThumbnail)
+                    ? childThumbnail.GetString()
+                    : null;
+                if (string.IsNullOrWhiteSpace(childMedia) && string.IsNullOrWhiteSpace(childThumb))
+                    continue;
+
+                mediaType = child.TryGetProperty("media_type", out var childType)
+                    ? childType.GetString()
+                    : mediaType;
+                mediaUrl = childMedia;
+                thumbnailUrl = childThumb;
+                break;
+            }
+        }
 
         return new RemotePostSnapshot
         {
             ExternalId = root.TryGetProperty("id", out var id) ? id.GetString() ?? mediaId : mediaId,
             Text = root.TryGetProperty("caption", out var caption) ? caption.GetString() : null,
             Permalink = root.TryGetProperty("permalink", out var permalink) ? permalink.GetString() : null,
-            MediaUrl = root.TryGetProperty("media_url", out var mediaUrl) ? mediaUrl.GetString() : null,
-            ThumbnailUrl = root.TryGetProperty("thumbnail_url", out var thumbnail) ? thumbnail.GetString() : null,
+            MediaUrl = mediaUrl,
+            ThumbnailUrl = thumbnailUrl,
             IsVideo = string.Equals(mediaType, "VIDEO", StringComparison.OrdinalIgnoreCase),
             LikeCount = root.TryGetProperty("like_count", out var likes) && likes.TryGetInt32(out var likeCount) ? likeCount : 0,
             CommentCount = root.TryGetProperty("comments_count", out var comments) && comments.TryGetInt32(out var commentCount) ? commentCount : 0,
@@ -194,6 +228,29 @@ public class InstagramService : IInstagramService
                 ? createdAt.ToUniversalTime()
                 : null
         };
+    }
+
+    private async Task<RemotePostSnapshot?> GetMediaSnapshotWithTokensAsync(
+        IReadOnlyList<string> accessTokens,
+        string mediaId,
+        CancellationToken cancellationToken)
+    {
+        Exception? lastError = null;
+        foreach (var accessToken in accessTokens)
+        {
+            try
+            {
+                return await GetMediaSnapshotAsync(accessToken, mediaId, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                lastError = ex;
+            }
+        }
+
+        if (lastError is not null)
+            throw lastError;
+        return null;
     }
 
     public async Task<IReadOnlyList<PostDto>> GetPostsAsync(MetaCallContext context, CancellationToken cancellationToken = default)
@@ -370,13 +427,25 @@ public class InstagramService : IInstagramService
         return null;
     }
 
-    private async Task<string?> ResolveAccessTokenAsync(SocialAccount account, CancellationToken cancellationToken)
+    private async Task<IReadOnlyList<string>> ResolveAccessTokensAsync(
+        SocialAccount account,
+        CancellationToken cancellationToken)
     {
-        if (!string.IsNullOrWhiteSpace(account.Auth?.AccessToken))
-            return account.Auth!.AccessToken;
+        var auth = account.Auth
+            ?? await _unitOfWork.SocialAuths.GetBySocialAccountIdAsync(account.Id, cancellationToken);
+        var tokens = new List<string>();
 
-        var auth = await _unitOfWork.SocialAuths.GetBySocialAccountIdAsync(account.Id, cancellationToken);
-        return string.IsNullOrWhiteSpace(auth?.AccessToken) ? null : auth!.AccessToken;
+        void Add(string? token)
+        {
+            if (!string.IsNullOrWhiteSpace(token) && !tokens.Contains(token))
+                tokens.Add(token);
+        }
+
+        // The selected Page token is normally AccessToken; RefreshToken retains the
+        // long-lived user token and is a useful fallback for Graph media reads.
+        Add(auth?.AccessToken);
+        Add(auth?.RefreshToken);
+        return tokens;
     }
 
     private async Task<SocialProfile?> FindProfileByPageIdAsync(string pageId, CancellationToken cancellationToken)
@@ -443,16 +512,19 @@ public class InstagramService : IInstagramService
                 continue;
             }
 
-            var pageToken = await ResolveAccessTokenAsync(account, cancellationToken);
+            var accessTokens = await ResolveAccessTokensAsync(account, cancellationToken);
             RemoteCommentSnapshot? enriched = null;
-            try
+            foreach (var accessToken in accessTokens)
             {
-                if (!string.IsNullOrWhiteSpace(pageToken))
-                    enriched = await GetCommentSnapshotAsync(pageToken!, commentId!, cancellationToken);
-            }
-            catch (Exception ex)
-            {
-                result.Skip($"Graph comment enrich failed for '{commentId}': {ex.Message}");
+                try
+                {
+                    enriched = await GetCommentSnapshotAsync(accessToken, commentId!, cancellationToken);
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    result.Skip($"Graph comment enrich failed for '{commentId}': {ex.Message}");
+                }
             }
 
             var mediaId = FirstNonEmpty(
@@ -470,15 +542,30 @@ public class InstagramService : IInstagramService
                 enriched?.Message,
                 value.TryGetProperty("text", out var text) ? text.GetString() : null) ?? string.Empty;
 
+            // Resolve the post before checking comment idempotency. A redelivered comment can
+            // therefore repair an older post row that was saved without its Instagram media.
+            var post = await MetaPostStore.ResolveAsync(
+                _unitOfWork,
+                profile,
+                account.PlatformId,
+                mediaId!,
+                enriched?.CreatedTime ?? UnixSeconds(entry, "time") ?? DateTime.UtcNow,
+                ct => GetMediaSnapshotWithTokensAsync(accessTokens, mediaId!, ct),
+                "Instagram post",
+                requireMedia: true,
+                cancellationToken: cancellationToken);
+
             var existing = await _unitOfWork.Comments.GetByExternalCommentIdAsync(commentId, cancellationToken);
             if (existing is not null)
             {
-                if (existing.Message == commentText)
+                var changed = existing.Message != commentText || existing.PostId != post.Id;
+                if (!changed)
                 {
                     result.Skip($"Comment '{commentId}' already stored.");
                     continue;
                 }
 
+                existing.PostId = post.Id;
                 existing.Message = commentText;
                 if (enriched?.LikeCount > 0) existing.LikeCount = enriched.LikeCount;
                 existing.UpdatedAt = DateTime.UtcNow;
@@ -487,17 +574,6 @@ public class InstagramService : IInstagramService
                 result.Handled++;
                 continue;
             }
-
-            // Attach to the stored post; otherwise read the media from Graph and store it first.
-            var post = await MetaPostStore.ResolveAsync(
-                _unitOfWork,
-                profile,
-                account.PlatformId,
-                mediaId!,
-                enriched?.CreatedTime ?? UnixSeconds(entry, "time") ?? DateTime.UtcNow,
-                ct => GetMediaSnapshotAsync(pageToken ?? string.Empty, mediaId!, ct),
-                $"Instagram media {mediaId}",
-                cancellationToken);
 
             var authorId = FirstNonEmpty(
                 enriched?.AuthorId,

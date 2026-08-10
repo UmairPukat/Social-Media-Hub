@@ -73,7 +73,7 @@ public class InboxService : IInboxService
                     {
                         PostId = c.Post.ExternalPostId ?? c.Post.Id.ToString(),
                         PageName = c.Post.SocialProfile?.Name ?? c.Post.SocialProfile?.Username ?? "Instagram",
-                        PostText = FirstNonEmpty(c.Post.Caption, c.Post.Text),
+                        PostText = DisplayPostText(c.Post),
                         PostImageUrl = c.Post.MediaItems.FirstOrDefault()?.Url,
                         LikesCount = c.Post.LikeCount,
                         CommentsCount = c.Post.CommentCount,
@@ -210,7 +210,7 @@ public class InboxService : IInboxService
                 {
                     PostId = post.ExternalPostId ?? post.Id.ToString(),
                     PageName = profile.Name ?? profile.Username ?? code,
-                    PostText = post.Caption ?? post.Text ?? string.Empty,
+                    PostText = DisplayPostText(post),
                     PostImageUrl = post.MediaItems.FirstOrDefault()?.Url,
                     LikesCount = post.LikeCount,
                     CommentsCount = post.CommentCount,
@@ -393,6 +393,15 @@ public class InboxService : IInboxService
 
     private static string FirstNonEmpty(params string?[] values)
         => values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)) ?? string.Empty;
+
+    private static string DisplayPostText(Post post)
+    {
+        var text = FirstNonEmpty(post.Caption, post.Text);
+        return !string.IsNullOrWhiteSpace(post.ExternalPostId) &&
+               string.Equals(text, $"Facebook post {post.ExternalPostId}", StringComparison.Ordinal)
+            ? "Facebook post"
+            : text;
+    }
 
     private async Task<(MetaCallContext Context, string Code)> ResolveCommentContextAsync(Guid userId, Guid commentId, CancellationToken cancellationToken)
     {
