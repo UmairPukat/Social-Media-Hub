@@ -247,12 +247,20 @@ public class FacebookService : IFacebookService
     public Task DeleteCommentAsync(MetaCallContext context, string commentId, CancellationToken cancellationToken = default)
         => _graph.DeleteAsync(_settings.GraphApiVersion, commentId, context.AccessToken, cancellationToken);
 
-    public async Task<string?> SendMessageAsync(MetaCallContext context, string recipientId, string message, CancellationToken cancellationToken = default)
+    public async Task<string?> SendMessageAsync(MetaCallContext context, string recipientId, string message, string? replyToMid = null, CancellationToken cancellationToken = default)
     {
         var pageId = !string.IsNullOrWhiteSpace(context.PageExternalId)
             ? context.PageExternalId
             : context.ProfileExternalId;
-        var payload = new { recipient = new { id = recipientId }, messaging_type = "RESPONSE", message = new { text = message } };
+        object payload = string.IsNullOrWhiteSpace(replyToMid)
+            ? new { recipient = new { id = recipientId }, messaging_type = "RESPONSE", message = new { text = message } }
+            : new
+            {
+                recipient = new { id = recipientId },
+                messaging_type = "RESPONSE",
+                message = new { text = message },
+                reply_to = new { mid = replyToMid }
+            };
         using var doc = await _graph.PostJsonAsync(_settings.GraphApiVersion, $"{pageId}/messages", context.AccessToken, payload, cancellationToken);
         return TryReadMessageId(doc.RootElement);
     }
@@ -746,6 +754,11 @@ public class FacebookService : IFacebookService
             ? text.GetString()
             : message.TryGetProperty("attachments", out _) ? "[Facebook attachment]" : string.Empty;
 
+        var replyToMid = ReadReplyToMid(message);
+        var quoted = string.IsNullOrWhiteSpace(replyToMid)
+            ? null
+            : await _unitOfWork.Messages.GetByExternalMessageIdAsync(replyToMid!, cancellationToken);
+
         var row = new Message
         {
             ConversationId = conversation.Id,
@@ -756,7 +769,9 @@ public class FacebookService : IFacebookService
             MessageType = MessageContentType.Text,
             Body = body,
             Status = outbound ? MessageDeliveryStatus.Sent : MessageDeliveryStatus.Delivered,
-            PlatformCreatedAt = receivedAt
+            PlatformCreatedAt = receivedAt,
+            ReplyToMessageId = quoted?.Id,
+            ReplyToExternalId = replyToMid
         };
         await _unitOfWork.Messages.AddAsync(row, cancellationToken);
 
@@ -781,9 +796,22 @@ public class FacebookService : IFacebookService
             IsRead = outbound,
             IsOutgoing = outbound,
             ConversationId = conversation.Id,
-            ReceivedAt = receivedAt
+            ReceivedAt = receivedAt,
+            ReplyToId = quoted?.Id,
+            ReplyToAuthor = quoted is null
+                ? null
+                : quoted.Direction == MessageDirection.Outbound ? "You" : conversation.CustomerName ?? quoted.SenderId,
+            ReplyToContent = quoted?.Body
         }, cancellationToken);
     }
+
+    /// <summary>Messenger and Instagram both mark a quoted reply with <c>message.reply_to.mid</c>.</summary>
+    private static string? ReadReplyToMid(JsonElement message)
+        => message.TryGetProperty("reply_to", out var replyTo) &&
+           replyTo.ValueKind == JsonValueKind.Object &&
+           replyTo.TryGetProperty("mid", out var mid)
+            ? mid.ToString()
+            : null;
 
     private static ContentPostType ResolvePostType(JsonElement value) =>
         value.TryGetProperty("item", out var item) ? item.GetString() switch

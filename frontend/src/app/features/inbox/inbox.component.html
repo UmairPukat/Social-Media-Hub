@@ -258,23 +258,79 @@
 
           <div class="chat-scroll" [class.wa-bg]="conv.platformCode === 'whatsapp'">
             @for (bubble of messageThread(); track bubble.id) {
-              <div class="bubble-row" [class.out]="bubble.outgoing">
-                <div class="bubble" [class.wa]="conv.platformCode === 'whatsapp'">
-                  <p>{{ bubble.content }}</p>
-                  <time>{{ bubble.at | date: 'HH:mm' }}</time>
+              @if (bubble.dateLabel) {
+                <div class="day-divider"><span>{{ bubble.dateLabel }}</span></div>
+              }
+
+              <div
+                class="bubble-row"
+                [class.out]="bubble.outgoing"
+                [class.group-start]="bubble.isGroupStart"
+                [class.group-end]="bubble.isGroupEnd">
+                @if (!bubble.outgoing) {
+                  <div class="bubble-avatar">
+                    @if (bubble.isGroupEnd) {
+                      <div class="avatar xs" [style.background]="color(conv.platformCode)">
+                        {{ initials(bubble.authorName) }}
+                      </div>
+                    }
+                  </div>
+                }
+
+                <div class="bubble-stack">
+                  @if (bubble.replyToContent) {
+                    <div class="quoted">
+                      <mat-icon>reply</mat-icon>
+                      <span class="quoted-author">{{ bubble.replyToAuthor || 'Message' }}</span>
+                      <span class="quoted-text">{{ bubble.replyToContent }}</span>
+                    </div>
+                  }
+
+                  <div class="bubble" [class.wa]="conv.platformCode === 'whatsapp'">
+                    <p>{{ bubble.content }}</p>
+                  </div>
+
+                  @if (bubble.isGroupEnd) {
+                    <div class="bubble-meta">
+                      <time>{{ bubble.at | date: 'HH:mm' }}</time>
+                      @if (bubble.status) {
+                        <span class="status">· {{ bubble.status }}</span>
+                      }
+                    </div>
+                  }
                 </div>
+
+                <button
+                  type="button"
+                  class="bubble-reply"
+                  matTooltip="Reply"
+                  (click)="beginMessageReply(bubble)">
+                  <mat-icon>reply</mat-icon>
+                </button>
               </div>
+            } @empty {
+              <div class="empty-side">No messages in this conversation yet.</div>
             }
           </div>
 
           <footer class="composer chat">
-            <textarea
-              rows="2"
-              placeholder="Write a reply… (Ctrl/⌘+Enter to send)"
-              [ngModel]="replyText()"
-              (ngModelChange)="replyText.set($event)"
-              (keydown)="onComposerKeydown($event)"
-            ></textarea>
+            <div class="composer-main">
+              @if (replyTargetMessage(); as quoted) {
+                <div class="replying-to">
+                  <mat-icon>reply</mat-icon>
+                  Replying to <strong>{{ quoted.isOutgoing ? 'You' : quoted.authorName }}</strong>
+                  <span class="quoted-text">{{ quoted.content }}</span>
+                  <button type="button" (click)="clearMessageReplyTarget()">Cancel</button>
+                </div>
+              }
+              <textarea
+                rows="2"
+                placeholder="Write a reply… (Ctrl/⌘+Enter to send)"
+                [ngModel]="replyText()"
+                (ngModelChange)="replyText.set($event)"
+                (keydown)="onComposerKeydown($event)"
+              ></textarea>
+            </div>
             <button
               type="button"
               class="send-btn"

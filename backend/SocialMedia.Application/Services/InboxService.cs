@@ -87,6 +87,7 @@ public class InboxService : IInboxService
             if (kind is null or "message")
             {
                 var messages = await _unitOfWork.Messages.GetByUserAsync(userId, platformId, cancellationToken);
+                var byId = messages.ToDictionary(m => m.Id);
                 items.AddRange(messages.Select(m => new InboxItemDto
                 {
                     Id = m.Id,
@@ -102,7 +103,12 @@ public class InboxService : IInboxService
                     IsRead = m.Direction == MessageDirection.Outbound || m.Conversation?.UnreadCount == 0,
                     IsOutgoing = m.Direction == MessageDirection.Outbound,
                     ConversationId = m.ConversationId,
-                    ReceivedAt = m.PlatformCreatedAt ?? m.CreatedAt
+                    ReceivedAt = m.PlatformCreatedAt ?? m.CreatedAt,
+                    ReplyToId = m.ReplyToMessageId,
+                    ReplyToAuthor = QuotedAuthor(m, byId),
+                    ReplyToContent = m.ReplyToMessageId.HasValue && byId.TryGetValue(m.ReplyToMessageId.Value, out var quoted)
+                        ? quoted.Body
+                        : null
                 }));
             }
 
@@ -403,6 +409,19 @@ public class InboxService : IInboxService
             if (string.IsNullOrWhiteSpace(recipientId))
                 return ApiResponse<object>.Fail("Recipient is unknown for this conversation.");
 
+            // A quoted reply must point at a message from the same conversation.
+            Message? quoted = null;
+            if (request.ReplyToMessageId.HasValue)
+            {
+                quoted = await _unitOfWork.Messages.GetByIdAsync(request.ReplyToMessageId.Value, cancellationToken);
+                if (quoted is null || quoted.ConversationId != conversation.Id)
+                    return ApiResponse<object>.Fail("The message being replied to is not part of this conversation.");
+            }
+
+            var replyToMid = quoted is not null && !IsLocalExternalId(quoted.ExternalMessageId)
+                ? quoted.ExternalMessageId
+                : null;
+
             var tokens = CandidateTokens(account.Auth);
             if (tokens.Count == 0)
                 return ApiResponse<object>.Fail("No access token is available. Reconnect the account.");
@@ -422,9 +441,9 @@ public class InboxService : IInboxService
                 {
                     remoteMessageId = code switch
                     {
-                        "facebook" => await _facebookService.SendMessageAsync(context, recipientId, request.Message.Trim(), cancellationToken),
-                        "instagram" => await _instagramService.SendMessageAsync(context, recipientId, request.Message.Trim(), cancellationToken),
-                        "whatsapp" => await _whatsAppService.SendMessageAsync(context, recipientId, request.Message.Trim(), cancellationToken),
+                        "facebook" => await _facebookService.SendMessageAsync(context, recipientId, request.Message.Trim(), replyToMid, cancellationToken),
+                        "instagram" => await _instagramService.SendMessageAsync(context, recipientId, request.Message.Trim(), replyToMid, cancellationToken),
+                        "whatsapp" => await _whatsAppService.SendMessageAsync(context, recipientId, request.Message.Trim(), replyToMid, cancellationToken),
                         _ => null
                     };
                     lastError = null;
@@ -448,7 +467,7 @@ public class InboxService : IInboxService
             {
                 await _inboxRealtime.NotifyInboxItemAsync(
                     userId,
-                    MapMessageInboxItem(existing, conversation, code),
+                    MapMessageInboxItem(existing, conversation, code, quoted),
                     cancellationToken);
                 return ApiResponse<object>.Ok(new { messageId = existing.Id }, "Message sent.");
             }
@@ -464,7 +483,9 @@ public class InboxService : IInboxService
                 MessageType = MessageContentType.Text,
                 Body = request.Message.Trim(),
                 Status = MessageDeliveryStatus.Sent,
-                PlatformCreatedAt = sentAt
+                PlatformCreatedAt = sentAt,
+                ReplyToMessageId = quoted?.Id,
+                ReplyToExternalId = replyToMid
             };
             await _unitOfWork.Messages.AddAsync(outbound, cancellationToken);
 
@@ -475,7 +496,7 @@ public class InboxService : IInboxService
 
             await _inboxRealtime.NotifyInboxItemAsync(
                 userId,
-                MapMessageInboxItem(outbound, conversation, code),
+                MapMessageInboxItem(outbound, conversation, code, quoted),
                 cancellationToken);
 
             return ApiResponse<object>.Ok(new { messageId = outbound.Id }, "Message sent.");
@@ -486,7 +507,11 @@ public class InboxService : IInboxService
         }
     }
 
-    private static InboxItemDto MapMessageInboxItem(Message message, Conversation conversation, string platformCode)
+    private static InboxItemDto MapMessageInboxItem(
+        Message message,
+        Conversation conversation,
+        string platformCode,
+        Message? quoted = null)
         => new()
         {
             Id = message.Id,
@@ -502,7 +527,12 @@ public class InboxService : IInboxService
             IsRead = true,
             IsOutgoing = message.Direction == MessageDirection.Outbound,
             ConversationId = conversation.Id,
-            ReceivedAt = message.PlatformCreatedAt ?? message.CreatedAt
+            ReceivedAt = message.PlatformCreatedAt ?? message.CreatedAt,
+            ReplyToId = quoted?.Id ?? message.ReplyToMessageId,
+            ReplyToAuthor = quoted is null
+                ? null
+                : quoted.Direction == MessageDirection.Outbound ? "You" : conversation.CustomerName ?? quoted.SenderId,
+            ReplyToContent = quoted?.Body
         };
 
     public async Task<ApiResponse<object>> DeleteMessageAsync(Guid userId, Guid messageId, CancellationToken cancellationToken = default)
@@ -556,6 +586,16 @@ public class InboxService : IInboxService
 
     private static string FirstNonEmpty(params string?[] values)
         => values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)) ?? string.Empty;
+
+    private static string? QuotedAuthor(Message message, IReadOnlyDictionary<Guid, Message> byId)
+    {
+        if (!message.ReplyToMessageId.HasValue || !byId.TryGetValue(message.ReplyToMessageId.Value, out var quoted))
+            return null;
+
+        return quoted.Direction == MessageDirection.Outbound
+            ? "You"
+            : quoted.Conversation?.CustomerName ?? quoted.SenderId;
+    }
 
     private static string DisplayPostText(Post post)
     {

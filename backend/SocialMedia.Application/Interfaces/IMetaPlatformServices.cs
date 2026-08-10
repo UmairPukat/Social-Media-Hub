@@ -36,8 +36,9 @@ public interface IFacebookService
     Task<string?> ReplyCommentAsync(MetaCallContext context, string commentId, string message, CancellationToken cancellationToken = default);
     Task HideCommentAsync(MetaCallContext context, string commentId, bool hide, CancellationToken cancellationToken = default);
     Task DeleteCommentAsync(MetaCallContext context, string commentId, CancellationToken cancellationToken = default);
+    /// <param name="replyToMid">Meta mid of the message being answered, for a quoted reply.</param>
     /// <returns>The new Graph message id when Meta returns one.</returns>
-    Task<string?> SendMessageAsync(MetaCallContext context, string recipientId, string message, CancellationToken cancellationToken = default);
+    Task<string?> SendMessageAsync(MetaCallContext context, string recipientId, string message, string? replyToMid = null, CancellationToken cancellationToken = default);
     Task DeleteMessageAsync(MetaCallContext context, string messageId, CancellationToken cancellationToken = default);
     Task<WebhookProcessResult> ProcessWebhookPayloadAsync(WebhookEvent webhookEvent, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<SocialProfileDraft>> DiscoverProfilesAsync(string userAccessToken, CancellationToken cancellationToken = default);
@@ -75,8 +76,9 @@ public interface IInstagramService
     Task<string?> ReplyCommentAsync(MetaCallContext context, string commentId, string message, CancellationToken cancellationToken = default);
     Task HideCommentAsync(MetaCallContext context, string commentId, bool hide, CancellationToken cancellationToken = default);
     Task DeleteCommentAsync(MetaCallContext context, string commentId, CancellationToken cancellationToken = default);
+    /// <param name="replyToMid">Meta mid of the message being answered, for a quoted reply.</param>
     /// <returns>The new Graph message id when Meta returns one.</returns>
-    Task<string?> SendMessageAsync(MetaCallContext context, string recipientId, string message, CancellationToken cancellationToken = default);
+    Task<string?> SendMessageAsync(MetaCallContext context, string recipientId, string message, string? replyToMid = null, CancellationToken cancellationToken = default);
     Task DeleteMessageAsync(MetaCallContext context, string messageId, CancellationToken cancellationToken = default);
     Task<WebhookProcessResult> ProcessWebhookPayloadAsync(WebhookEvent webhookEvent, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<SocialProfileDraft>> DiscoverProfilesAsync(string userAccessToken, CancellationToken cancellationToken = default);
@@ -100,8 +102,9 @@ public interface IWhatsAppService
 
     Task<(string Id, string Name)> GetMeAsync(string accessToken, CancellationToken cancellationToken = default);
 
+    /// <param name="replyToMid">WhatsApp message id being answered, for a quoted reply.</param>
     /// <returns>The new WhatsApp message id when Meta returns one.</returns>
-    Task<string?> SendMessageAsync(MetaCallContext context, string recipientId, string message, CancellationToken cancellationToken = default);
+    Task<string?> SendMessageAsync(MetaCallContext context, string recipientId, string message, string? replyToMid = null, CancellationToken cancellationToken = default);
     Task DeleteMessageAsync(MetaCallContext context, string messageId, CancellationToken cancellationToken = default);
     Task<WebhookProcessResult> ProcessWebhookPayloadAsync(WebhookEvent webhookEvent, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<SocialProfileDraft>> DiscoverProfilesAsync(string userAccessToken, string? phoneNumberId, string? wabaId, CancellationToken cancellationToken = default);

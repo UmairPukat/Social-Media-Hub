@@ -326,18 +326,26 @@ public class InstagramService : IInstagramService
     public Task DeleteCommentAsync(MetaCallContext context, string commentId, CancellationToken cancellationToken = default)
         => _graph.DeleteAsync(GraphVersion, commentId, context.AccessToken, cancellationToken);
 
-    public async Task<string?> SendMessageAsync(MetaCallContext context, string recipientId, string message, CancellationToken cancellationToken = default)
+    public async Task<string?> SendMessageAsync(MetaCallContext context, string recipientId, string message, string? replyToMid = null, CancellationToken cancellationToken = default)
     {
         // Facebook Login for Instagram Messaging uses the Page ID + Page access token.
         var pathId = !string.IsNullOrWhiteSpace(context.PageExternalId)
             ? context.PageExternalId
             : context.ProfileExternalId;
-        var payload = new
-        {
-            recipient = new { id = recipientId },
-            messaging_type = "RESPONSE",
-            message = new { text = message }
-        };
+        object payload = string.IsNullOrWhiteSpace(replyToMid)
+            ? new
+            {
+                recipient = new { id = recipientId },
+                messaging_type = "RESPONSE",
+                message = new { text = message }
+            }
+            : new
+            {
+                recipient = new { id = recipientId },
+                messaging_type = "RESPONSE",
+                message = new { text = message },
+                reply_to = new { mid = replyToMid }
+            };
         using var doc = await _graph.PostJsonAsync(GraphVersion, $"{pathId}/messages", context.AccessToken, payload, cancellationToken);
         if (doc.RootElement.TryGetProperty("message_id", out var messageId))
             return messageId.GetString();
@@ -742,6 +750,15 @@ public class InstagramService : IInstagramService
             ? text.GetString()
             : message.TryGetProperty("attachments", out _) ? "[Instagram attachment]" : string.Empty;
 
+        var replyToMid = message.TryGetProperty("reply_to", out var replyTo) &&
+                         replyTo.ValueKind == JsonValueKind.Object &&
+                         replyTo.TryGetProperty("mid", out var quotedMid)
+            ? quotedMid.ToString()
+            : null;
+        var quoted = string.IsNullOrWhiteSpace(replyToMid)
+            ? null
+            : await _unitOfWork.Messages.GetByExternalMessageIdAsync(replyToMid!, cancellationToken);
+
         var msg = new Message
         {
             ConversationId = conversation.Id,
@@ -752,7 +769,9 @@ public class InstagramService : IInstagramService
             MessageType = MessageContentType.Text,
             Body = body,
             Status = outbound ? MessageDeliveryStatus.Sent : MessageDeliveryStatus.Delivered,
-            PlatformCreatedAt = receivedAt
+            PlatformCreatedAt = receivedAt,
+            ReplyToMessageId = quoted?.Id,
+            ReplyToExternalId = replyToMid
         };
         await _unitOfWork.Messages.AddAsync(msg, cancellationToken);
 
@@ -777,7 +796,12 @@ public class InstagramService : IInstagramService
             IsRead = outbound,
             IsOutgoing = outbound,
             ConversationId = conversation.Id,
-            ReceivedAt = receivedAt
+            ReceivedAt = receivedAt,
+            ReplyToId = quoted?.Id,
+            ReplyToAuthor = quoted is null
+                ? null
+                : quoted.Direction == MessageDirection.Outbound ? "You" : conversation.CustomerName ?? quoted.SenderId,
+            ReplyToContent = quoted?.Body
         };
 
         await _inboxRealtime.NotifyInboxItemAsync(account.UserId, inboxItem, cancellationToken);

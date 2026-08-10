@@ -156,6 +156,10 @@ export interface InboxItem {
   replyCount?: number;
   /** Set on a comment reply so the Inbox can nest it under its parent. */
   parentId?: string;
+  /** Quoted message this one replies to. */
+  replyToId?: string;
+  replyToAuthor?: string;
+  replyToContent?: string;
 }
 
 export interface DashboardSummary {

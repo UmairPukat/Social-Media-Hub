@@ -91,8 +91,11 @@ export class ApiService {
     return this.http.delete<ApiResponse<object>>(`${this.base}/Inbox/DeleteComment?id=${id}`);
   }
 
-  replyMessage(id: string, message: string): Observable<ApiResponse<object>> {
-    return this.http.post<ApiResponse<object>>(`${this.base}/Inbox/ReplyToMessage?id=${id}`, { message });
+  replyMessage(id: string, message: string, replyToMessageId?: string): Observable<ApiResponse<object>> {
+    return this.http.post<ApiResponse<object>>(`${this.base}/Inbox/ReplyToMessage?id=${id}`, {
+      message,
+      replyToMessageId: replyToMessageId ?? null
+    });
   }
 
   deleteMessage(id: string): Observable<ApiResponse<object>> {

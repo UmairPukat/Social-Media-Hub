@@ -19,6 +19,12 @@ public class Message : BaseEntity
     public MessageDeliveryStatus Status { get; set; } = MessageDeliveryStatus.Pending;
     public DateTime? PlatformCreatedAt { get; set; }
 
+    /// <summary>Local message this one replies to (Messenger / Instagram quoted reply).</summary>
+    public Guid? ReplyToMessageId { get; set; }
+
+    /// <summary>Meta mid of the quoted message, kept even when that message was never stored.</summary>
+    public string? ReplyToExternalId { get; set; }
+
     public Conversation? Conversation { get; set; }
     public ICollection<MessageAttachment> Attachments { get; set; } = new List<MessageAttachment>();
 }

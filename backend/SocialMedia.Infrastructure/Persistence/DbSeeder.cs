@@ -63,6 +63,7 @@ public static class DbSeeder
     {
         await db.Database.EnsureCreatedAsync();
         await EnsureWebhookLogsTableAsync(db);
+        await EnsureMessageReplyColumnsAsync(db);
 
         var catalogCodes = new HashSet<string>(
             PlatformCatalog.All.Select(p => p.Code),
@@ -144,6 +145,20 @@ public static class DbSeeder
             """);
         await db.Database.ExecuteSqlRawAsync("""
             CREATE INDEX IF NOT EXISTS "IX_WebhookLogs_ReceivedAt" ON "WebhookLogs" ("ReceivedAt");
+            """);
+    }
+
+    /// <summary>
+    /// EnsureCreated does not alter existing databases — add the quoted-reply columns used by
+    /// Messenger / Instagram message replies when they are missing.
+    /// </summary>
+    private static async Task EnsureMessageReplyColumnsAsync(AppDbContext db)
+    {
+        await db.Database.ExecuteSqlRawAsync("""
+            ALTER TABLE "Messages" ADD COLUMN IF NOT EXISTS "ReplyToMessageId" uuid NULL;
+            """);
+        await db.Database.ExecuteSqlRawAsync("""
+            ALTER TABLE "Messages" ADD COLUMN IF NOT EXISTS "ReplyToExternalId" character varying(200) NULL;
             """);
     }
 }

@@ -143,6 +143,7 @@ public class MessageConfiguration : IEntityTypeConfiguration<Message>
         builder.HasKey(x => x.Id);
         builder.Property(x => x.ExternalMessageId).IsRequired().HasMaxLength(200);
         builder.Property(x => x.Body).HasMaxLength(5000);
+        builder.Property(x => x.ReplyToExternalId).HasMaxLength(200);
         builder.HasOne(x => x.Conversation).WithMany(x => x.Messages).HasForeignKey(x => x.ConversationId).OnDelete(DeleteBehavior.Cascade);
     }
 }

@@ -34,11 +34,21 @@ export interface CommentPostThread {
   unreadCount: number;
 }
 
-export interface ThreadBubble {
+/** One rendered chat bubble, grouped the way Messenger and Instagram stack consecutive messages. */
+export interface ChatBubble {
   id: string;
   content: string;
   at: string;
   outgoing: boolean;
+  authorName: string;
+  /** Day heading shown above this bubble when the date changes. */
+  dateLabel: string | null;
+  isGroupStart: boolean;
+  isGroupEnd: boolean;
+  replyToAuthor?: string;
+  replyToContent?: string;
+  /** Delivery hint under the newest outgoing bubble. */
+  status: string | null;
 }
 
 /** A top-level comment with its replies, mirroring the Facebook / Instagram layout. */
@@ -69,7 +79,7 @@ export class InboxComponent implements OnInit, OnDestroy {
   readonly replyTargetCommentId = signal<string | null>(null);
   readonly replyTargetAuthor = signal<string | null>(null);
   readonly expandedReplies = signal<Record<string, boolean>>({});
-  readonly localOutgoing = signal<Record<string, ThreadBubble[]>>({});
+  readonly replyTargetMessageId = signal<string | null>(null);
   readonly banner = signal('');
   readonly sending = signal(false);
   readonly colors = PLATFORM_COLORS;
@@ -101,7 +111,7 @@ export class InboxComponent implements OnInit, OnDestroy {
       if (!existing) {
         grouped.set(key, {
           key,
-          authorName: item.isOutgoing ? 'Instagram user' : item.authorName || 'Instagram user',
+          authorName: item.isOutgoing ? (item.authorId || 'Customer') : item.authorName || 'Customer',
           authorId: item.authorId,
           platformCode: item.platformCode,
           lastContent: item.content,
@@ -230,14 +240,46 @@ export class InboxComponent implements OnInit, OnDestroy {
     this.commentTree().reduce((total, node) => total + 1 + node.replies.length, 0)
   );
 
-  readonly messageThread = computed((): ThreadBubble[] => {
+  readonly messageThread = computed((): ChatBubble[] => {
     const conv = this.selectedMessage();
     if (!conv) return [];
-    const incoming = [...conv.items]
-      .sort((a, b) => +new Date(a.receivedAt) - +new Date(b.receivedAt))
-      .map(i => ({ id: i.id, content: i.content, at: i.receivedAt, outgoing: !!i.isOutgoing }));
-    const outgoing = this.localOutgoing()[conv.key] || [];
-    return [...incoming, ...outgoing].sort((a, b) => +new Date(a.at) - +new Date(b.at));
+
+    const ordered = [...conv.items]
+      .sort((a, b) => +new Date(a.receivedAt) - +new Date(b.receivedAt));
+    const lastOutgoingId = [...ordered].reverse().find(i => i.isOutgoing)?.id ?? null;
+
+    // Messenger starts a new bubble group when the sender changes or after a five minute gap.
+    const groupWindowMs = 5 * 60 * 1000;
+    const sameGroup = (a: InboxItem | undefined, b: InboxItem): boolean =>
+      !!a &&
+      !!a.isOutgoing === !!b.isOutgoing &&
+      Math.abs(+new Date(b.receivedAt) - +new Date(a.receivedAt)) <= groupWindowMs;
+
+    return ordered.map((item, index) => {
+      const previous = ordered[index - 1];
+      const next = ordered[index + 1];
+      const dayChanged = !previous || !this.isSameDay(previous.receivedAt, item.receivedAt);
+
+      return {
+        id: item.id,
+        content: item.content,
+        at: item.receivedAt,
+        outgoing: !!item.isOutgoing,
+        authorName: item.isOutgoing ? 'You' : item.authorName || conv.authorName,
+        dateLabel: dayChanged ? this.dayLabel(item.receivedAt) : null,
+        isGroupStart: dayChanged || !sameGroup(previous, item),
+        isGroupEnd: !next || !this.isSameDay(item.receivedAt, next.receivedAt) || !sameGroup(item, next),
+        replyToAuthor: item.replyToAuthor,
+        replyToContent: item.replyToContent,
+        status: item.id === lastOutgoingId ? 'Sent' : null
+      };
+    });
+  });
+
+  readonly replyTargetMessage = computed(() => {
+    const id = this.replyTargetMessageId();
+    if (!id) return null;
+    return this.selectedMessage()?.items.find(i => i.id === id) ?? null;
   });
 
   ngOnInit(): void {
@@ -312,6 +354,7 @@ export class InboxComponent implements OnInit, OnDestroy {
   selectMessage(conv: MessageConversation): void {
     this.selectedKey.set(conv.key);
     this.replyText.set('');
+    this.replyTargetMessageId.set(null);
     const conversationId = conv.items.find((item) => item.conversationId)?.conversationId;
     if (conversationId && conv.unreadCount > 0) {
       this.api.markRead(conversationId).subscribe({
@@ -348,6 +391,37 @@ export class InboxComponent implements OnInit, OnDestroy {
   clearCommentReplyTarget(): void {
     this.replyTargetCommentId.set(null);
     this.replyTargetAuthor.set(null);
+  }
+
+  beginMessageReply(bubble: ChatBubble): void {
+    this.replyTargetMessageId.set(bubble.id);
+    queueMicrotask(() => {
+      const el = document.querySelector<HTMLTextAreaElement>('.composer.chat textarea');
+      el?.focus();
+    });
+  }
+
+  clearMessageReplyTarget(): void {
+    this.replyTargetMessageId.set(null);
+  }
+
+  private isSameDay(a: string, b: string): boolean {
+    const first = new Date(a);
+    const second = new Date(b);
+    return first.getFullYear() === second.getFullYear()
+      && first.getMonth() === second.getMonth()
+      && first.getDate() === second.getDate();
+  }
+
+  private dayLabel(at: string): string {
+    const date = new Date(at);
+    const today = new Date();
+    const yesterday = new Date(today);
+    yesterday.setDate(today.getDate() - 1);
+
+    if (this.isSameDay(at, today.toISOString())) return 'Today';
+    if (this.isSameDay(at, yesterday.toISOString())) return 'Yesterday';
+    return date.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
   }
 
   toggleReplies(node: CommentNode): void {
@@ -407,8 +481,9 @@ export class InboxComponent implements OnInit, OnDestroy {
       if (!conv) return;
       const latest = [...conv.items].sort((a, b) => +new Date(b.receivedAt) - +new Date(a.receivedAt))[0];
       if (!latest) return;
+      const quoted = this.replyTargetMessage();
       this.sending.set(true);
-      this.api.replyMessage(latest.id, text).subscribe({
+      this.api.replyMessage(latest.id, text, quoted?.id).subscribe({
         next: (res) => {
           if (res.success) {
             const messageId = (res.data as { messageId?: string } | null)?.messageId;
@@ -424,9 +499,13 @@ export class InboxComponent implements OnInit, OnDestroy {
               isRead: true,
               isOutgoing: true,
               conversationId: latest.conversationId,
-              receivedAt: new Date().toISOString()
+              receivedAt: new Date().toISOString(),
+              replyToId: quoted?.id,
+              replyToAuthor: quoted ? (quoted.isOutgoing ? 'You' : quoted.authorName) : undefined,
+              replyToContent: quoted?.content
             });
             this.replyText.set('');
+            this.clearMessageReplyTarget();
             this.banner.set('');
           } else {
             this.banner.set(res.message || 'Reply failed');
@@ -494,19 +573,5 @@ export class InboxComponent implements OnInit, OnDestroy {
         this.sending.set(false);
       }
     });
-  }
-
-  private pushLocalReply(key: string, text: string): void {
-    const bubble: ThreadBubble = {
-      id: `local-${Date.now()}`,
-      content: text,
-      at: new Date().toISOString(),
-      outgoing: true
-    };
-    this.localOutgoing.update(map => ({
-      ...map,
-      [key]: [...(map[key] || []), bubble]
-    }));
-    this.replyText.set('');
   }
 }

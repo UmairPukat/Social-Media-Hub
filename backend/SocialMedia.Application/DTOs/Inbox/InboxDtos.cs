@@ -20,6 +20,11 @@ public class InboxItemDto
 
     /// <summary>Set on a comment reply so the Inbox can nest it under the comment it answers.</summary>
     public Guid? ParentId { get; set; }
+
+    /// <summary>Quoted message this one replies to, shown above the bubble like Messenger.</summary>
+    public Guid? ReplyToId { get; set; }
+    public string? ReplyToAuthor { get; set; }
+    public string? ReplyToContent { get; set; }
 }
 
 public class InboxPostMetaDto
@@ -48,6 +53,9 @@ public class ReplyCommentRequest
 public class ReplyMessageRequest
 {
     public string Message { get; set; } = string.Empty;
+
+    /// <summary>Optional message being quoted, sent to Meta as reply_to.mid.</summary>
+    public Guid? ReplyToMessageId { get; set; }
 }
 
 public class HideCommentRequest

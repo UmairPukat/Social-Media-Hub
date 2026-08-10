@@ -106,15 +106,24 @@ public class WhatsAppService : IWhatsAppService
         return Task.FromResult(list);
     }
 
-    public async Task<string?> SendMessageAsync(MetaCallContext context, string recipientId, string message, CancellationToken cancellationToken = default)
+    public async Task<string?> SendMessageAsync(MetaCallContext context, string recipientId, string message, string? replyToMid = null, CancellationToken cancellationToken = default)
     {
-        var payload = new
-        {
-            messaging_product = "whatsapp",
-            to = recipientId,
-            type = "text",
-            text = new { body = message }
-        };
+        object payload = string.IsNullOrWhiteSpace(replyToMid)
+            ? new
+            {
+                messaging_product = "whatsapp",
+                to = recipientId,
+                type = "text",
+                text = new { body = message }
+            }
+            : new
+            {
+                messaging_product = "whatsapp",
+                to = recipientId,
+                type = "text",
+                text = new { body = message },
+                context = new { message_id = replyToMid }
+            };
         using var doc = await _graph.PostJsonAsync(_settings.GraphApiVersion, $"{context.ProfileExternalId}/messages", context.AccessToken, payload, cancellationToken);
         if (doc.RootElement.TryGetProperty("messages", out var messages) &&
             messages.ValueKind == JsonValueKind.Array &&

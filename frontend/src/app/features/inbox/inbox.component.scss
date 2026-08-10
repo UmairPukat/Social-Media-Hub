@@ -643,9 +643,24 @@
 .replying-to {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
+  min-width: 0;
   font-size: 0.78rem;
   color: #65676b;
+
+  mat-icon {
+    font-size: 15px;
+    width: 15px;
+    height: 15px;
+    flex-shrink: 0;
+  }
+
+  .quoted-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    opacity: 0.8;
+  }
 
   button {
     border: 0;
@@ -653,6 +668,8 @@
     color: #1877f2;
     cursor: pointer;
     padding: 0;
+    margin-left: auto;
+    flex-shrink: 0;
     font: inherit;
   }
 }
@@ -740,26 +757,77 @@
     );
 }
 
+.day-divider {
+  display: flex;
+  justify-content: center;
+  margin: 6px 0;
+
+  span {
+    background: rgba(15, 23, 42, 0.06);
+    color: #65676b;
+    font-size: 0.72rem;
+    font-weight: 600;
+    border-radius: 999px;
+    padding: 3px 12px;
+  }
+}
+
 .bubble-row {
   display: flex;
+  align-items: flex-end;
+  gap: 8px;
   justify-content: flex-start;
+
+  /* Consecutive messages from one sender sit tight, like Messenger. */
+  &:not(.group-start) {
+    margin-top: -6px;
+  }
+
+  &:hover .bubble-reply {
+    opacity: 1;
+  }
 }
 
 .bubble-row.out {
   justify-content: flex-end;
+  flex-direction: row-reverse;
+}
+
+/* Reserves the avatar column so stacked bubbles stay aligned. */
+.bubble-avatar {
+  width: 28px;
+  flex-shrink: 0;
+}
+
+.bubble-stack {
+  display: flex;
+  flex-direction: column;
+  max-width: min(72%, 480px);
+  min-width: 0;
+}
+
+.bubble-row.out .bubble-stack {
+  align-items: flex-end;
 }
 
 .bubble {
-  max-width: min(72%, 480px);
   background: #fff;
-  border-radius: 16px 16px 16px 4px;
-  padding: 10px 12px 6px;
+  border-radius: 16px;
+  padding: 8px 12px;
   box-shadow: 0 1px 1px rgba(15, 23, 42, 0.06);
+}
+
+.bubble-row:not(.group-end) .bubble {
+  border-bottom-left-radius: 4px;
 }
 
 .bubble-row.out .bubble {
   background: #e7f3ff;
-  border-radius: 16px 16px 4px 16px;
+}
+
+.bubble-row.out:not(.group-end) .bubble {
+  border-bottom-left-radius: 16px;
+  border-bottom-right-radius: 4px;
 }
 
 .bubble.wa {
@@ -771,17 +839,69 @@
 }
 
 .bubble p {
-  margin: 0 0 4px;
+  margin: 0;
   line-height: 1.4;
   white-space: pre-wrap;
   word-break: break-word;
 }
 
-.bubble time {
-  display: block;
-  text-align: right;
+.bubble-meta {
+  display: flex;
+  gap: 4px;
+  padding: 2px 6px 0;
   font-size: 0.7rem;
   color: #667781;
+}
+
+/* Quoted message shown above the bubble that answers it. */
+.quoted {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  margin-bottom: 2px;
+  padding: 0 8px;
+  font-size: 0.72rem;
+  color: #65676b;
+
+  mat-icon {
+    font-size: 13px;
+    width: 13px;
+    height: 13px;
+  }
+
+  .quoted-author {
+    font-weight: 600;
+    flex-shrink: 0;
+  }
+
+  .quoted-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    opacity: 0.85;
+  }
+}
+
+.bubble-reply {
+  border: 0;
+  background: transparent;
+  color: #65676b;
+  cursor: pointer;
+  padding: 2px;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  align-self: center;
+
+  &:hover {
+    color: #1877f2;
+  }
+
+  mat-icon {
+    font-size: 18px;
+    width: 18px;
+    height: 18px;
+  }
 }
 
 .composer.chat {
@@ -797,6 +917,10 @@
 .composer.chat textarea {
   border-radius: 14px;
   background: #fff;
+}
+
+.composer.chat .composer-main {
+  min-width: 0;
 }
 
 @media (max-width: 960px) {
