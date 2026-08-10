@@ -162,22 +162,54 @@
           </article>
 
           <div class="comments-block">
-            <h3>Comments · {{ thread.comments.length }}</h3>
-            @for (c of thread.comments; track c.id) {
-              <div class="comment" [class.outgoing]="c.isOutgoing">
+            <h3>Comments · {{ commentCount() }}</h3>
+            @for (node of commentTree(); track node.comment.id) {
+              <div class="comment" [class.outgoing]="node.comment.isOutgoing">
                 <div class="avatar sm" [style.background]="color(thread.platformCode)">
-                  {{ initials(c.isOutgoing ? 'You' : c.authorName) }}
+                  {{ initials(node.comment.isOutgoing ? 'You' : node.comment.authorName) }}
                 </div>
                 <div class="comment-body">
                   <div class="bubble-card">
-                    <strong>{{ c.isOutgoing ? 'You' : c.authorName }}</strong>
-                    <p>{{ c.content }}</p>
+                    <strong>{{ node.comment.isOutgoing ? 'You' : node.comment.authorName }}</strong>
+                    <p>{{ node.comment.content }}</p>
                   </div>
                   <div class="comment-meta">
-                    <button type="button" (click)="beginCommentReply(c)">Reply</button>
-                    <span>{{ c.commentLikes || 0 }} likes</span>
-                    <time>{{ c.receivedAt | date: 'd MMM · HH:mm' }}</time>
+                    <button type="button" (click)="beginCommentReply(node.comment)">Reply</button>
+                    <span>{{ node.comment.commentLikes || 0 }} likes</span>
+                    <time>{{ node.comment.receivedAt | date: 'd MMM · HH:mm' }}</time>
                   </div>
+
+                  @if (node.replies.length) {
+                    <button type="button" class="replies-toggle" (click)="toggleReplies(node)">
+                      <mat-icon>{{ node.repliesExpanded ? 'subdirectory_arrow_right' : 'reply' }}</mat-icon>
+                      {{ node.repliesExpanded ? 'Hide' : 'View' }}
+                      {{ node.replies.length }}
+                      {{ node.replies.length === 1 ? 'reply' : 'replies' }}
+                    </button>
+                  }
+
+                  @if (node.repliesExpanded) {
+                    <div class="replies">
+                      @for (r of node.replies; track r.id) {
+                        <div class="comment reply" [class.outgoing]="r.isOutgoing">
+                          <div class="avatar xs" [style.background]="color(thread.platformCode)">
+                            {{ initials(r.isOutgoing ? 'You' : r.authorName) }}
+                          </div>
+                          <div class="comment-body">
+                            <div class="bubble-card">
+                              <strong>{{ r.isOutgoing ? 'You' : r.authorName }}</strong>
+                              <p>{{ r.content }}</p>
+                            </div>
+                            <div class="comment-meta">
+                              <button type="button" (click)="beginCommentReply(r)">Reply</button>
+                              <span>{{ r.commentLikes || 0 }} likes</span>
+                              <time>{{ r.receivedAt | date: 'd MMM · HH:mm' }}</time>
+                            </div>
+                          </div>
+                        </div>
+                      }
+                    </div>
+                  }
                 </div>
               </div>
             }

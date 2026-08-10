@@ -17,6 +17,9 @@ public class InboxItemDto
     public InboxPostMetaDto? Post { get; set; }
     public int CommentLikes { get; set; }
     public int ReplyCount { get; set; }
+
+    /// <summary>Set on a comment reply so the Inbox can nest it under the comment it answers.</summary>
+    public Guid? ParentId { get; set; }
 }
 
 public class InboxPostMetaDto

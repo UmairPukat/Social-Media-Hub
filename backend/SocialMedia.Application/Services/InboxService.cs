@@ -69,6 +69,7 @@ public class InboxService : IInboxService
                     ReceivedAt = c.PlatformCreatedAt ?? c.CreatedAt,
                     CommentLikes = c.LikeCount,
                     ReplyCount = c.Replies.Count,
+                    ParentId = c.ParentCommentId,
                     Post = c.Post is null ? null : new InboxPostMetaDto
                     {
                         PostId = c.Post.ExternalPostId ?? c.Post.Id.ToString(),
@@ -309,6 +310,7 @@ public class InboxService : IInboxService
             ReceivedAt = comment.PlatformCreatedAt ?? comment.CreatedAt,
             CommentLikes = comment.LikeCount,
             ReplyCount = 0,
+            ParentId = comment.ParentCommentId,
             Post = new InboxPostMetaDto
             {
                 PostId = post.ExternalPostId ?? post.Id.ToString(),

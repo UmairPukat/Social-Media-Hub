@@ -41,6 +41,13 @@ export interface ThreadBubble {
   outgoing: boolean;
 }
 
+/** A top-level comment with its replies, mirroring the Facebook / Instagram layout. */
+export interface CommentNode {
+  comment: InboxItem;
+  replies: InboxItem[];
+  repliesExpanded: boolean;
+}
+
 @Component({
   selector: 'app-inbox',
   standalone: true,
@@ -61,6 +68,7 @@ export class InboxComponent implements OnInit, OnDestroy {
   readonly replyText = signal('');
   readonly replyTargetCommentId = signal<string | null>(null);
   readonly replyTargetAuthor = signal<string | null>(null);
+  readonly expandedReplies = signal<Record<string, boolean>>({});
   readonly localOutgoing = signal<Record<string, ThreadBubble[]>>({});
   readonly banner = signal('');
   readonly sending = signal(false);
@@ -172,6 +180,56 @@ export class InboxComponent implements OnInit, OnDestroy {
     return this.commentThreads().find(t => t.key === key) ?? null;
   });
 
+  /**
+   * Groups replies under the top-level comment they answer. Facebook and Instagram both allow
+   * a single level of nesting, so a reply to a reply is shown against the same root comment.
+   */
+  readonly commentTree = computed((): CommentNode[] => {
+    const thread = this.selectedCommentThread();
+    if (!thread) return [];
+
+    const byId = new Map(thread.comments.map(c => [c.id, c]));
+    const oldestFirst = [...thread.comments]
+      .sort((a, b) => +new Date(a.receivedAt) - +new Date(b.receivedAt));
+
+    const rootIdOf = (item: InboxItem): string => {
+      let current = item;
+      let guard = 0;
+      while (current.parentId && byId.has(current.parentId) && guard++ < 20) {
+        current = byId.get(current.parentId)!;
+      }
+      return current.id;
+    };
+
+    const nodes = new Map<string, CommentNode>();
+    for (const comment of oldestFirst) {
+      const isReply = !!comment.parentId && byId.has(comment.parentId);
+      if (!isReply) {
+        nodes.set(comment.id, { comment, replies: [], repliesExpanded: false });
+      }
+    }
+
+    for (const comment of oldestFirst) {
+      if (!comment.parentId || !byId.has(comment.parentId)) continue;
+      const node = nodes.get(rootIdOf(comment));
+      if (node) {
+        node.replies.push(comment);
+      } else {
+        nodes.set(comment.id, { comment, replies: [], repliesExpanded: false });
+      }
+    }
+
+    const expanded = this.expandedReplies();
+    return [...nodes.values()].map(node => ({
+      ...node,
+      repliesExpanded: expanded[node.comment.id] ?? node.replies.length <= 2
+    }));
+  });
+
+  readonly commentCount = computed(() =>
+    this.commentTree().reduce((total, node) => total + 1 + node.replies.length, 0)
+  );
+
   readonly messageThread = computed((): ThreadBubble[] => {
     const conv = this.selectedMessage();
     if (!conv) return [];
@@ -269,12 +327,18 @@ export class InboxComponent implements OnInit, OnDestroy {
     this.replyText.set('');
     this.replyTargetCommentId.set(null);
     this.replyTargetAuthor.set(null);
+    this.expandedReplies.set({});
   }
 
   beginCommentReply(comment: InboxItem): void {
     this.replyTargetCommentId.set(comment.id);
-    this.replyTargetAuthor.set(comment.authorName || 'comment');
+    this.replyTargetAuthor.set(comment.isOutgoing ? 'You' : comment.authorName || 'comment');
     this.replyText.set('');
+
+    // Keep the thread the reply lands in open while composing.
+    const rootId = this.rootCommentId(comment);
+    this.expandedReplies.update(map => ({ ...map, [rootId]: true }));
+
     queueMicrotask(() => {
       const el = document.querySelector<HTMLTextAreaElement>('.composer.light textarea');
       el?.focus();
@@ -284,6 +348,24 @@ export class InboxComponent implements OnInit, OnDestroy {
   clearCommentReplyTarget(): void {
     this.replyTargetCommentId.set(null);
     this.replyTargetAuthor.set(null);
+  }
+
+  toggleReplies(node: CommentNode): void {
+    const id = node.comment.id;
+    const current = node.repliesExpanded;
+    this.expandedReplies.update(map => ({ ...map, [id]: !current }));
+  }
+
+  private rootCommentId(comment: InboxItem): string {
+    const thread = this.selectedCommentThread();
+    if (!thread) return comment.id;
+    const byId = new Map(thread.comments.map(c => [c.id, c]));
+    let current = comment;
+    let guard = 0;
+    while (current.parentId && byId.has(current.parentId) && guard++ < 20) {
+      current = byId.get(current.parentId)!;
+    }
+    return current.id;
   }
 
   initials(name: string): string {
@@ -375,6 +457,7 @@ export class InboxComponent implements OnInit, OnDestroy {
       return;
     }
 
+    const rootId = this.rootCommentId(target);
     this.sending.set(true);
     this.api.replyComment(target.id, text).subscribe({
       next: (res) => {
@@ -393,9 +476,11 @@ export class InboxComponent implements OnInit, OnDestroy {
             receivedAt: new Date().toISOString(),
             commentLikes: 0,
             replyCount: 0,
+            parentId: rootId,
             post: thread.post
           };
           this.upsertItem(item);
+          this.expandedReplies.update(map => ({ ...map, [rootId]: true }));
           this.replyText.set('');
           this.clearCommentReplyTarget();
           this.banner.set('');

@@ -219,6 +219,12 @@
   font-size: 0.72rem;
 }
 
+.avatar.xs {
+  width: 28px;
+  height: 28px;
+  font-size: 0.62rem;
+}
+
 .avatar.you {
   background: #64748b;
   font-size: 0.65rem;
@@ -521,6 +527,54 @@
 
   &.outgoing .bubble-card {
     background: #e7f3ff;
+  }
+}
+
+.replies-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  padding: 2px 0;
+  border: 0;
+  background: transparent;
+  color: #65676b;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+
+  &:hover {
+    color: #1877f2;
+  }
+
+  mat-icon {
+    font-size: 16px;
+    width: 16px;
+    height: 16px;
+  }
+}
+
+/* Facebook / Instagram show one level of nesting, marked by an indent guide. */
+.replies {
+  margin-top: 10px;
+  padding-left: 14px;
+  border-left: 2px solid #e4e6eb;
+}
+
+.comment.reply {
+  margin-bottom: 10px;
+
+  &:last-child {
+    margin-bottom: 0;
+  }
+
+  .bubble-card {
+    padding: 6px 12px;
+  }
+
+  p {
+    font-size: 0.88rem;
   }
 }
 

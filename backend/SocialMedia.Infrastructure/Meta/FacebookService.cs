@@ -550,6 +550,7 @@ public class FacebookService : IFacebookService
             ReceivedAt = receivedAt,
             CommentLikes = comment.LikeCount,
             ReplyCount = 0,
+            ParentId = comment.ParentCommentId,
             Post = new InboxPostMetaDto
             {
                 PostId = post.ExternalPostId ?? post.Id.ToString(),

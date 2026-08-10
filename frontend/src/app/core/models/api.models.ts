@@ -154,6 +154,8 @@ export interface InboxItem {
   /** Likes on this comment. */
   commentLikes?: number;
   replyCount?: number;
+  /** Set on a comment reply so the Inbox can nest it under its parent. */
+  parentId?: string;
 }
 
 export interface DashboardSummary {
