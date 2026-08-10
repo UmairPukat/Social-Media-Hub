@@ -133,16 +133,21 @@ public class InboxService : IInboxService
 
             var platform = await _unitOfWork.Platforms.GetByIdAsync(account.PlatformId, cancellationToken);
             var code = platform?.Code?.ToLowerInvariant() ?? string.Empty;
+            if (code is not ("facebook" or "instagram"))
+                return ApiResponse<object>.Fail("Platform does not support comment replies.");
 
-            // Instagram only allows replies on top-level comments — nested replies target the parent.
-            var replyTargetExternalId = code == "instagram"
-                ? await ResolveInstagramReplyTargetAsync(comment, cancellationToken)
-                : comment.ExternalCommentId;
+            // Prefer a real Meta comment id. Local optimistic rows are skipped.
+            var replyTargetExternalId = await ResolveReplyTargetExternalIdAsync(comment, code, cancellationToken);
+            if (string.IsNullOrWhiteSpace(replyTargetExternalId) ||
+                replyTargetExternalId.StartsWith("local_reply_", StringComparison.OrdinalIgnoreCase) ||
+                replyTargetExternalId.StartsWith("local_", StringComparison.OrdinalIgnoreCase))
+                return ApiResponse<object>.Fail("Cannot reply until the original comment is synced from Meta.");
 
             var tokens = CandidateTokens(account.Auth);
             if (tokens.Count == 0)
                 return ApiResponse<object>.Fail("No access token is available. Reconnect the account.");
 
+            string? remoteCommentId = null;
             Exception? lastError = null;
             foreach (var token in tokens)
             {
@@ -155,13 +160,9 @@ public class InboxService : IInboxService
 
                 try
                 {
-                    if (code == "facebook")
-                        await _facebookService.ReplyCommentAsync(context, replyTargetExternalId, request.Message, cancellationToken);
-                    else if (code == "instagram")
-                        await _instagramService.ReplyCommentAsync(context, replyTargetExternalId, request.Message, cancellationToken);
-                    else
-                        return ApiResponse<object>.Fail("Platform does not support comment replies.");
-
+                    remoteCommentId = code == "facebook"
+                        ? await _facebookService.ReplyCommentAsync(context, replyTargetExternalId, request.Message.Trim(), cancellationToken)
+                        : await _instagramService.ReplyCommentAsync(context, replyTargetExternalId, request.Message.Trim(), cancellationToken);
                     lastError = null;
                     break;
                 }
@@ -174,14 +175,25 @@ public class InboxService : IInboxService
             if (lastError is not null)
                 return ApiResponse<object>.Fail(lastError.Message);
 
-            // Persist our reply so the Inbox shows it immediately (same as the working Meta app).
+            var externalId = string.IsNullOrWhiteSpace(remoteCommentId)
+                ? $"local_reply_{Guid.NewGuid():N}"
+                : remoteCommentId!;
+
+            // Avoid duplicates when Meta immediately echoes the reply through webhooks.
+            var existing = await _unitOfWork.Comments.GetByExternalCommentIdAsync(externalId, cancellationToken);
+            if (existing is not null)
+            {
+                await _inboxRealtime.NotifyInboxItemAsync(userId, MapCommentInboxItem(existing, post, profile, code, isOutgoing: true), cancellationToken);
+                return ApiResponse<object>.Ok(new { replyId = existing.Id }, "Comment reply sent.");
+            }
+
             var reply = new Comment
             {
                 PostId = post.Id,
                 ParentCommentId = comment.ParentCommentId ?? comment.Id,
-                ExternalCommentId = $"local_reply_{Guid.NewGuid():N}",
+                ExternalCommentId = externalId,
                 AuthorId = profile.ExternalProfileId,
-                AuthorName = profile.Name ?? "You",
+                AuthorName = profile.Name ?? profile.Username ?? "You",
                 Message = request.Message.Trim(),
                 PlatformCreatedAt = DateTime.UtcNow
             };
@@ -191,33 +203,10 @@ public class InboxService : IInboxService
             _unitOfWork.Posts.Update(post);
             await _unitOfWork.SaveChangesAsync(cancellationToken);
 
-            await _inboxRealtime.NotifyInboxItemAsync(userId, new InboxItemDto
-            {
-                Id = reply.Id,
-                ItemKind = "comment",
-                PlatformCode = code,
-                ExternalId = reply.ExternalCommentId,
-                AuthorName = reply.AuthorName,
-                AuthorId = reply.AuthorId,
-                Content = reply.Message,
-                IsHidden = false,
-                IsRead = true,
-                IsOutgoing = true,
-                ReceivedAt = reply.PlatformCreatedAt ?? DateTime.UtcNow,
-                CommentLikes = 0,
-                ReplyCount = 0,
-                Post = new InboxPostMetaDto
-                {
-                    PostId = post.ExternalPostId ?? post.Id.ToString(),
-                    PageName = profile.Name ?? profile.Username ?? code,
-                    PostText = DisplayPostText(post),
-                    PostImageUrl = post.MediaItems.FirstOrDefault()?.Url,
-                    LikesCount = post.LikeCount,
-                    CommentsCount = post.CommentCount,
-                    SharesCount = post.ShareCount,
-                    PostedAt = post.PublishedAt ?? post.CreatedAt
-                }
-            }, cancellationToken);
+            await _inboxRealtime.NotifyInboxItemAsync(
+                userId,
+                MapCommentInboxItem(reply, post, profile, code, isOutgoing: true),
+                cancellationToken);
 
             return ApiResponse<object>.Ok(new { replyId = reply.Id }, "Comment reply sent.");
         }
@@ -254,20 +243,84 @@ public class InboxService : IInboxService
             || text.Contains("session is invalid", StringComparison.OrdinalIgnoreCase);
     }
 
-    /// <summary>Walk parent links until the top-level comment — IG rejects replies on nested ones.</summary>
-    private async Task<string> ResolveInstagramReplyTargetAsync(Comment comment, CancellationToken cancellationToken)
+    /// <summary>
+    /// Instagram only allows replies on top-level comments. For both platforms, skip local
+    /// optimistic ids and walk to the nearest Meta comment id.
+    /// </summary>
+    private async Task<string> ResolveReplyTargetExternalIdAsync(
+        Comment comment,
+        string platformCode,
+        CancellationToken cancellationToken)
     {
         var current = comment;
-        var guard = 0;
-        while (current.ParentCommentId.HasValue && guard++ < 20)
+        if (platformCode == "instagram")
         {
-            var parent = await _unitOfWork.Comments.GetByIdAsync(current.ParentCommentId.Value, cancellationToken);
-            if (parent is null) break;
-            current = parent;
+            var guard = 0;
+            while (current.ParentCommentId.HasValue && guard++ < 20)
+            {
+                var parent = await _unitOfWork.Comments.GetByIdAsync(current.ParentCommentId.Value, cancellationToken);
+                if (parent is null) break;
+                current = parent;
+            }
         }
 
-        return current.ExternalCommentId;
+        var walk = current;
+        var hops = 0;
+        while (hops++ < 20)
+        {
+            var id = walk.ExternalCommentId ?? string.Empty;
+            if (!IsLocalExternalId(id))
+                return id;
+
+            if (!walk.ParentCommentId.HasValue)
+                return string.Empty;
+
+            var parent = await _unitOfWork.Comments.GetByIdAsync(walk.ParentCommentId.Value, cancellationToken);
+            if (parent is null)
+                return string.Empty;
+            walk = parent;
+        }
+
+        return string.Empty;
     }
+
+    private static bool IsLocalExternalId(string id)
+        => id.StartsWith("local_reply_", StringComparison.OrdinalIgnoreCase)
+            || id.StartsWith("local_", StringComparison.OrdinalIgnoreCase);
+
+    private InboxItemDto MapCommentInboxItem(
+        Comment comment,
+        Post post,
+        SocialProfile profile,
+        string platformCode,
+        bool isOutgoing)
+        => new()
+        {
+            Id = comment.Id,
+            ItemKind = "comment",
+            PlatformCode = platformCode,
+            ExternalId = comment.ExternalCommentId,
+            AuthorName = comment.AuthorName,
+            AuthorId = comment.AuthorId,
+            Content = comment.Message,
+            IsHidden = comment.IsHidden,
+            IsRead = true,
+            IsOutgoing = isOutgoing,
+            ReceivedAt = comment.PlatformCreatedAt ?? comment.CreatedAt,
+            CommentLikes = comment.LikeCount,
+            ReplyCount = 0,
+            Post = new InboxPostMetaDto
+            {
+                PostId = post.ExternalPostId ?? post.Id.ToString(),
+                PageName = profile.Name ?? profile.Username ?? platformCode,
+                PostText = DisplayPostText(post),
+                PostImageUrl = post.MediaItems.FirstOrDefault()?.Url,
+                LikesCount = post.LikeCount,
+                CommentsCount = post.CommentCount,
+                SharesCount = post.ShareCount,
+                PostedAt = post.PublishedAt ?? post.CreatedAt
+            }
+        };
 
     public async Task<ApiResponse<object>> HideCommentAsync(Guid userId, Guid commentId, HideCommentRequest request, CancellationToken cancellationToken = default)
     {
@@ -323,24 +376,132 @@ public class InboxService : IInboxService
     {
         try
         {
-            var (context, code, recipientId) = await ResolveMessageContextAsync(userId, messageId, cancellationToken);
+            if (string.IsNullOrWhiteSpace(request.Message))
+                return ApiResponse<object>.Fail("Message is required.");
 
-            if (code == "facebook")
-                await _facebookService.SendMessageAsync(context, recipientId, request.Message, cancellationToken);
-            else if (code == "instagram")
-                await _instagramService.SendMessageAsync(context, recipientId, request.Message, cancellationToken);
-            else if (code == "whatsapp")
-                await _whatsAppService.SendMessageAsync(context, recipientId, request.Message, cancellationToken);
-            else
+            var message = await _unitOfWork.Messages.GetByIdAsync(messageId, cancellationToken)
+                ?? throw new InvalidOperationException("Message not found.");
+            var conversation = await _unitOfWork.Conversations.GetByIdAsync(message.ConversationId, cancellationToken)
+                ?? throw new InvalidOperationException("Conversation not found.");
+            var profile = await _unitOfWork.SocialProfiles.GetByIdAsync(conversation.SocialProfileId, cancellationToken)
+                ?? throw new InvalidOperationException("Profile not found.");
+            var account = await _unitOfWork.SocialAccounts.GetWithAuthAndProfilesAsync(profile.SocialAccountId, cancellationToken)
+                ?? throw new InvalidOperationException("Account not found.");
+            if (account.UserId != userId || account.Auth is null)
+                throw new InvalidOperationException("Message not found.");
+
+            var platform = await _unitOfWork.Platforms.GetByIdAsync(account.PlatformId, cancellationToken);
+            var code = platform?.Code?.ToLowerInvariant() ?? string.Empty;
+            if (code is not ("facebook" or "instagram" or "whatsapp"))
                 return ApiResponse<object>.Fail("Platform does not support messaging.");
 
-            return ApiResponse<object>.Ok(new { }, "Message sent.");
+            var recipientId = (message.Direction == MessageDirection.Outbound
+                ? message.ReceiverId ?? conversation.CustomerId
+                : message.SenderId ?? conversation.CustomerId) ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(recipientId))
+                return ApiResponse<object>.Fail("Recipient is unknown for this conversation.");
+
+            var tokens = CandidateTokens(account.Auth);
+            if (tokens.Count == 0)
+                return ApiResponse<object>.Fail("No access token is available. Reconnect the account.");
+
+            string? remoteMessageId = null;
+            Exception? lastError = null;
+            foreach (var token in tokens)
+            {
+                var context = new MetaCallContext
+                {
+                    AccessToken = token,
+                    ProfileExternalId = profile.ExternalProfileId,
+                    PageExternalId = ReadPageId(profile.MetadataJson)
+                };
+
+                try
+                {
+                    remoteMessageId = code switch
+                    {
+                        "facebook" => await _facebookService.SendMessageAsync(context, recipientId, request.Message.Trim(), cancellationToken),
+                        "instagram" => await _instagramService.SendMessageAsync(context, recipientId, request.Message.Trim(), cancellationToken),
+                        "whatsapp" => await _whatsAppService.SendMessageAsync(context, recipientId, request.Message.Trim(), cancellationToken),
+                        _ => null
+                    };
+                    lastError = null;
+                    break;
+                }
+                catch (Exception ex) when (IsOAuthTokenError(ex))
+                {
+                    lastError = ex;
+                }
+            }
+
+            if (lastError is not null)
+                return ApiResponse<object>.Fail(lastError.Message);
+
+            var externalId = string.IsNullOrWhiteSpace(remoteMessageId)
+                ? $"local_msg_{Guid.NewGuid():N}"
+                : remoteMessageId!;
+
+            var existing = await _unitOfWork.Messages.GetByExternalMessageIdAsync(externalId, cancellationToken);
+            if (existing is not null)
+            {
+                await _inboxRealtime.NotifyInboxItemAsync(
+                    userId,
+                    MapMessageInboxItem(existing, conversation, code),
+                    cancellationToken);
+                return ApiResponse<object>.Ok(new { messageId = existing.Id }, "Message sent.");
+            }
+
+            var sentAt = DateTime.UtcNow;
+            var outbound = new Message
+            {
+                ConversationId = conversation.Id,
+                ExternalMessageId = externalId,
+                SenderId = profile.ExternalProfileId,
+                ReceiverId = recipientId,
+                Direction = MessageDirection.Outbound,
+                MessageType = MessageContentType.Text,
+                Body = request.Message.Trim(),
+                Status = MessageDeliveryStatus.Sent,
+                PlatformCreatedAt = sentAt
+            };
+            await _unitOfWork.Messages.AddAsync(outbound, cancellationToken);
+
+            conversation.LastMessageAt = sentAt;
+            conversation.UpdatedAt = sentAt;
+            _unitOfWork.Conversations.Update(conversation);
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+            await _inboxRealtime.NotifyInboxItemAsync(
+                userId,
+                MapMessageInboxItem(outbound, conversation, code),
+                cancellationToken);
+
+            return ApiResponse<object>.Ok(new { messageId = outbound.Id }, "Message sent.");
         }
         catch (Exception ex)
         {
             return ApiResponse<object>.Fail(ex.Message);
         }
     }
+
+    private static InboxItemDto MapMessageInboxItem(Message message, Conversation conversation, string platformCode)
+        => new()
+        {
+            Id = message.Id,
+            ItemKind = "message",
+            PlatformCode = platformCode,
+            ExternalId = message.ExternalMessageId,
+            AuthorName = message.Direction == MessageDirection.Outbound
+                ? "You"
+                : conversation.CustomerName ?? message.SenderId ?? "User",
+            AuthorId = message.SenderId,
+            Content = message.Body ?? string.Empty,
+            IsHidden = false,
+            IsRead = true,
+            IsOutgoing = message.Direction == MessageDirection.Outbound,
+            ConversationId = conversation.Id,
+            ReceivedAt = message.PlatformCreatedAt ?? message.CreatedAt
+        };
 
     public async Task<ApiResponse<object>> DeleteMessageAsync(Guid userId, Guid messageId, CancellationToken cancellationToken = default)
     {

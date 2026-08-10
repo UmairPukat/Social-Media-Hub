@@ -106,7 +106,7 @@ public class WhatsAppService : IWhatsAppService
         return Task.FromResult(list);
     }
 
-    public async Task SendMessageAsync(MetaCallContext context, string recipientId, string message, CancellationToken cancellationToken = default)
+    public async Task<string?> SendMessageAsync(MetaCallContext context, string recipientId, string message, CancellationToken cancellationToken = default)
     {
         var payload = new
         {
@@ -115,7 +115,13 @@ public class WhatsAppService : IWhatsAppService
             type = "text",
             text = new { body = message }
         };
-        using var _ = await _graph.PostJsonAsync(_settings.GraphApiVersion, $"{context.ProfileExternalId}/messages", context.AccessToken, payload, cancellationToken);
+        using var doc = await _graph.PostJsonAsync(_settings.GraphApiVersion, $"{context.ProfileExternalId}/messages", context.AccessToken, payload, cancellationToken);
+        if (doc.RootElement.TryGetProperty("messages", out var messages) &&
+            messages.ValueKind == JsonValueKind.Array &&
+            messages.GetArrayLength() > 0 &&
+            messages[0].TryGetProperty("id", out var id))
+            return id.GetString();
+        return null;
     }
 
     public async Task DeleteMessageAsync(MetaCallContext context, string messageId, CancellationToken cancellationToken = default)

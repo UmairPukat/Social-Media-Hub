@@ -164,18 +164,17 @@
           <div class="comments-block">
             <h3>Comments · {{ thread.comments.length }}</h3>
             @for (c of thread.comments; track c.id) {
-              <div class="comment">
+              <div class="comment" [class.outgoing]="c.isOutgoing">
                 <div class="avatar sm" [style.background]="color(thread.platformCode)">
-                  {{ initials(c.authorName) }}
+                  {{ initials(c.isOutgoing ? 'You' : c.authorName) }}
                 </div>
                 <div class="comment-body">
                   <div class="bubble-card">
-                    <strong>{{ c.authorName }}</strong>
+                    <strong>{{ c.isOutgoing ? 'You' : c.authorName }}</strong>
                     <p>{{ c.content }}</p>
                   </div>
                   <div class="comment-meta">
-                    <button type="button">Like</button>
-                    <button type="button">Reply</button>
+                    <button type="button" (click)="beginCommentReply(c)">Reply</button>
                     <span>{{ c.commentLikes || 0 }} likes</span>
                     <time>{{ c.receivedAt | date: 'd MMM · HH:mm' }}</time>
                   </div>
@@ -185,14 +184,26 @@
 
             <div class="composer light">
               <div class="avatar sm you">You</div>
-              <textarea
-                rows="2"
-                placeholder="Write a comment…"
-                [ngModel]="replyText()"
-                (ngModelChange)="replyText.set($event)"
-                (keydown)="onComposerKeydown($event)"
-              ></textarea>
-              <button type="button" class="send-btn" [disabled]="!replyText().trim()" (click)="sendReply()">
+              <div class="composer-main">
+                @if (replyTargetAuthor()) {
+                  <div class="replying-to">
+                    Replying to <strong>{{ replyTargetAuthor() }}</strong>
+                    <button type="button" (click)="clearCommentReplyTarget()">Cancel</button>
+                  </div>
+                }
+                <textarea
+                  rows="2"
+                  [placeholder]="replyTargetAuthor() ? 'Write a reply…' : 'Write a comment…'"
+                  [ngModel]="replyText()"
+                  (ngModelChange)="replyText.set($event)"
+                  (keydown)="onComposerKeydown($event)"
+                ></textarea>
+              </div>
+              <button
+                type="button"
+                class="send-btn"
+                [disabled]="!replyText().trim() || sending()"
+                (click)="sendReply()">
                 <mat-icon>send</mat-icon>
               </button>
             </div>
@@ -232,7 +243,11 @@
               (ngModelChange)="replyText.set($event)"
               (keydown)="onComposerKeydown($event)"
             ></textarea>
-            <button type="button" class="send-btn" [disabled]="!replyText().trim()" (click)="sendReply()">
+            <button
+              type="button"
+              class="send-btn"
+              [disabled]="!replyText().trim() || sending()"
+              (click)="sendReply()">
               <mat-icon>send</mat-icon>
             </button>
           </footer>

@@ -32,10 +32,12 @@ public interface IFacebookService
     Task<RemoteCommentSnapshot?> GetCommentSnapshotAsync(string accessToken, string commentId, CancellationToken cancellationToken = default);
 
     Task<IReadOnlyList<CommentDto>> GetCommentsAsync(MetaCallContext context, string postId, CancellationToken cancellationToken = default);
-    Task ReplyCommentAsync(MetaCallContext context, string commentId, string message, CancellationToken cancellationToken = default);
+    /// <returns>The new Graph comment id when Meta returns one.</returns>
+    Task<string?> ReplyCommentAsync(MetaCallContext context, string commentId, string message, CancellationToken cancellationToken = default);
     Task HideCommentAsync(MetaCallContext context, string commentId, bool hide, CancellationToken cancellationToken = default);
     Task DeleteCommentAsync(MetaCallContext context, string commentId, CancellationToken cancellationToken = default);
-    Task SendMessageAsync(MetaCallContext context, string recipientId, string message, CancellationToken cancellationToken = default);
+    /// <returns>The new Graph message id when Meta returns one.</returns>
+    Task<string?> SendMessageAsync(MetaCallContext context, string recipientId, string message, CancellationToken cancellationToken = default);
     Task DeleteMessageAsync(MetaCallContext context, string messageId, CancellationToken cancellationToken = default);
     Task<WebhookProcessResult> ProcessWebhookPayloadAsync(WebhookEvent webhookEvent, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<SocialProfileDraft>> DiscoverProfilesAsync(string userAccessToken, CancellationToken cancellationToken = default);
@@ -69,10 +71,12 @@ public interface IInstagramService
     /// <summary>Reads one Instagram comment to fill fields the webhook may omit.</summary>
     Task<RemoteCommentSnapshot?> GetCommentSnapshotAsync(string accessToken, string commentId, CancellationToken cancellationToken = default);
 
-    Task ReplyCommentAsync(MetaCallContext context, string commentId, string message, CancellationToken cancellationToken = default);
+    /// <returns>The new Graph comment id when Meta returns one.</returns>
+    Task<string?> ReplyCommentAsync(MetaCallContext context, string commentId, string message, CancellationToken cancellationToken = default);
     Task HideCommentAsync(MetaCallContext context, string commentId, bool hide, CancellationToken cancellationToken = default);
     Task DeleteCommentAsync(MetaCallContext context, string commentId, CancellationToken cancellationToken = default);
-    Task SendMessageAsync(MetaCallContext context, string recipientId, string message, CancellationToken cancellationToken = default);
+    /// <returns>The new Graph message id when Meta returns one.</returns>
+    Task<string?> SendMessageAsync(MetaCallContext context, string recipientId, string message, CancellationToken cancellationToken = default);
     Task DeleteMessageAsync(MetaCallContext context, string messageId, CancellationToken cancellationToken = default);
     Task<WebhookProcessResult> ProcessWebhookPayloadAsync(WebhookEvent webhookEvent, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<SocialProfileDraft>> DiscoverProfilesAsync(string userAccessToken, CancellationToken cancellationToken = default);
@@ -96,7 +100,8 @@ public interface IWhatsAppService
 
     Task<(string Id, string Name)> GetMeAsync(string accessToken, CancellationToken cancellationToken = default);
 
-    Task SendMessageAsync(MetaCallContext context, string recipientId, string message, CancellationToken cancellationToken = default);
+    /// <returns>The new WhatsApp message id when Meta returns one.</returns>
+    Task<string?> SendMessageAsync(MetaCallContext context, string recipientId, string message, CancellationToken cancellationToken = default);
     Task DeleteMessageAsync(MetaCallContext context, string messageId, CancellationToken cancellationToken = default);
     Task<WebhookProcessResult> ProcessWebhookPayloadAsync(WebhookEvent webhookEvent, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<SocialProfileDraft>> DiscoverProfilesAsync(string userAccessToken, string? phoneNumberId, string? wabaId, CancellationToken cancellationToken = default);

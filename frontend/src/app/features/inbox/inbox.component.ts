@@ -59,6 +59,8 @@ export class InboxComponent implements OnInit, OnDestroy {
   readonly selectedKey = signal<string | null>(null);
   readonly listQuery = signal('');
   readonly replyText = signal('');
+  readonly replyTargetCommentId = signal<string | null>(null);
+  readonly replyTargetAuthor = signal<string | null>(null);
   readonly localOutgoing = signal<Record<string, ThreadBubble[]>>({});
   readonly banner = signal('');
   readonly sending = signal(false);
@@ -265,6 +267,23 @@ export class InboxComponent implements OnInit, OnDestroy {
   selectCommentThread(thread: CommentPostThread): void {
     this.selectedKey.set(thread.key);
     this.replyText.set('');
+    this.replyTargetCommentId.set(null);
+    this.replyTargetAuthor.set(null);
+  }
+
+  beginCommentReply(comment: InboxItem): void {
+    this.replyTargetCommentId.set(comment.id);
+    this.replyTargetAuthor.set(comment.authorName || 'comment');
+    this.replyText.set('');
+    queueMicrotask(() => {
+      const el = document.querySelector<HTMLTextAreaElement>('.composer.light textarea');
+      el?.focus();
+    });
+  }
+
+  clearCommentReplyTarget(): void {
+    this.replyTargetCommentId.set(null);
+    this.replyTargetAuthor.set(null);
   }
 
   initials(name: string): string {
@@ -310,7 +329,22 @@ export class InboxComponent implements OnInit, OnDestroy {
       this.api.replyMessage(latest.id, text).subscribe({
         next: (res) => {
           if (res.success) {
-            this.pushLocalReply(conv.key, text);
+            const messageId = (res.data as { messageId?: string } | null)?.messageId;
+            this.upsertItem({
+              id: messageId || `local-${Date.now()}`,
+              itemKind: 'message',
+              platformCode: conv.platformCode,
+              externalId: messageId || `local_msg_${Date.now()}`,
+              authorName: 'You',
+              authorId: latest.authorId,
+              content: text,
+              isHidden: false,
+              isRead: true,
+              isOutgoing: true,
+              conversationId: latest.conversationId,
+              receivedAt: new Date().toISOString()
+            });
+            this.replyText.set('');
             this.banner.set('');
           } else {
             this.banner.set(res.message || 'Reply failed');
@@ -327,29 +361,43 @@ export class InboxComponent implements OnInit, OnDestroy {
 
     const thread = this.selectedCommentThread();
     if (!thread) return;
-    const latest = [...thread.comments].sort((a, b) => +new Date(b.receivedAt) - +new Date(a.receivedAt))[0];
-    if (!latest) return;
-    // Append as a local comment reply in the list
-    const local: InboxItem = {
-      id: `local-${Date.now()}`,
-      itemKind: 'comment',
-      platformCode: thread.platformCode,
-      externalId: `local_${Date.now()}`,
-      authorName: 'You',
-      content: text,
-      isHidden: false,
-      isRead: true,
-      receivedAt: new Date().toISOString(),
-      commentLikes: 0,
-      replyCount: 0,
-      post: thread.post
-    };
+
+    const targetId = this.replyTargetCommentId();
+    const target = targetId
+      ? thread.comments.find(c => c.id === targetId)
+      : [...thread.comments]
+          .filter(c => !c.isOutgoing)
+          .sort((a, b) => +new Date(b.receivedAt) - +new Date(a.receivedAt))[0]
+        ?? [...thread.comments].sort((a, b) => +new Date(b.receivedAt) - +new Date(a.receivedAt))[0];
+
+    if (!target) {
+      this.banner.set('No comment available to reply to.');
+      return;
+    }
+
     this.sending.set(true);
-    this.api.replyComment(latest.id, text).subscribe({
+    this.api.replyComment(target.id, text).subscribe({
       next: (res) => {
         if (res.success) {
-          this.items.update(list => [...list, local]);
+          const replyId = (res.data as { replyId?: string } | null)?.replyId;
+          const item: InboxItem = {
+            id: replyId || `local-${Date.now()}`,
+            itemKind: 'comment',
+            platformCode: thread.platformCode,
+            externalId: replyId || `local_${Date.now()}`,
+            authorName: 'You',
+            content: text,
+            isHidden: false,
+            isRead: true,
+            isOutgoing: true,
+            receivedAt: new Date().toISOString(),
+            commentLikes: 0,
+            replyCount: 0,
+            post: thread.post
+          };
+          this.upsertItem(item);
           this.replyText.set('');
+          this.clearCommentReplyTarget();
           this.banner.set('');
         } else {
           this.banner.set(res.message || 'Reply failed');

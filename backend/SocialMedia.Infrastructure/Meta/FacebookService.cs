@@ -231,10 +231,11 @@ public class FacebookService : IFacebookService
         return ParseComments(doc);
     }
 
-    public async Task ReplyCommentAsync(MetaCallContext context, string commentId, string message, CancellationToken cancellationToken = default)
+    public async Task<string?> ReplyCommentAsync(MetaCallContext context, string commentId, string message, CancellationToken cancellationToken = default)
     {
-        using var _ = await _graph.PostAsync(_settings.GraphApiVersion, $"{commentId}/comments", context.AccessToken,
+        using var doc = await _graph.PostAsync(_settings.GraphApiVersion, $"{commentId}/comments", context.AccessToken,
             new Dictionary<string, string> { ["message"] = message }, cancellationToken);
+        return doc.RootElement.TryGetProperty("id", out var id) ? id.GetString() : null;
     }
 
     public async Task HideCommentAsync(MetaCallContext context, string commentId, bool hide, CancellationToken cancellationToken = default)
@@ -246,10 +247,14 @@ public class FacebookService : IFacebookService
     public Task DeleteCommentAsync(MetaCallContext context, string commentId, CancellationToken cancellationToken = default)
         => _graph.DeleteAsync(_settings.GraphApiVersion, commentId, context.AccessToken, cancellationToken);
 
-    public async Task SendMessageAsync(MetaCallContext context, string recipientId, string message, CancellationToken cancellationToken = default)
+    public async Task<string?> SendMessageAsync(MetaCallContext context, string recipientId, string message, CancellationToken cancellationToken = default)
     {
+        var pageId = !string.IsNullOrWhiteSpace(context.PageExternalId)
+            ? context.PageExternalId
+            : context.ProfileExternalId;
         var payload = new { recipient = new { id = recipientId }, messaging_type = "RESPONSE", message = new { text = message } };
-        using var _ = await _graph.PostJsonAsync(_settings.GraphApiVersion, $"{context.ProfileExternalId}/messages", context.AccessToken, payload, cancellationToken);
+        using var doc = await _graph.PostJsonAsync(_settings.GraphApiVersion, $"{pageId}/messages", context.AccessToken, payload, cancellationToken);
+        return TryReadMessageId(doc.RootElement);
     }
 
     public Task DeleteMessageAsync(MetaCallContext context, string messageId, CancellationToken cancellationToken = default)
@@ -857,5 +862,14 @@ public class FacebookService : IFacebookService
             });
         }
         return results;
+    }
+
+    private static string? TryReadMessageId(JsonElement root)
+    {
+        if (root.TryGetProperty("message_id", out var messageId))
+            return messageId.GetString();
+        if (root.TryGetProperty("id", out var id))
+            return id.GetString();
+        return null;
     }
 }

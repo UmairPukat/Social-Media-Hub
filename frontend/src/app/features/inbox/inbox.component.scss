@@ -518,6 +518,10 @@
   grid-template-columns: auto 1fr;
   gap: 10px;
   margin-bottom: 14px;
+
+  &.outgoing .bubble-card {
+    background: #e7f3ff;
+  }
 }
 
 .bubble-card {
@@ -574,6 +578,29 @@
   margin-top: 8px;
   padding-top: 12px;
   border-top: 1px solid #e4e6eb;
+}
+
+.composer-main {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.replying-to {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.78rem;
+  color: #65676b;
+
+  button {
+    border: 0;
+    background: transparent;
+    color: #1877f2;
+    cursor: pointer;
+    padding: 0;
+    font: inherit;
+  }
 }
 
 .composer textarea {

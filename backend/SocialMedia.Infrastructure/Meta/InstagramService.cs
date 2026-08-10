@@ -310,10 +310,11 @@ public class InstagramService : IInstagramService
         };
     }
 
-    public async Task ReplyCommentAsync(MetaCallContext context, string commentId, string message, CancellationToken cancellationToken = default)
+    public async Task<string?> ReplyCommentAsync(MetaCallContext context, string commentId, string message, CancellationToken cancellationToken = default)
     {
-        using var _ = await _graph.PostAsync(GraphVersion, $"{commentId}/replies", context.AccessToken,
+        using var doc = await _graph.PostAsync(GraphVersion, $"{commentId}/replies", context.AccessToken,
             new Dictionary<string, string> { ["message"] = message }, cancellationToken);
+        return doc.RootElement.TryGetProperty("id", out var id) ? id.GetString() : null;
     }
 
     public async Task HideCommentAsync(MetaCallContext context, string commentId, bool hide, CancellationToken cancellationToken = default)
@@ -325,7 +326,7 @@ public class InstagramService : IInstagramService
     public Task DeleteCommentAsync(MetaCallContext context, string commentId, CancellationToken cancellationToken = default)
         => _graph.DeleteAsync(GraphVersion, commentId, context.AccessToken, cancellationToken);
 
-    public async Task SendMessageAsync(MetaCallContext context, string recipientId, string message, CancellationToken cancellationToken = default)
+    public async Task<string?> SendMessageAsync(MetaCallContext context, string recipientId, string message, CancellationToken cancellationToken = default)
     {
         // Facebook Login for Instagram Messaging uses the Page ID + Page access token.
         var pathId = !string.IsNullOrWhiteSpace(context.PageExternalId)
@@ -337,7 +338,10 @@ public class InstagramService : IInstagramService
             messaging_type = "RESPONSE",
             message = new { text = message }
         };
-        using var _ = await _graph.PostJsonAsync(GraphVersion, $"{pathId}/messages", context.AccessToken, payload, cancellationToken);
+        using var doc = await _graph.PostJsonAsync(GraphVersion, $"{pathId}/messages", context.AccessToken, payload, cancellationToken);
+        if (doc.RootElement.TryGetProperty("message_id", out var messageId))
+            return messageId.GetString();
+        return doc.RootElement.TryGetProperty("id", out var id) ? id.GetString() : null;
     }
 
     public Task DeleteMessageAsync(MetaCallContext context, string messageId, CancellationToken cancellationToken = default)
