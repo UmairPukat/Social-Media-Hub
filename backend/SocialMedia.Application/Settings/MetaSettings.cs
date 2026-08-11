@@ -13,6 +13,7 @@ public class MetaSettings
 
     public FacebookSettings Facebook { get; set; } = new();
     public InstagramSettings Instagram { get; set; } = new();
+    public InstagramLoginSettings InstagramLogin { get; set; } = new();
     public WhatsAppSettings WhatsApp { get; set; } = new();
 }
 
@@ -49,6 +50,14 @@ public class FacebookSettings : MetaPlatformSettings
 /// use this section for Instagram redirect URI and webhook verify token.
 /// </summary>
 public class InstagramSettings : MetaPlatformSettings
+{
+}
+
+/// <summary>
+/// Native Instagram Login (api.instagram.com / graph.instagram.com).
+/// Uses an Instagram app App Id/Secret — not the Facebook Login path.
+/// </summary>
+public class InstagramLoginSettings : MetaPlatformSettings
 {
 }
 

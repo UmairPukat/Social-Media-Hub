@@ -2,7 +2,7 @@ import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { environment } from '../../../environments/environment';
 
-export type MetaPlatform = 'facebook' | 'instagram' | 'whatsapp';
+export type MetaPlatform = 'facebook' | 'instagram' | 'instagram_login' | 'whatsapp';
 
 export const META_OAUTH_MESSAGE = 'smh-meta-oauth';
 

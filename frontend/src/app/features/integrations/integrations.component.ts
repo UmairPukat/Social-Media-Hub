@@ -128,7 +128,7 @@ export class IntegrationsComponent implements OnInit {
 
   async connect(card: PlatformCard): Promise<void> {
     const code = card.code.toLowerCase() as MetaPlatform;
-    if (!card.canConnect || !['facebook', 'instagram', 'whatsapp'].includes(code)) {
+    if (!card.canConnect || !['facebook', 'instagram', 'instagram_login', 'whatsapp'].includes(code)) {
       this.message.set(`${card.displayName} is coming soon.`);
       return;
     }
@@ -139,7 +139,11 @@ export class IntegrationsComponent implements OnInit {
     }
 
     this.connecting.set(code);
-    this.message.set(`Opening Meta login for ${card.displayName}…`);
+    this.message.set(
+      code === 'instagram_login'
+        ? `Opening Instagram Login for ${card.displayName}…`
+        : `Opening Meta login for ${card.displayName}…`
+    );
 
     try {
       const result = await this.metaAuth.openPopup(code);
@@ -308,6 +312,7 @@ export class IntegrationsComponent implements OnInit {
   tokenLabel(platformCode: string): string {
     const code = (platformCode || '').toLowerCase();
     if (code === 'facebook' || code === 'instagram') return 'Page access token';
+    if (code === 'instagram_login') return 'Instagram access token';
     return 'Access token';
   }
 
@@ -345,6 +350,7 @@ export class IntegrationsComponent implements OnInit {
     const map: Record<string, string> = {
       facebook: 'blue',
       instagram: 'rose',
+      instagram_login: 'rose',
       threads: 'slate',
       twitter: 'slate',
       x: 'slate',
@@ -402,6 +408,7 @@ export class IntegrationsComponent implements OnInit {
     const map: Record<string, string> = {
       facebook: 'public',
       instagram: 'photo_camera',
+      instagram_login: 'camera_alt',
       threads: 'tag',
       twitter: 'alternate_email',
       x: 'alternate_email',

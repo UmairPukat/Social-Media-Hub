@@ -13,6 +13,7 @@ public enum ProfileType
     FacebookPage = 1,
     InstagramBusiness = 2,
     WhatsAppPhone = 3,
+    InstagramLogin = 4,
     Other = 99
 }
 

@@ -16,13 +16,15 @@ public record PlatformDefinition(
 
 /// <summary>
 /// Full Integrations catalog grouped by category.
-/// Meta OAuth connect is enabled for Facebook, Instagram, and WhatsApp only.
+/// Meta OAuth connect is enabled for Facebook, Instagram (Facebook Login),
+/// Instagram Login, and WhatsApp only.
 /// </summary>
 public static class PlatformCatalog
 {
     // Preserve legacy Meta / social GUIDs already used in databases.
     public static readonly Guid FacebookId = Guid.Parse("11111111-1111-1111-1111-111111111111");
     public static readonly Guid InstagramId = Guid.Parse("22222222-2222-2222-2222-222222222222");
+    public static readonly Guid InstagramLoginId = Guid.Parse("22222222-2222-2222-2222-222222222223");
     public static readonly Guid WhatsAppId = Guid.Parse("33333333-3333-3333-3333-333333333333");
     public static readonly Guid YouTubeId = Guid.Parse("44444444-4444-4444-4444-444444444444");
     public static readonly Guid LinkedInId = Guid.Parse("55555555-5555-5555-5555-555555555555");
@@ -84,6 +86,8 @@ public static class PlatformCatalog
             "Publish posts, manage Page comments, and reply to Messenger.", true, true, true, true);
         Add("social", "Social", InstagramId, "instagram", "Instagram", "instagram",
             "Publish media and manage comments/DMs via Facebook Login.", true, true, true, true);
+        Add("social", "Social", InstagramLoginId, "instagram_login", "Instagram Login", "instagram",
+            "Connect a professional Instagram account directly with Instagram Login.", true, true, true, true);
         Add("social", "Social", NewId(8), "threads", "Threads", "threads",
             "Coming soon — text and media posts on Threads.");
         Add("social", "Social", TwitterId, "twitter", "X (Twitter)", "twitter",

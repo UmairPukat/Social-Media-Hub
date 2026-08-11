@@ -61,7 +61,13 @@ public interface IInstagramService
     /// <summary>Exchanges code using Facebook App credentials (Facebook Login for Instagram).</summary>
     Task<OAuthTokenResult> ExchangeCodeAsync(string code, string redirectUri, CancellationToken cancellationToken = default);
 
+    /// <summary>Exchanges code via api.instagram.com (native Instagram Login).</summary>
+    Task<OAuthTokenResult> ExchangeInstagramLoginCodeAsync(string code, string redirectUri, CancellationToken cancellationToken = default);
+
     Task<(string Id, string Name)> GetMeAsync(string accessToken, CancellationToken cancellationToken = default);
+
+    /// <summary>Reads the Instagram user for a native Instagram Login token (graph.instagram.com).</summary>
+    Task<(string Id, string Name)> GetInstagramLoginMeAsync(string accessToken, CancellationToken cancellationToken = default);
 
     Task<PostDto> CreatePostAsync(MetaCallContext context, string content, string? mediaUrl, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<PostDto>> GetPostsAsync(MetaCallContext context, CancellationToken cancellationToken = default);
@@ -82,6 +88,9 @@ public interface IInstagramService
     Task DeleteMessageAsync(MetaCallContext context, string messageId, CancellationToken cancellationToken = default);
     Task<WebhookProcessResult> ProcessWebhookPayloadAsync(WebhookEvent webhookEvent, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<SocialProfileDraft>> DiscoverProfilesAsync(string userAccessToken, CancellationToken cancellationToken = default);
+
+    /// <summary>Builds a single profile from a native Instagram Login user token.</summary>
+    Task<IReadOnlyList<SocialProfileDraft>> DiscoverInstagramLoginProfilesAsync(string accessToken, CancellationToken cancellationToken = default);
 
     /// <summary>Lists Facebook Pages with their linked Instagram Business account, for page selection.</summary>
     Task<IReadOnlyList<MetaPageInfo>> ListPagesAsync(string userAccessToken, CancellationToken cancellationToken = default);

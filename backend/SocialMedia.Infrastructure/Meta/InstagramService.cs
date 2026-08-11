@@ -19,6 +19,7 @@ public class InstagramService : IInstagramService
 {
     private readonly MetaGraphClient _graph;
     private readonly InstagramSettings _instagram;
+    private readonly InstagramLoginSettings _instagramLogin;
     private readonly FacebookSettings _facebook;
     private readonly IUnitOfWork _unitOfWork;
     private readonly IInboxRealtimeNotifier _inboxRealtime;
@@ -33,6 +34,7 @@ public class InstagramService : IInstagramService
     {
         _graph = graph;
         _instagram = options.Value.Instagram;
+        _instagramLogin = options.Value.InstagramLogin;
         _facebook = options.Value.Facebook;
         _unitOfWork = unitOfWork;
         _inboxRealtime = inboxRealtime;
@@ -46,11 +48,20 @@ public class InstagramService : IInstagramService
                 ? _facebook.GraphApiVersion
                 : "v21.0";
 
+    private string InstagramLoginGraphVersion =>
+        FirstNonEmpty(_instagramLogin.GraphApiVersion, _instagram.GraphApiVersion, GraphVersion);
+
     private string AppId =>
         !string.IsNullOrWhiteSpace(_facebook.AppId) ? _facebook.AppId : _instagram.AppId;
 
     private string AppSecret =>
         !string.IsNullOrWhiteSpace(_facebook.AppSecret) ? _facebook.AppSecret : _instagram.AppSecret;
+
+    private string InstagramLoginAppId =>
+        FirstNonEmpty(_instagramLogin.AppId, _instagram.AppId);
+
+    private string InstagramLoginAppSecret =>
+        FirstNonEmpty(_instagramLogin.AppSecret, _instagram.AppSecret);
 
     /// <summary>Facebook Login: authorization code → short token → long-lived user token.</summary>
     public async Task<OAuthTokenResult> ExchangeCodeAsync(string code, string redirectUri, CancellationToken cancellationToken = default)
@@ -92,6 +103,101 @@ public class InstagramService : IInstagramService
         var id = doc.RootElement.GetProperty("id").GetString() ?? string.Empty;
         var name = doc.RootElement.TryGetProperty("name", out var n) ? n.GetString() ?? "Instagram User" : "Instagram User";
         return (id, name);
+    }
+
+    /// <summary>Native Instagram Login: authorization code → short token → long-lived IG user token.</summary>
+    public async Task<OAuthTokenResult> ExchangeInstagramLoginCodeAsync(
+        string code,
+        string redirectUri,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(InstagramLoginAppId) || string.IsNullOrWhiteSpace(InstagramLoginAppSecret))
+            throw new InvalidOperationException("Instagram Login AppId/AppSecret are required.");
+
+        using var shortLived = await _graph.PostInstagramOAuthAsync(new Dictionary<string, string>
+        {
+            ["client_id"] = InstagramLoginAppId,
+            ["client_secret"] = InstagramLoginAppSecret,
+            ["grant_type"] = "authorization_code",
+            ["redirect_uri"] = redirectUri,
+            ["code"] = code
+        }, cancellationToken);
+
+        var shortToken = shortLived.RootElement.GetProperty("access_token").GetString()
+            ?? throw new InvalidOperationException("Instagram did not return an access token.");
+
+        try
+        {
+            using var longLived = await _graph.GetInstagramTokenAsync(
+                "access_token",
+                cancellationToken,
+                ("grant_type", "ig_exchange_token"),
+                ("client_secret", InstagramLoginAppSecret),
+                ("access_token", shortToken));
+
+            return ParseToken(longLived.RootElement);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Instagram Login long-lived token exchange failed; using short-lived token.");
+            return ParseToken(shortLived.RootElement);
+        }
+    }
+
+    public async Task<(string Id, string Name)> GetInstagramLoginMeAsync(
+        string accessToken,
+        CancellationToken cancellationToken = default)
+    {
+        using var doc = await _graph.GetInstagramAsync(
+            InstagramLoginGraphVersion,
+            "me",
+            accessToken,
+            cancellationToken,
+            ("fields", "user_id,username,name,account_type,profile_picture_url"));
+
+        var root = doc.RootElement;
+        var id =
+            (root.TryGetProperty("user_id", out var userId) ? userId.ToString() : null)
+            ?? (root.TryGetProperty("id", out var idProp) ? idProp.ToString() : null)
+            ?? string.Empty;
+        var username = root.TryGetProperty("username", out var u) ? u.GetString() : null;
+        var name = root.TryGetProperty("name", out var n) ? n.GetString() : null;
+        return (id, name ?? username ?? "Instagram User");
+    }
+
+    public async Task<IReadOnlyList<SocialProfileDraft>> DiscoverInstagramLoginProfilesAsync(
+        string accessToken,
+        CancellationToken cancellationToken = default)
+    {
+        using var doc = await _graph.GetInstagramAsync(
+            InstagramLoginGraphVersion,
+            "me",
+            accessToken,
+            cancellationToken,
+            ("fields", "user_id,username,name,account_type,profile_picture_url"));
+
+        var root = doc.RootElement;
+        var id =
+            (root.TryGetProperty("user_id", out var userId) ? userId.ToString() : null)
+            ?? (root.TryGetProperty("id", out var idProp) ? idProp.ToString() : null)
+            ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(id))
+            return Array.Empty<SocialProfileDraft>();
+
+        var username = root.TryGetProperty("username", out var u) ? u.GetString() : null;
+        var name = root.TryGetProperty("name", out var n) ? n.GetString() : null;
+
+        return
+        [
+            new SocialProfileDraft
+            {
+                ExternalProfileId = id,
+                Name = name ?? username ?? "Instagram",
+                Username = username,
+                ProfileImage = root.TryGetProperty("profile_picture_url", out var pic) ? pic.GetString() : null,
+                ProfileType = "InstagramLogin"
+            }
+        ];
     }
 
     private static OAuthTokenResult ParseToken(JsonElement root)

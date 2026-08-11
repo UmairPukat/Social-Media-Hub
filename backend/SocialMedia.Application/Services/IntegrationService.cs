@@ -22,6 +22,7 @@ public class IntegrationService : IIntegrationService
     {
         ["facebook"] = "public_profile,pages_show_list,pages_read_engagement,pages_read_user_content,pages_manage_engagement,pages_manage_metadata,pages_messaging,business_management,ads_management",
         ["instagram"] = "pages_read_user_content,pages_show_list,pages_manage_metadata,pages_messaging,business_management,read_insights,pages_read_engagement,public_profile,instagram_manage_insights,instagram_basic,email,instagram_manage_comments,instagram_manage_messages",
+        ["instagram_login"] = "instagram_business_basic,instagram_business_manage_messages,instagram_business_manage_comments,instagram_business_content_publish",
         ["whatsapp"] = "whatsapp_business_management,whatsapp_business_messaging,business_management"
     };
 
@@ -102,7 +103,7 @@ public class IntegrationService : IIntegrationService
         CancellationToken cancellationToken = default)
     {
         var platformCode = (request.PlatformCode ?? string.Empty).Trim().ToLowerInvariant();
-        if (platformCode is not ("facebook" or "instagram" or "whatsapp"))
+        if (platformCode is not ("facebook" or "instagram" or "instagram_login" or "whatsapp"))
             return Task.FromResult(ApiResponse<BeginOAuthResponse>.Fail($"Unsupported platform '{request.PlatformCode}'."));
 
         var appId = ResolveAppId(platformCode);
@@ -117,13 +118,19 @@ public class IntegrationService : IIntegrationService
         var scopes = PlatformScopes[platformCode];
         var state = MetaOAuthState.Create(userId, platformCode, _jwt.SecretKey);
 
-        var authUrl =
-            $"https://www.facebook.com/{version}/dialog/oauth"
-            + $"?client_id={Uri.EscapeDataString(appId)}"
-            + $"&redirect_uri={Uri.EscapeDataString(redirectUri)}"
-            + $"&state={Uri.EscapeDataString(state)}"
-            + $"&scope={Uri.EscapeDataString(scopes)}"
-            + "&response_type=code";
+        var authUrl = platformCode == "instagram_login"
+            ? "https://www.instagram.com/oauth/authorize"
+              + $"?client_id={Uri.EscapeDataString(appId)}"
+              + $"&redirect_uri={Uri.EscapeDataString(redirectUri)}"
+              + $"&state={Uri.EscapeDataString(state)}"
+              + $"&scope={Uri.EscapeDataString(scopes)}"
+              + "&response_type=code"
+            : $"https://www.facebook.com/{version}/dialog/oauth"
+              + $"?client_id={Uri.EscapeDataString(appId)}"
+              + $"&redirect_uri={Uri.EscapeDataString(redirectUri)}"
+              + $"&state={Uri.EscapeDataString(state)}"
+              + $"&scope={Uri.EscapeDataString(scopes)}"
+              + "&response_type=code";
 
         return Task.FromResult(ApiResponse<BeginOAuthResponse>.Ok(new BeginOAuthResponse
         {
@@ -192,7 +199,7 @@ public class IntegrationService : IIntegrationService
     public Task<ApiResponse<SocialAccountDto>> ExchangeAuthCodeAsync(Guid userId, OAuthCallbackRequest request, CancellationToken cancellationToken = default)
     {
         var code = (request.PlatformCode ?? string.Empty).Trim().ToLowerInvariant();
-        return code is "facebook" or "instagram" or "whatsapp"
+        return code is "facebook" or "instagram" or "instagram_login" or "whatsapp"
             ? HandleMetaAuthCodeAsync(userId, code, request, cancellationToken)
             : Task.FromResult(ApiResponse<SocialAccountDto>.Fail($"Unsupported platform '{request.PlatformCode}'."));
     }
@@ -201,6 +208,7 @@ public class IntegrationService : IIntegrationService
     {
         "facebook" => _meta.Facebook.AppId,
         "instagram" => string.IsNullOrWhiteSpace(_meta.Instagram.AppId) ? _meta.Facebook.AppId : _meta.Instagram.AppId,
+        "instagram_login" => FirstNonEmpty(_meta.InstagramLogin.AppId, _meta.Instagram.AppId),
         "whatsapp" => _meta.WhatsApp.AppId,
         _ => string.Empty
     };
@@ -209,6 +217,7 @@ public class IntegrationService : IIntegrationService
     {
         "facebook" => FirstNonEmpty(_meta.Facebook.GraphApiVersion, "v21.0"),
         "instagram" => FirstNonEmpty(_meta.Instagram.GraphApiVersion, _meta.Facebook.GraphApiVersion, "v21.0"),
+        "instagram_login" => FirstNonEmpty(_meta.InstagramLogin.GraphApiVersion, _meta.Instagram.GraphApiVersion, "v21.0"),
         "whatsapp" => FirstNonEmpty(_meta.WhatsApp.GraphApiVersion, "v21.0"),
         _ => "v21.0"
     };
@@ -261,6 +270,10 @@ public class IntegrationService : IIntegrationService
                     token = await _instagramService.ExchangeCodeAsync(request.Code, redirectUri, cancellationToken);
                     me = await _instagramService.GetMeAsync(token.AccessToken, cancellationToken);
                     break;
+                case "instagram_login":
+                    token = await _instagramService.ExchangeInstagramLoginCodeAsync(request.Code, redirectUri, cancellationToken);
+                    me = await _instagramService.GetInstagramLoginMeAsync(token.AccessToken, cancellationToken);
+                    break;
                 case "whatsapp":
                     token = await _whatsAppService.ExchangeCodeAsync(request.Code, redirectUri, cancellationToken);
                     me = await _whatsAppService.GetMeAsync(token.AccessToken, cancellationToken);
@@ -293,12 +306,14 @@ public class IntegrationService : IIntegrationService
         var shared = FirstNonEmpty(
             _meta.Facebook.RedirectUri,
             _meta.Instagram.RedirectUri,
+            _meta.InstagramLogin.RedirectUri,
             _meta.WhatsApp.RedirectUri);
 
         return platformCode switch
         {
             "facebook" => FirstNonEmpty(_meta.Facebook.RedirectUri, shared),
             "instagram" => FirstNonEmpty(_meta.Instagram.RedirectUri, _meta.Facebook.RedirectUri, shared),
+            "instagram_login" => FirstNonEmpty(_meta.InstagramLogin.RedirectUri, _meta.Instagram.RedirectUri, shared),
             "whatsapp" => FirstNonEmpty(_meta.WhatsApp.RedirectUri, shared),
             _ => string.Empty
         };
@@ -363,9 +378,13 @@ public class IntegrationService : IIntegrationService
         var requiresPageSelection = SupportsPageSelection(platformCode);
         if (!requiresPageSelection)
         {
-            // WhatsApp resolves to a single phone number, so there is nothing to pick.
-            var drafts = await _whatsAppService.DiscoverProfilesAsync(
-                accessToken, _meta.WhatsApp.PhoneNumberId, _meta.WhatsApp.WabaId, cancellationToken);
+            IReadOnlyList<SocialProfileDraft> drafts = platformCode switch
+            {
+                "instagram_login" => await _instagramService.DiscoverInstagramLoginProfilesAsync(accessToken, cancellationToken),
+                "whatsapp" => await _whatsAppService.DiscoverProfilesAsync(
+                    accessToken, _meta.WhatsApp.PhoneNumberId, _meta.WhatsApp.WabaId, cancellationToken),
+                _ => Array.Empty<SocialProfileDraft>()
+            };
 
             foreach (var draft in drafts)
                 await UpsertProfileAsync(account, draft, cancellationToken);
@@ -875,6 +894,7 @@ public class IntegrationService : IIntegrationService
     {
         "facebookpage" or "page" => ProfileType.FacebookPage,
         "instagrambusiness" or "instagram" => ProfileType.InstagramBusiness,
+        "instagramlogin" => ProfileType.InstagramLogin,
         "whatsappphone" or "whatsapp" => ProfileType.WhatsAppPhone,
         _ => ProfileType.Other
     };

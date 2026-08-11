@@ -18,6 +18,7 @@ const hubUrl =
 const facebookAppId = process.env.META_FACEBOOK_APP_ID || '1106538287780623';
 const whatsappAppId = process.env.META_WHATSAPP_APP_ID || 'YOUR_WHATSAPP_APP_ID';
 const instagramAppId = process.env.META_INSTAGRAM_APP_ID || facebookAppId;
+const instagramLoginAppId = process.env.META_INSTAGRAM_LOGIN_APP_ID || 'YOUR_INSTAGRAM_LOGIN_APP_ID';
 
 const content = `export const environment = {
   production: true,
@@ -26,6 +27,7 @@ const content = `export const environment = {
   meta: {
     facebook: { appId: ${JSON.stringify(facebookAppId)} },
     instagram: { appId: ${JSON.stringify(instagramAppId)} },
+    instagram_login: { appId: ${JSON.stringify(instagramLoginAppId)} },
     whatsapp: { appId: ${JSON.stringify(whatsappAppId)} }
   }
 };
