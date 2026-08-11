@@ -8,7 +8,7 @@ export const environment = {
   meta: {
     facebook: { appId: '1106538287780623' },
     instagram: { appId: '1106538287780623' },
-    instagram_login: { appId: 'YOUR_INSTAGRAM_LOGIN_APP_ID' },
+    instagram_login: { appId: '1038582391966862' },
     whatsapp: { appId: 'YOUR_WHATSAPP_APP_ID' }
   }
 };
