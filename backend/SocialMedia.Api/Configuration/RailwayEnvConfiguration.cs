@@ -19,6 +19,7 @@ public static class RailwayEnvConfiguration
 
         MapPlatform(mapped, "facebook", "Facebook");
         MapPlatform(mapped, "instagram", "Instagram");
+        MapPlatform(mapped, "instagramLogin", "InstagramLogin");
         MapPlatform(mapped, "whatsapp", "WhatsApp");
 
         // One shared OAuth callback for every Meta product when metaRedirectUri is set.
@@ -27,6 +28,16 @@ public static class RailwayEnvConfiguration
 
         Map(mapped, "whatsappPhoneNumberId", "MetaSettings:WhatsApp:PhoneNumberId");
         Map(mapped, "whatsappWabaId", "MetaSettings:WhatsApp:WabaId");
+
+        // Frontend-style META_* App Ids also accepted on the API service.
+        Map(mapped, "META_FACEBOOK_APP_ID", "MetaSettings:Facebook:AppId");
+        Map(mapped, "META_INSTAGRAM_APP_ID", "MetaSettings:Instagram:AppId");
+        Map(mapped, "META_INSTAGRAM_LOGIN_APP_ID", "MetaSettings:InstagramLogin:AppId");
+        Map(mapped, "META_WHATSAPP_APP_ID", "MetaSettings:WhatsApp:AppId");
+        Map(mapped, "META_INSTAGRAM_LOGIN_APP_SECRET", "MetaSettings:InstagramLogin:AppSecret");
+        Map(mapped, "META_FACEBOOK_APP_SECRET", "MetaSettings:Facebook:AppSecret");
+        Map(mapped, "META_INSTAGRAM_APP_SECRET", "MetaSettings:Instagram:AppSecret");
+        Map(mapped, "META_WHATSAPP_APP_SECRET", "MetaSettings:WhatsApp:AppSecret");
 
         if (mapped.Count == 0)
             return builder;
@@ -49,7 +60,7 @@ public static class RailwayEnvConfiguration
         if (string.IsNullOrWhiteSpace(value))
             return;
 
-        foreach (var section in new[] { "Facebook", "Instagram", "WhatsApp" })
+        foreach (var section in new[] { "Facebook", "Instagram", "InstagramLogin", "WhatsApp" })
         {
             var configKey = $"MetaSettings:{section}:RedirectUri";
             var nestedEnv = configKey.Replace(":", "__");
