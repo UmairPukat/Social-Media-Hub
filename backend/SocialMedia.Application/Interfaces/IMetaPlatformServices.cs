@@ -1,5 +1,6 @@
 using SocialMedia.Application.DTOs.Meta;
 using SocialMedia.Domain.Entities;
+using SocialMedia.Domain.Enums;
 
 namespace SocialMedia.Application.Interfaces;
 
@@ -13,6 +14,10 @@ public class MetaCallContext
     public string ProfileExternalId { get; set; } = string.Empty;
     /// <summary>Facebook Page ID used for IG Messaging when connected via Facebook Login.</summary>
     public string? PageExternalId { get; set; }
+    /// <summary>
+    /// Instagram auth path. Defaults to FacebookLogin so existing callers keep graph.facebook.com behavior.
+    /// </summary>
+    public InstagramConnectionType InstagramConnectionType { get; set; } = InstagramConnectionType.FacebookLogin;
 }
 
 public interface IFacebookService
@@ -73,10 +78,18 @@ public interface IInstagramService
     Task<IReadOnlyList<PostDto>> GetPostsAsync(MetaCallContext context, CancellationToken cancellationToken = default);
 
     /// <summary>Reads one media item so a webhook comment can be stored with its post context.</summary>
-    Task<RemotePostSnapshot?> GetMediaSnapshotAsync(string accessToken, string mediaId, CancellationToken cancellationToken = default);
+    Task<RemotePostSnapshot?> GetMediaSnapshotAsync(
+        string accessToken,
+        string mediaId,
+        InstagramConnectionType connectionType = InstagramConnectionType.FacebookLogin,
+        CancellationToken cancellationToken = default);
 
     /// <summary>Reads one Instagram comment to fill fields the webhook may omit.</summary>
-    Task<RemoteCommentSnapshot?> GetCommentSnapshotAsync(string accessToken, string commentId, CancellationToken cancellationToken = default);
+    Task<RemoteCommentSnapshot?> GetCommentSnapshotAsync(
+        string accessToken,
+        string commentId,
+        InstagramConnectionType connectionType = InstagramConnectionType.FacebookLogin,
+        CancellationToken cancellationToken = default);
 
     /// <returns>The new Graph comment id when Meta returns one.</returns>
     Task<string?> ReplyCommentAsync(MetaCallContext context, string commentId, string message, CancellationToken cancellationToken = default);

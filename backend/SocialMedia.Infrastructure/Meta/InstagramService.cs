@@ -4,6 +4,7 @@ using Microsoft.Extensions.Options;
 using SocialMedia.Application.DTOs.Inbox;
 using SocialMedia.Application.DTOs.Meta;
 using SocialMedia.Application.Interfaces;
+using SocialMedia.Application.Meta;
 using SocialMedia.Application.Settings;
 using SocialMedia.Domain.Entities;
 using SocialMedia.Domain.Enums;
@@ -12,8 +13,9 @@ using SocialMedia.Domain.Interfaces;
 namespace SocialMedia.Infrastructure.Meta;
 
 /// <summary>
-/// Instagram Graph API via Facebook Login for Business.
-/// OAuth uses Facebook App credentials; Graph calls use the Page access token.
+/// Instagram Graph API for both connection types:
+/// Facebook Login (graph.facebook.com + Page token) and Instagram Login (graph.instagram.com + IG user token).
+/// Inbox/webhook pipelines stay shared; only the Meta host and token kind differ.
 /// </summary>
 public class InstagramService : IInstagramService
 {
@@ -274,13 +276,23 @@ public class InstagramService : IInstagramService
         };
     }
 
-    public async Task<RemotePostSnapshot?> GetMediaSnapshotAsync(string accessToken, string mediaId, CancellationToken cancellationToken = default)
+    public async Task<RemotePostSnapshot?> GetMediaSnapshotAsync(
+        string accessToken,
+        string mediaId,
+        InstagramConnectionType connectionType = InstagramConnectionType.FacebookLogin,
+        CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(accessToken) || string.IsNullOrWhiteSpace(mediaId))
             return null;
 
-        using var doc = await _graph.GetAsync(GraphVersion, mediaId, accessToken, cancellationToken,
-            ("fields", "id,caption,media_type,media_url,thumbnail_url,permalink,timestamp,like_count,comments_count,children{id,media_type,media_url,thumbnail_url}"));
+        const string fields =
+            "id,caption,media_type,media_url,thumbnail_url,permalink,timestamp,like_count,comments_count,children{id,media_type,media_url,thumbnail_url}";
+
+        using var doc = connectionType == InstagramConnectionType.InstagramLogin
+            ? await _graph.GetInstagramAsync(InstagramLoginGraphVersion, mediaId, accessToken, cancellationToken, ("fields", fields))
+            : await _graph.GetAsync(GraphVersion, mediaId, accessToken, cancellationToken, ("fields", fields));
+
+        LogApiDecision(null, connectionType, "GetPost", success: true);
 
         var root = doc.RootElement;
         var mediaType = root.TryGetProperty("media_type", out var type) ? type.GetString() : null;
@@ -339,6 +351,7 @@ public class InstagramService : IInstagramService
     private async Task<RemotePostSnapshot?> GetMediaSnapshotWithTokensAsync(
         IReadOnlyList<string> accessTokens,
         string mediaId,
+        InstagramConnectionType connectionType,
         CancellationToken cancellationToken)
     {
         Exception? lastError = null;
@@ -346,11 +359,12 @@ public class InstagramService : IInstagramService
         {
             try
             {
-                return await GetMediaSnapshotAsync(accessToken, mediaId, cancellationToken);
+                return await GetMediaSnapshotAsync(accessToken, mediaId, connectionType, cancellationToken);
             }
             catch (Exception ex)
             {
                 lastError = ex;
+                LogApiDecision(null, connectionType, "GetPost", success: false, metaError: ex.Message);
             }
         }
 
@@ -379,13 +393,21 @@ public class InstagramService : IInstagramService
         return results;
     }
 
-    public async Task<RemoteCommentSnapshot?> GetCommentSnapshotAsync(string accessToken, string commentId, CancellationToken cancellationToken = default)
+    public async Task<RemoteCommentSnapshot?> GetCommentSnapshotAsync(
+        string accessToken,
+        string commentId,
+        InstagramConnectionType connectionType = InstagramConnectionType.FacebookLogin,
+        CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(accessToken) || string.IsNullOrWhiteSpace(commentId))
             return null;
 
-        using var doc = await _graph.GetAsync(GraphVersion, commentId, accessToken, cancellationToken,
-            ("fields", "id,text,timestamp,username,from,like_count,parent_id,media"));
+        const string fields = "id,text,timestamp,username,from,like_count,parent_id,media";
+        using var doc = connectionType == InstagramConnectionType.InstagramLogin
+            ? await _graph.GetInstagramAsync(InstagramLoginGraphVersion, commentId, accessToken, cancellationToken, ("fields", fields))
+            : await _graph.GetAsync(GraphVersion, commentId, accessToken, cancellationToken, ("fields", fields));
+
+        LogApiDecision(null, connectionType, "GetComment", success: true);
 
         var root = doc.RootElement;
         string? authorId = null;
@@ -418,48 +440,179 @@ public class InstagramService : IInstagramService
 
     public async Task<string?> ReplyCommentAsync(MetaCallContext context, string commentId, string message, CancellationToken cancellationToken = default)
     {
-        using var doc = await _graph.PostAsync(GraphVersion, $"{commentId}/replies", context.AccessToken,
-            new Dictionary<string, string> { ["message"] = message }, cancellationToken);
-        return doc.RootElement.TryGetProperty("id", out var id) ? id.GetString() : null;
+        var connectionType = context.InstagramConnectionType;
+        try
+        {
+            using var doc = connectionType == InstagramConnectionType.InstagramLogin
+                ? await _graph.PostInstagramAsync(
+                    InstagramLoginGraphVersion,
+                    $"{commentId}/replies",
+                    context.AccessToken,
+                    new Dictionary<string, string> { ["message"] = message },
+                    cancellationToken)
+                : await _graph.PostAsync(
+                    GraphVersion,
+                    $"{commentId}/replies",
+                    context.AccessToken,
+                    new Dictionary<string, string> { ["message"] = message },
+                    cancellationToken);
+
+            LogApiDecision(context.ProfileExternalId, connectionType, "ReplyToComment", success: true);
+            return doc.RootElement.TryGetProperty("id", out var id) ? id.GetString() : null;
+        }
+        catch (Exception ex)
+        {
+            LogApiDecision(context.ProfileExternalId, connectionType, "ReplyToComment", success: false, metaError: ex.Message);
+            throw;
+        }
     }
 
     public async Task HideCommentAsync(MetaCallContext context, string commentId, bool hide, CancellationToken cancellationToken = default)
     {
-        using var _ = await _graph.PostAsync(GraphVersion, commentId, context.AccessToken,
-            new Dictionary<string, string> { ["hide"] = hide ? "true" : "false" }, cancellationToken);
+        var connectionType = context.InstagramConnectionType;
+        try
+        {
+            var fields = new Dictionary<string, string> { ["hide"] = hide ? "true" : "false" };
+            if (connectionType == InstagramConnectionType.InstagramLogin)
+            {
+                using var _ = await _graph.PostInstagramAsync(InstagramLoginGraphVersion, commentId, context.AccessToken, fields, cancellationToken);
+            }
+            else
+            {
+                using var _ = await _graph.PostAsync(GraphVersion, commentId, context.AccessToken, fields, cancellationToken);
+            }
+
+            LogApiDecision(context.ProfileExternalId, connectionType, "HideComment", success: true);
+        }
+        catch (Exception ex)
+        {
+            LogApiDecision(context.ProfileExternalId, connectionType, "HideComment", success: false, metaError: ex.Message);
+            throw;
+        }
     }
 
-    public Task DeleteCommentAsync(MetaCallContext context, string commentId, CancellationToken cancellationToken = default)
-        => _graph.DeleteAsync(GraphVersion, commentId, context.AccessToken, cancellationToken);
+    public async Task DeleteCommentAsync(MetaCallContext context, string commentId, CancellationToken cancellationToken = default)
+    {
+        var connectionType = context.InstagramConnectionType;
+        try
+        {
+            if (connectionType == InstagramConnectionType.InstagramLogin)
+                await _graph.DeleteInstagramAsync(InstagramLoginGraphVersion, commentId, context.AccessToken, cancellationToken);
+            else
+                await _graph.DeleteAsync(GraphVersion, commentId, context.AccessToken, cancellationToken);
+
+            LogApiDecision(context.ProfileExternalId, connectionType, "DeleteComment", success: true);
+        }
+        catch (Exception ex)
+        {
+            LogApiDecision(context.ProfileExternalId, connectionType, "DeleteComment", success: false, metaError: ex.Message);
+            throw;
+        }
+    }
 
     public async Task<string?> SendMessageAsync(MetaCallContext context, string recipientId, string message, string? replyToMid = null, CancellationToken cancellationToken = default)
     {
-        // Facebook Login for Instagram Messaging uses the Page ID + Page access token.
-        var pathId = !string.IsNullOrWhiteSpace(context.PageExternalId)
-            ? context.PageExternalId
-            : context.ProfileExternalId;
-        object payload = string.IsNullOrWhiteSpace(replyToMid)
-            ? new
-            {
-                recipient = new { id = recipientId },
-                messaging_type = "RESPONSE",
-                message = new { text = message }
-            }
-            : new
-            {
-                recipient = new { id = recipientId },
-                messaging_type = "RESPONSE",
-                message = new { text = message },
-                reply_to = new { mid = replyToMid }
-            };
-        using var doc = await _graph.PostJsonAsync(GraphVersion, $"{pathId}/messages", context.AccessToken, payload, cancellationToken);
-        if (doc.RootElement.TryGetProperty("message_id", out var messageId))
-            return messageId.GetString();
-        return doc.RootElement.TryGetProperty("id", out var id) ? id.GetString() : null;
+        var connectionType = context.InstagramConnectionType;
+        try
+        {
+            // Instagram Login: POST graph.instagram.com/{ig-user-id}/messages with IG user token.
+            // Facebook Login: POST graph.facebook.com/{page-id}/messages with Page access token.
+            var pathId = connectionType == InstagramConnectionType.InstagramLogin
+                ? context.ProfileExternalId
+                : (!string.IsNullOrWhiteSpace(context.PageExternalId)
+                    ? context.PageExternalId
+                    : context.ProfileExternalId);
+
+            object payload = connectionType == InstagramConnectionType.InstagramLogin
+                ? (string.IsNullOrWhiteSpace(replyToMid)
+                    ? new
+                    {
+                        recipient = new { id = recipientId },
+                        message = new { text = message }
+                    }
+                    : new
+                    {
+                        recipient = new { id = recipientId },
+                        message = new { text = message },
+                        reply_to = new { mid = replyToMid }
+                    })
+                : (string.IsNullOrWhiteSpace(replyToMid)
+                    ? new
+                    {
+                        recipient = new { id = recipientId },
+                        messaging_type = "RESPONSE",
+                        message = new { text = message }
+                    }
+                    : new
+                    {
+                        recipient = new { id = recipientId },
+                        messaging_type = "RESPONSE",
+                        message = new { text = message },
+                        reply_to = new { mid = replyToMid }
+                    });
+
+            using var doc = connectionType == InstagramConnectionType.InstagramLogin
+                ? await _graph.PostInstagramJsonAsync(InstagramLoginGraphVersion, $"{pathId}/messages", context.AccessToken, payload, cancellationToken)
+                : await _graph.PostJsonAsync(GraphVersion, $"{pathId}/messages", context.AccessToken, payload, cancellationToken);
+
+            LogApiDecision(context.ProfileExternalId, connectionType, "SendMessage", success: true);
+            if (doc.RootElement.TryGetProperty("message_id", out var messageId))
+                return messageId.GetString();
+            return doc.RootElement.TryGetProperty("id", out var id) ? id.GetString() : null;
+        }
+        catch (Exception ex)
+        {
+            LogApiDecision(context.ProfileExternalId, connectionType, "SendMessage", success: false, metaError: ex.Message);
+            throw;
+        }
     }
 
-    public Task DeleteMessageAsync(MetaCallContext context, string messageId, CancellationToken cancellationToken = default)
-        => _graph.DeleteAsync(GraphVersion, messageId, context.AccessToken, cancellationToken);
+    public async Task DeleteMessageAsync(MetaCallContext context, string messageId, CancellationToken cancellationToken = default)
+    {
+        var connectionType = context.InstagramConnectionType;
+        try
+        {
+            if (connectionType == InstagramConnectionType.InstagramLogin)
+                await _graph.DeleteInstagramAsync(InstagramLoginGraphVersion, messageId, context.AccessToken, cancellationToken);
+            else
+                await _graph.DeleteAsync(GraphVersion, messageId, context.AccessToken, cancellationToken);
+
+            LogApiDecision(context.ProfileExternalId, connectionType, "DeleteMessage", success: true);
+        }
+        catch (Exception ex)
+        {
+            LogApiDecision(context.ProfileExternalId, connectionType, "DeleteMessage", success: false, metaError: ex.Message);
+            throw;
+        }
+    }
+
+    private void LogApiDecision(
+        string? instagramAccountId,
+        InstagramConnectionType connectionType,
+        string operation,
+        bool success,
+        string? metaError = null)
+    {
+        var endpointType = InstagramConnectionResolver.ToLogLabel(connectionType);
+        if (success)
+        {
+            _logger.LogInformation(
+                "Instagram API request | InstagramAccountId={InstagramAccountId} | ConnectionType={ConnectionType} | Operation={Operation} | EndpointType={EndpointType} | Result=Success",
+                instagramAccountId ?? "(unknown)",
+                endpointType,
+                operation,
+                endpointType);
+            return;
+        }
+
+        _logger.LogWarning(
+            "Instagram API request | InstagramAccountId={InstagramAccountId} | ConnectionType={ConnectionType} | Operation={Operation} | EndpointType={EndpointType} | Result=Failed | MetaError={MetaError}",
+            instagramAccountId ?? "(unknown)",
+            endpointType,
+            operation,
+            endpointType,
+            metaError);
+    }
 
     /// <summary>Subscribe the linked Facebook Page to comment and message webhook fields.</summary>
     public Task SubscribePageWebhooksAsync(string pageId, string pageAccessToken, CancellationToken cancellationToken = default)
@@ -514,8 +667,9 @@ public class InstagramService : IInstagramService
     }
 
     /// <summary>
-    /// Facebook Login webhooks key <c>entry.id</c> to the IG user or the linked Page. Meta's
-    /// "Send to My Server" test tool sends <c>"0"</c>, so those fall back to a connected profile.
+    /// Webhooks key <c>entry.id</c> to the IG user id (both connection types) or the linked
+    /// Facebook Page (Facebook Login only). Meta's "Send to My Server" test tool sends <c>"0"</c>,
+    /// so those fall back to a connected Instagram profile of either type.
     /// </summary>
     private async Task<SocialProfile?> ResolveProfileAsync(
         string entryId,
@@ -530,7 +684,9 @@ public class InstagramService : IInstagramService
         if (string.IsNullOrWhiteSpace(entryId) || entryId == "0")
         {
             var profiles = await _unitOfWork.SocialProfiles.FindAsync(
-                p => p.ProfileType == ProfileType.InstagramBusiness, cancellationToken);
+                p => p.ProfileType == ProfileType.InstagramBusiness
+                     || p.ProfileType == ProfileType.InstagramLogin,
+                cancellationToken);
             profile = profiles.OrderByDescending(p => p.CreatedAt).FirstOrDefault();
 
             if (profile is not null)
@@ -547,6 +703,7 @@ public class InstagramService : IInstagramService
 
     private async Task<IReadOnlyList<string>> ResolveAccessTokensAsync(
         SocialAccount account,
+        InstagramConnectionType connectionType,
         CancellationToken cancellationToken)
     {
         var auth = account.Auth
@@ -559,10 +716,15 @@ public class InstagramService : IInstagramService
                 tokens.Add(token);
         }
 
-        // The selected Page token is normally AccessToken; RefreshToken retains the
-        // long-lived user token and is a useful fallback for Graph media reads.
+        // Always prefer the primary stored token for this connection.
         Add(auth?.AccessToken);
-        Add(auth?.RefreshToken);
+
+        // Facebook Login: RefreshToken retains the long-lived user token and is a useful fallback.
+        // Instagram Login: do not invent a Page token — only reuse RefreshToken if it is also an IG user token.
+        if (connectionType == InstagramConnectionType.FacebookLogin ||
+            connectionType == InstagramConnectionType.InstagramLogin)
+            Add(auth?.RefreshToken);
+
         return tokens;
     }
 
@@ -599,6 +761,13 @@ public class InstagramService : IInstagramService
             return;
         }
 
+        var platform = await _unitOfWork.Platforms.GetByIdAsync(account.PlatformId, cancellationToken);
+        var connectionType = InstagramConnectionResolver.FromProfile(profile, platform?.Code);
+        _logger.LogInformation(
+            "Instagram webhook comment/message routing | InstagramAccountId={InstagramAccountId} | ConnectionType={ConnectionType}",
+            profile.ExternalProfileId,
+            InstagramConnectionResolver.ToLogLabel(connectionType));
+
         foreach (var change in changes.EnumerateArray())
         {
             var field = change.TryGetProperty("field", out var fieldElement) ? fieldElement.GetString() : null;
@@ -630,17 +799,18 @@ public class InstagramService : IInstagramService
                 continue;
             }
 
-            var accessTokens = await ResolveAccessTokensAsync(account, cancellationToken);
+            var accessTokens = await ResolveAccessTokensAsync(account, connectionType, cancellationToken);
             RemoteCommentSnapshot? enriched = null;
             foreach (var accessToken in accessTokens)
             {
                 try
                 {
-                    enriched = await GetCommentSnapshotAsync(accessToken, commentId!, cancellationToken);
+                    enriched = await GetCommentSnapshotAsync(accessToken, commentId!, connectionType, cancellationToken);
                     break;
                 }
                 catch (Exception ex)
                 {
+                    LogApiDecision(profile.ExternalProfileId, connectionType, "GetComment", success: false, metaError: ex.Message);
                     result.Skip($"Graph comment enrich failed for '{commentId}': {ex.Message}");
                 }
             }
@@ -668,7 +838,7 @@ public class InstagramService : IInstagramService
                 account.PlatformId,
                 mediaId!,
                 enriched?.CreatedTime ?? UnixSeconds(entry, "time") ?? DateTime.UtcNow,
-                ct => GetMediaSnapshotWithTokensAsync(accessTokens, mediaId!, ct),
+                ct => GetMediaSnapshotWithTokensAsync(accessTokens, mediaId!, connectionType, ct),
                 "Instagram post",
                 requireMedia: true,
                 cancellationToken: cancellationToken);

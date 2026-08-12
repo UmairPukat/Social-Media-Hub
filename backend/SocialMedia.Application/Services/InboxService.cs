@@ -1,6 +1,8 @@
+using SocialMedia.Application.Catalog;
 using SocialMedia.Application.DTOs.Common;
 using SocialMedia.Application.DTOs.Inbox;
 using SocialMedia.Application.Interfaces;
+using SocialMedia.Application.Meta;
 using SocialMedia.Domain.Entities;
 using SocialMedia.Domain.Enums;
 using SocialMedia.Domain.Interfaces;
@@ -34,10 +36,23 @@ public class InboxService : IInboxService
         try
         {
             Guid? platformId = null;
+            IReadOnlyList<Guid>? instagramPlatformIds = null;
             if (!string.IsNullOrWhiteSpace(filter?.PlatformCode))
             {
-                var platform = await _unitOfWork.Platforms.GetByCodeAsync(filter.PlatformCode, cancellationToken);
-                platformId = platform?.Id;
+                // Instagram filter includes both Facebook Login and Instagram Login accounts.
+                if (string.Equals(filter.PlatformCode, "instagram", StringComparison.OrdinalIgnoreCase))
+                {
+                    instagramPlatformIds = new[]
+                    {
+                        PlatformCatalog.InstagramId,
+                        PlatformCatalog.InstagramLoginId
+                    };
+                }
+                else
+                {
+                    var platform = await _unitOfWork.Platforms.GetByCodeAsync(filter.PlatformCode, cancellationToken);
+                    platformId = platform?.Id;
+                }
 
                 // WhatsApp has no comments.
                 if (string.Equals(filter.PlatformCode, "whatsapp", StringComparison.OrdinalIgnoreCase)
@@ -52,12 +67,13 @@ public class InboxService : IInboxService
 
             if (kind is null or "comment")
             {
-                var comments = await _unitOfWork.Comments.GetByUserAsync(userId, platformId, cancellationToken);
+                var comments = await LoadCommentsAsync(userId, platformId, instagramPlatformIds, cancellationToken);
                 items.AddRange(comments.Select(c => new InboxItemDto
                 {
                     Id = c.Id,
                     ItemKind = "comment",
-                    PlatformCode = c.Post?.SocialProfile?.SocialAccount?.Platform?.Code ?? string.Empty,
+                    PlatformCode = InstagramConnectionResolver.ToInboxPlatformCode(
+                        c.Post?.SocialProfile?.SocialAccount?.Platform?.Code),
                     ExternalId = c.ExternalCommentId,
                     AuthorName = c.AuthorName,
                     AuthorId = c.AuthorId,
@@ -86,13 +102,14 @@ public class InboxService : IInboxService
 
             if (kind is null or "message")
             {
-                var messages = await _unitOfWork.Messages.GetByUserAsync(userId, platformId, cancellationToken);
+                var messages = await LoadMessagesAsync(userId, platformId, instagramPlatformIds, cancellationToken);
                 var byId = messages.ToDictionary(m => m.Id);
                 items.AddRange(messages.Select(m => new InboxItemDto
                 {
                     Id = m.Id,
                     ItemKind = "message",
-                    PlatformCode = m.Conversation?.SocialProfile?.SocialAccount?.Platform?.Code ?? string.Empty,
+                    PlatformCode = InstagramConnectionResolver.ToInboxPlatformCode(
+                        m.Conversation?.SocialProfile?.SocialAccount?.Platform?.Code),
                     ExternalId = m.ExternalMessageId,
                     AuthorName = m.Direction == MessageDirection.Outbound
                         ? "You"
@@ -120,6 +137,46 @@ public class InboxService : IInboxService
         }
     }
 
+    private async Task<IReadOnlyList<Comment>> LoadCommentsAsync(
+        Guid userId,
+        Guid? platformId,
+        IReadOnlyList<Guid>? instagramPlatformIds,
+        CancellationToken cancellationToken)
+    {
+        if (instagramPlatformIds is null)
+            return await _unitOfWork.Comments.GetByUserAsync(userId, platformId, cancellationToken);
+
+        var merged = new List<Comment>();
+        foreach (var id in instagramPlatformIds)
+            merged.AddRange(await _unitOfWork.Comments.GetByUserAsync(userId, id, cancellationToken));
+
+        return merged
+            .GroupBy(c => c.Id)
+            .Select(g => g.First())
+            .OrderByDescending(c => c.CreatedAt)
+            .ToList();
+    }
+
+    private async Task<IReadOnlyList<Message>> LoadMessagesAsync(
+        Guid userId,
+        Guid? platformId,
+        IReadOnlyList<Guid>? instagramPlatformIds,
+        CancellationToken cancellationToken)
+    {
+        if (instagramPlatformIds is null)
+            return await _unitOfWork.Messages.GetByUserAsync(userId, platformId, cancellationToken);
+
+        var merged = new List<Message>();
+        foreach (var id in instagramPlatformIds)
+            merged.AddRange(await _unitOfWork.Messages.GetByUserAsync(userId, id, cancellationToken));
+
+        return merged
+            .GroupBy(m => m.Id)
+            .Select(g => g.First())
+            .OrderByDescending(m => m.CreatedAt)
+            .ToList();
+    }
+
     public async Task<ApiResponse<object>> ReplyToCommentAsync(Guid userId, Guid commentId, ReplyCommentRequest request, CancellationToken cancellationToken = default)
     {
         try
@@ -140,7 +197,7 @@ public class InboxService : IInboxService
 
             var platform = await _unitOfWork.Platforms.GetByIdAsync(account.PlatformId, cancellationToken);
             var code = platform?.Code?.ToLowerInvariant() ?? string.Empty;
-            if (code is not ("facebook" or "instagram"))
+            if (code is not ("facebook" or "instagram" or "instagram_login"))
                 return ApiResponse<object>.Fail("Platform does not support comment replies.");
 
             // Prefer a real Meta comment id. Local optimistic rows are skipped.
@@ -150,6 +207,7 @@ public class InboxService : IInboxService
                 replyTargetExternalId.StartsWith("local_", StringComparison.OrdinalIgnoreCase))
                 return ApiResponse<object>.Fail("Cannot reply until the original comment is synced from Meta.");
 
+            var connectionType = InstagramConnectionResolver.FromProfile(profile, code);
             var tokens = CandidateTokens(account.Auth);
             if (tokens.Count == 0)
                 return ApiResponse<object>.Fail("No access token is available. Reconnect the account.");
@@ -162,7 +220,10 @@ public class InboxService : IInboxService
                 {
                     AccessToken = token,
                     ProfileExternalId = profile.ExternalProfileId,
-                    PageExternalId = ReadPageId(profile.MetadataJson)
+                    PageExternalId = connectionType == InstagramConnectionType.FacebookLogin
+                        ? ReadPageId(profile.MetadataJson)
+                        : null,
+                    InstagramConnectionType = connectionType
                 };
 
                 try
@@ -188,9 +249,10 @@ public class InboxService : IInboxService
 
             // Avoid duplicates when Meta immediately echoes the reply through webhooks.
             var existing = await _unitOfWork.Comments.GetByExternalCommentIdAsync(externalId, cancellationToken);
+            var inboxPlatformCode = InstagramConnectionResolver.ToInboxPlatformCode(code);
             if (existing is not null)
             {
-                await _inboxRealtime.NotifyInboxItemAsync(userId, MapCommentInboxItem(existing, post, profile, code, isOutgoing: true), cancellationToken);
+                await _inboxRealtime.NotifyInboxItemAsync(userId, MapCommentInboxItem(existing, post, profile, inboxPlatformCode, isOutgoing: true), cancellationToken);
                 return ApiResponse<object>.Ok(new { replyId = existing.Id }, "Comment reply sent.");
             }
 
@@ -212,7 +274,7 @@ public class InboxService : IInboxService
 
             await _inboxRealtime.NotifyInboxItemAsync(
                 userId,
-                MapCommentInboxItem(reply, post, profile, code, isOutgoing: true),
+                MapCommentInboxItem(reply, post, profile, inboxPlatformCode, isOutgoing: true),
                 cancellationToken);
 
             return ApiResponse<object>.Ok(new { replyId = reply.Id }, "Comment reply sent.");
@@ -224,8 +286,8 @@ public class InboxService : IInboxService
     }
 
     /// <summary>
-    /// Page token first, then long-lived user token (RefreshToken). Meta may invalidate one while
-    /// the other still works ("session is invalid because the user logged out").
+    /// Page/IG token first. For Facebook Login, the long-lived user token in RefreshToken is a
+    /// useful fallback. For Instagram Login, RefreshToken is only reused when present (same IG user token family).
     /// </summary>
     private static List<string> CandidateTokens(SocialAuth auth)
     {
@@ -260,7 +322,7 @@ public class InboxService : IInboxService
         CancellationToken cancellationToken)
     {
         var current = comment;
-        if (platformCode == "instagram")
+        if (InstagramConnectionResolver.IsInstagramPlatform(platformCode))
         {
             var guard = 0;
             while (current.ParentCommentId.HasValue && guard++ < 20)
@@ -339,7 +401,7 @@ public class InboxService : IInboxService
 
             if (code == "facebook")
                 await _facebookService.HideCommentAsync(context, comment!.ExternalCommentId, request.Hide, cancellationToken);
-            else if (code == "instagram")
+            else if (InstagramConnectionResolver.IsInstagramPlatform(code))
                 await _instagramService.HideCommentAsync(context, comment!.ExternalCommentId, request.Hide, cancellationToken);
             else
                 return ApiResponse<object>.Fail("Platform does not support hiding comments.");
@@ -364,7 +426,7 @@ public class InboxService : IInboxService
 
             if (code == "facebook")
                 await _facebookService.DeleteCommentAsync(context, comment!.ExternalCommentId, cancellationToken);
-            else if (code == "instagram")
+            else if (InstagramConnectionResolver.IsInstagramPlatform(code))
                 await _instagramService.DeleteCommentAsync(context, comment!.ExternalCommentId, cancellationToken);
             else
                 return ApiResponse<object>.Fail("Platform does not support deleting comments.");
@@ -400,7 +462,7 @@ public class InboxService : IInboxService
 
             var platform = await _unitOfWork.Platforms.GetByIdAsync(account.PlatformId, cancellationToken);
             var code = platform?.Code?.ToLowerInvariant() ?? string.Empty;
-            if (code is not ("facebook" or "instagram" or "whatsapp"))
+            if (code is not ("facebook" or "instagram" or "instagram_login" or "whatsapp"))
                 return ApiResponse<object>.Fail("Platform does not support messaging.");
 
             var recipientId = (message.Direction == MessageDirection.Outbound
@@ -422,6 +484,7 @@ public class InboxService : IInboxService
                 ? quoted.ExternalMessageId
                 : null;
 
+            var connectionType = InstagramConnectionResolver.FromProfile(profile, code);
             var tokens = CandidateTokens(account.Auth);
             if (tokens.Count == 0)
                 return ApiResponse<object>.Fail("No access token is available. Reconnect the account.");
@@ -434,7 +497,10 @@ public class InboxService : IInboxService
                 {
                     AccessToken = token,
                     ProfileExternalId = profile.ExternalProfileId,
-                    PageExternalId = ReadPageId(profile.MetadataJson)
+                    PageExternalId = connectionType == InstagramConnectionType.FacebookLogin
+                        ? ReadPageId(profile.MetadataJson)
+                        : null,
+                    InstagramConnectionType = connectionType
                 };
 
                 try
@@ -442,7 +508,7 @@ public class InboxService : IInboxService
                     remoteMessageId = code switch
                     {
                         "facebook" => await _facebookService.SendMessageAsync(context, recipientId, request.Message.Trim(), replyToMid, cancellationToken),
-                        "instagram" => await _instagramService.SendMessageAsync(context, recipientId, request.Message.Trim(), replyToMid, cancellationToken),
+                        "instagram" or "instagram_login" => await _instagramService.SendMessageAsync(context, recipientId, request.Message.Trim(), replyToMid, cancellationToken),
                         "whatsapp" => await _whatsAppService.SendMessageAsync(context, recipientId, request.Message.Trim(), replyToMid, cancellationToken),
                         _ => null
                     };
@@ -462,12 +528,13 @@ public class InboxService : IInboxService
                 ? $"local_msg_{Guid.NewGuid():N}"
                 : remoteMessageId!;
 
+            var inboxPlatformCode = InstagramConnectionResolver.ToInboxPlatformCode(code);
             var existing = await _unitOfWork.Messages.GetByExternalMessageIdAsync(externalId, cancellationToken);
             if (existing is not null)
             {
                 await _inboxRealtime.NotifyInboxItemAsync(
                     userId,
-                    MapMessageInboxItem(existing, conversation, code, quoted),
+                    MapMessageInboxItem(existing, conversation, inboxPlatformCode, quoted),
                     cancellationToken);
                 return ApiResponse<object>.Ok(new { messageId = existing.Id }, "Message sent.");
             }
@@ -496,7 +563,7 @@ public class InboxService : IInboxService
 
             await _inboxRealtime.NotifyInboxItemAsync(
                 userId,
-                MapMessageInboxItem(outbound, conversation, code, quoted),
+                MapMessageInboxItem(outbound, conversation, inboxPlatformCode, quoted),
                 cancellationToken);
 
             return ApiResponse<object>.Ok(new { messageId = outbound.Id }, "Message sent.");
@@ -620,12 +687,17 @@ public class InboxService : IInboxService
             throw new InvalidOperationException("Comment not found.");
 
         var platform = await _unitOfWork.Platforms.GetByIdAsync(account.PlatformId, cancellationToken);
+        var code = platform?.Code?.ToLowerInvariant() ?? string.Empty;
+        var connectionType = InstagramConnectionResolver.FromProfile(profile, code);
         return (new MetaCallContext
         {
             AccessToken = account.Auth.AccessToken,
             ProfileExternalId = profile.ExternalProfileId,
-            PageExternalId = ReadPageId(profile.MetadataJson)
-        }, platform?.Code?.ToLowerInvariant() ?? string.Empty);
+            PageExternalId = connectionType == InstagramConnectionType.FacebookLogin
+                ? ReadPageId(profile.MetadataJson)
+                : null,
+            InstagramConnectionType = connectionType
+        }, code);
     }
 
     private async Task<(MetaCallContext Context, string Code, string RecipientId)> ResolveMessageContextAsync(Guid userId, Guid messageId, CancellationToken cancellationToken)
@@ -647,12 +719,17 @@ public class InboxService : IInboxService
             ?? throw new InvalidOperationException("Recipient unknown.");
 
         var platform = await _unitOfWork.Platforms.GetByIdAsync(account.PlatformId, cancellationToken);
+        var code = platform?.Code?.ToLowerInvariant() ?? string.Empty;
+        var connectionType = InstagramConnectionResolver.FromProfile(profile, code);
         return (new MetaCallContext
         {
             AccessToken = account.Auth.AccessToken,
             ProfileExternalId = profile.ExternalProfileId,
-            PageExternalId = ReadPageId(profile.MetadataJson)
-        }, platform?.Code?.ToLowerInvariant() ?? string.Empty, recipient);
+            PageExternalId = connectionType == InstagramConnectionType.FacebookLogin
+                ? ReadPageId(profile.MetadataJson)
+                : null,
+            InstagramConnectionType = connectionType
+        }, code, recipient);
     }
 
     private static string? ReadPageId(string? metadataJson)

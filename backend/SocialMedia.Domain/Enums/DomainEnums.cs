@@ -17,6 +17,19 @@ public enum ProfileType
     Other = 99
 }
 
+/// <summary>
+/// How an Instagram account was connected. Both values are Instagram platform accounts;
+/// they differ only in Meta auth host and Graph API base URL.
+/// Prefer existing <see cref="ProfileType"/> / Platform.Code over storing a duplicate column.
+/// </summary>
+public enum InstagramConnectionType
+{
+    /// <summary>Connected via Facebook Login (graph.facebook.com + Page token).</summary>
+    FacebookLogin = 1,
+    /// <summary>Connected via Instagram Login (graph.instagram.com + IG user token).</summary>
+    InstagramLogin = 2
+}
+
 public enum ContentPostType
 {
     Text = 1,
