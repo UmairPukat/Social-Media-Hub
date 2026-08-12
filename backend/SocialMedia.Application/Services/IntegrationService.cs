@@ -545,7 +545,7 @@ public class IntegrationService : IIntegrationService
 
             var profile = account.Profiles.FirstOrDefault();
             var pageId = ResolveSelectedPageId(account, code);
-            var isInstagram = code == "instagram";
+            var isInstagram = code is "instagram" or "instagram_login";
 
             var details = new ConnectionDetailsDto
             {
@@ -555,8 +555,10 @@ public class IntegrationService : IIntegrationService
                 Status = account.Status,
                 ConnectedAt = account.ConnectedAt,
                 LastSyncAt = account.LastSyncAt,
-                PageId = pageId,
-                PageName = ReadJsonString(account.MetadataJson, "selectedPageName") ?? profile?.Name,
+                PageId = code == "instagram_login" ? null : pageId,
+                PageName = code == "instagram_login"
+                    ? (profile?.Name ?? account.DisplayName)
+                    : (ReadJsonString(account.MetadataJson, "selectedPageName") ?? profile?.Name),
                 PageImage = profile?.ProfileImage,
                 InstagramId = isInstagram ? profile?.ExternalProfileId : null,
                 InstagramUsername = isInstagram ? profile?.Username : null,
@@ -594,7 +596,14 @@ public class IntegrationService : IIntegrationService
         CancellationToken cancellationToken)
     {
         if (!SupportsPageSelection(platformCode))
+        {
+            if (platformCode == "instagram_login")
+            {
+                details.WebhookError =
+                    "Instagram Login webhooks are configured in the Meta App Dashboard (comments, messages), not via a Facebook Page subscription.";
+            }
             return;
+        }
 
         if (string.IsNullOrWhiteSpace(pageId) || string.IsNullOrWhiteSpace(pageAccessToken))
         {

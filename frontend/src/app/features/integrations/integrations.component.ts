@@ -63,6 +63,7 @@ export class IntegrationsComponent implements OnInit {
   /** Account information popup opened from the eye icon on a connected card. */
   readonly detailsOpen = signal(false);
   readonly detailsTitle = signal('');
+  readonly detailsPlatformCode = signal<string | null>(null);
   readonly details = signal<ConnectionDetails | null>(null);
   readonly detailsLoading = signal(false);
   readonly detailsError = signal('');
@@ -171,6 +172,25 @@ export class IntegrationsComponent implements OnInit {
     return ['facebook', 'instagram'].includes(code.toLowerCase());
   }
 
+  /** Eye icon / account details popup — includes Instagram Login (no page picker). */
+  supportsConnectionDetails(code: string): boolean {
+    return ['facebook', 'instagram', 'instagram_login'].includes(code.toLowerCase());
+  }
+
+  isInstagramLoginPlatform(code: string | null | undefined): boolean {
+    return (code || '').toLowerCase() === 'instagram_login';
+  }
+
+  isInstagramPlatform(code: string | null | undefined): boolean {
+    const value = (code || '').toLowerCase();
+    return value === 'instagram' || value === 'instagram_login';
+  }
+
+  readonly isInstagramLoginDetails = computed(() =>
+    this.isInstagramLoginPlatform(this.details()?.platformCode) ||
+    this.isInstagramLoginPlatform(this.detailsPlatformCode())
+  );
+
   openPagePicker(card: PlatformCard): void {
     const code = card.code.toLowerCase() as MetaPlatform;
     this.pickerPlatform.set(code);
@@ -262,6 +282,7 @@ export class IntegrationsComponent implements OnInit {
 
   openDetails(card: PlatformCard): void {
     this.detailsTitle.set(card.displayName);
+    this.detailsPlatformCode.set(card.code.toLowerCase());
     this.details.set(null);
     this.detailsError.set('');
     this.tokenRevealed.set(false);
@@ -303,6 +324,7 @@ export class IntegrationsComponent implements OnInit {
 
   private resetDetails(): void {
     this.detailsOpen.set(false);
+    this.detailsPlatformCode.set(null);
     this.details.set(null);
     this.detailsError.set('');
     this.tokenRevealed.set(false);
