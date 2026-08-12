@@ -757,8 +757,15 @@ public class IntegrationService : IIntegrationService
         profile.Username = draft.Username;
         profile.ProfileImage = draft.ProfileImage;
         profile.ProfileType = ParseProfileType(draft.ProfileType);
+
+        var metadata = new Dictionary<string, object>();
         if (!string.IsNullOrWhiteSpace(draft.PageId))
-            profile.MetadataJson = JsonSerializer.Serialize(new { pageId = draft.PageId });
+            metadata["pageId"] = draft.PageId!;
+        if (draft.AlternateExternalIds.Count > 0)
+            metadata["alternateIds"] = draft.AlternateExternalIds;
+        if (metadata.Count > 0)
+            profile.MetadataJson = JsonSerializer.Serialize(metadata);
+
         profile.UpdatedAt = DateTime.UtcNow;
         MarkUpdated(_unitOfWork.SocialProfiles, profile, isNew);
 

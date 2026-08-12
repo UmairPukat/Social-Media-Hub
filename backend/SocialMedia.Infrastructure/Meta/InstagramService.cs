@@ -179,15 +179,21 @@ public class InstagramService : IInstagramService
             ("fields", "user_id,username,name,account_type,profile_picture_url"));
 
         var root = doc.RootElement;
-        var id =
-            (root.TryGetProperty("user_id", out var userId) ? userId.ToString() : null)
-            ?? (root.TryGetProperty("id", out var idProp) ? idProp.ToString() : null)
-            ?? string.Empty;
+        var professionalId = root.TryGetProperty("user_id", out var userId) ? userId.ToString() : null;
+        var appScopedId = root.TryGetProperty("id", out var idProp) ? idProp.ToString() : null;
+        var id = professionalId ?? appScopedId ?? string.Empty;
         if (string.IsNullOrWhiteSpace(id))
             return Array.Empty<SocialProfileDraft>();
 
         var username = root.TryGetProperty("username", out var u) ? u.GetString() : null;
         var name = root.TryGetProperty("name", out var n) ? n.GetString() : null;
+
+        // Webhooks may key entry.id on either id, so both are stored for lookup.
+        var alternates = new[] { professionalId, appScopedId }
+            .Where(value => !string.IsNullOrWhiteSpace(value) && value != id)
+            .Select(value => value!)
+            .Distinct()
+            .ToList();
 
         return
         [
@@ -197,7 +203,8 @@ public class InstagramService : IInstagramService
                 Name = name ?? username ?? "Instagram",
                 Username = username,
                 ProfileImage = root.TryGetProperty("profile_picture_url", out var pic) ? pic.GetString() : null,
-                ProfileType = "InstagramLogin"
+                ProfileType = "InstagramLogin",
+                AlternateExternalIds = alternates
             }
         ];
     }
@@ -677,7 +684,8 @@ public class InstagramService : IInstagramService
         CancellationToken cancellationToken)
     {
         var profile = await _unitOfWork.SocialProfiles.GetByExternalProfileIdAsync(entryId, cancellationToken)
-            ?? await FindProfileByPageIdAsync(entryId, cancellationToken);
+            ?? await FindProfileByPageIdAsync(entryId, cancellationToken)
+            ?? await FindProfileByAlternateIdAsync(entryId, cancellationToken);
         if (profile is not null)
             return profile;
 
@@ -696,9 +704,96 @@ public class InstagramService : IInstagramService
             }
         }
 
+        // Instagram Login exposes two ids for the same account and the webhook may use the one we
+        // did not store at connect time. With a single Instagram Login profile the owner is
+        // unambiguous, so adopt it and remember the id instead of dropping the delivery.
+        var instagramLoginProfiles = await _unitOfWork.SocialProfiles.FindAsync(
+            p => p.ProfileType == ProfileType.InstagramLogin, cancellationToken);
+        if (instagramLoginProfiles.Count == 1)
+        {
+            profile = instagramLoginProfiles[0];
+            await RememberAlternateProfileIdAsync(profile, entryId, cancellationToken);
+            _logger.LogInformation(
+                "Instagram Login webhook entry {EntryId} linked to profile {ProfileId} ({ProfileName}).",
+                entryId,
+                profile.ExternalProfileId,
+                profile.Name);
+            return profile;
+        }
+
         _logger.LogInformation("Instagram webhook ignored — no profile matches entry {EntryId}.", entryId);
         result.Skip($"No connected Instagram profile matches entry id '{entryId}'.");
         return null;
+    }
+
+    /// <summary>Matches an id previously recorded in <c>MetadataJson.alternateIds</c>.</summary>
+    private async Task<SocialProfile?> FindProfileByAlternateIdAsync(string externalId, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(externalId))
+            return null;
+
+        var profiles = await _unitOfWork.SocialProfiles.FindAsync(
+            p => p.MetadataJson != null && p.MetadataJson.Contains(externalId), cancellationToken);
+        return profiles.FirstOrDefault(p => ReadAlternateIds(p.MetadataJson).Contains(externalId));
+    }
+
+    private async Task RememberAlternateProfileIdAsync(
+        SocialProfile profile,
+        string externalId,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(externalId) ||
+            externalId == profile.ExternalProfileId ||
+            ReadAlternateIds(profile.MetadataJson).Contains(externalId))
+            return;
+
+        var metadata = new Dictionary<string, object>();
+        var pageId = TryReadPageId(profile.MetadataJson);
+        if (!string.IsNullOrWhiteSpace(pageId))
+            metadata["pageId"] = pageId!;
+
+        var alternates = ReadAlternateIds(profile.MetadataJson).ToList();
+        alternates.Add(externalId);
+        metadata["alternateIds"] = alternates;
+
+        profile.MetadataJson = JsonSerializer.Serialize(metadata);
+        profile.UpdatedAt = DateTime.UtcNow;
+        _unitOfWork.SocialProfiles.Update(profile);
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+    }
+
+    private static IReadOnlyList<string> ReadAlternateIds(string? metadataJson)
+    {
+        if (string.IsNullOrWhiteSpace(metadataJson))
+            return Array.Empty<string>();
+
+        try
+        {
+            using var doc = JsonDocument.Parse(metadataJson);
+            if (!doc.RootElement.TryGetProperty("alternateIds", out var ids) ||
+                ids.ValueKind != JsonValueKind.Array)
+                return Array.Empty<string>();
+
+            return ids.EnumerateArray()
+                .Select(id => id.ToString())
+                .Where(id => !string.IsNullOrWhiteSpace(id))
+                .ToList();
+        }
+        catch (JsonException)
+        {
+            return Array.Empty<string>();
+        }
+    }
+
+    /// <summary>True when the id belongs to this profile — its own id, a linked Page, or a known alternate.</summary>
+    private static bool ProfileOwnsId(SocialProfile profile, string? externalId)
+    {
+        if (string.IsNullOrWhiteSpace(externalId))
+            return false;
+
+        return externalId == profile.ExternalProfileId
+            || externalId == TryReadPageId(profile.MetadataJson)
+            || ReadAlternateIds(profile.MetadataJson).Contains(externalId);
     }
 
     private async Task<IReadOnlyList<string>> ResolveAccessTokensAsync(
@@ -993,10 +1088,7 @@ public class InstagramService : IInstagramService
             ? recipientValue.ToString()
             : string.Empty;
         var isEcho = message.TryGetProperty("is_echo", out var echo) && echo.ValueKind == JsonValueKind.True;
-        var pageId = TryReadPageId(profile.MetadataJson);
-        var outbound = isEcho ||
-                       senderId == profile.ExternalProfileId ||
-                       (!string.IsNullOrWhiteSpace(pageId) && senderId == pageId);
+        var outbound = isEcho || ProfileOwnsId(profile, senderId);
         var customerId = outbound ? receiverId : senderId;
         if (string.IsNullOrWhiteSpace(customerId))
         {

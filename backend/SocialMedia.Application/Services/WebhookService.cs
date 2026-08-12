@@ -50,6 +50,7 @@ public class WebhookService : IWebhookService
             {
                 _meta.Facebook.WebhookVerifyToken,
                 _meta.Instagram.WebhookVerifyToken,
+                _meta.InstagramLogin.WebhookVerifyToken,
                 _meta.WhatsApp.WebhookVerifyToken
             };
             return tokens.Any(t => !string.IsNullOrWhiteSpace(t) && t == verifyToken)
@@ -61,6 +62,7 @@ public class WebhookService : IWebhookService
         {
             "facebook" => _meta.Facebook.WebhookVerifyToken,
             "instagram" => _meta.Instagram.WebhookVerifyToken,
+            "instagram_login" => _meta.InstagramLogin.WebhookVerifyToken,
             "whatsapp" => _meta.WhatsApp.WebhookVerifyToken,
             _ => null
         };
@@ -137,9 +139,13 @@ public class WebhookService : IWebhookService
                 Add(_meta.Facebook.AppSecret);
                 break;
             case "instagram":
+            case "instagram_login":
+                // Both Instagram connection types deliver object="instagram" on the shared callback,
+                // but each is signed by its own app, so every Instagram-capable secret is a candidate.
                 Add(!string.IsNullOrWhiteSpace(_meta.Instagram.AppSecret)
                     ? _meta.Instagram.AppSecret
                     : _meta.Facebook.AppSecret);
+                Add(_meta.InstagramLogin.AppSecret);
                 Add(_meta.Facebook.AppSecret);
                 break;
             case "whatsapp":
@@ -149,6 +155,7 @@ public class WebhookService : IWebhookService
             default:
                 Add(_meta.Facebook.AppSecret);
                 Add(_meta.Instagram.AppSecret);
+                Add(_meta.InstagramLogin.AppSecret);
                 Add(_meta.WhatsApp.AppSecret);
                 break;
         }
@@ -184,6 +191,7 @@ public class WebhookService : IWebhookService
                 {
                     "facebook" => _meta.Facebook.WebhookVerifyToken,
                     "instagram" => _meta.Instagram.WebhookVerifyToken,
+                    "instagram_login" => _meta.InstagramLogin.WebhookVerifyToken,
                     "whatsapp" => _meta.WhatsApp.WebhookVerifyToken,
                     _ => string.Empty
                 },

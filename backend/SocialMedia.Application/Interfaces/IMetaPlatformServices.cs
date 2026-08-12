@@ -186,4 +186,10 @@ public class SocialProfileDraft
     public string? PageAccessToken { get; set; }
     /// <summary>Linked Facebook Page ID (Instagram via Facebook Login).</summary>
     public string? PageId { get; set; }
+
+    /// <summary>
+    /// Other Meta ids that identify the same profile. Instagram Login exposes both an app-scoped
+    /// <c>id</c> and a professional-account <c>user_id</c>, and webhooks may key on either.
+    /// </summary>
+    public List<string> AlternateExternalIds { get; set; } = new();
 }
