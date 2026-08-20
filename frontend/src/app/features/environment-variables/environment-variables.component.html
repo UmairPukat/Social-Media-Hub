@@ -1,0 +1,251 @@
+<section class="page env-vars-page">
+  <header class="env-hero">
+    <div>
+      <p class="eyebrow">{{ pageMeta().eyebrow }}</p>
+      <h1>{{ pageMeta().title }}</h1>
+      <p class="lede">{{ pageMeta().lede }}</p>
+    </div>
+    <div class="hero-actions">
+      <button mat-stroked-button type="button" (click)="reload()" [disabled]="loading()">
+        <mat-icon>refresh</mat-icon>
+        Refresh
+      </button>
+      <button mat-flat-button type="button" (click)="openCreate()">
+        <mat-icon>add</mat-icon>
+        Add variable
+      </button>
+    </div>
+  </header>
+
+  @if (notice()) {
+    <div class="notice">
+      <mat-icon>info</mat-icon>
+      <span>{{ notice() }}</span>
+      <button type="button" (click)="notice.set('')" aria-label="Dismiss"><mat-icon>close</mat-icon></button>
+    </div>
+  }
+
+  <section class="env-panel">
+    <div class="panel-head">
+      <div>
+        <p class="section-kicker">Variable registry</p>
+        <h2>{{ scope() === 'frontend' ? 'Frontend deployment variables' : 'Backend deployment variables' }}</h2>
+        <p class="panel-copy">
+          Sensitive values are masked by default. Reveal or copy only when you need to verify a secret.
+        </p>
+      </div>
+      <label class="search-box">
+        <mat-icon>search</mat-icon>
+        <input
+          type="search"
+          placeholder="Search by name or description"
+          [value]="search()"
+          (input)="setSearch($event)"
+        />
+        @if (search()) {
+          <button type="button" (click)="clearSearch()" aria-label="Clear search"><mat-icon>close</mat-icon></button>
+        }
+      </label>
+    </div>
+
+    @if (loading()) {
+      <div class="state">
+        <span><mat-icon>hourglass_top</mat-icon></span>
+        <h3>Loading variables…</h3>
+        <p>Fetching the {{ scope() }} deployment registry.</p>
+      </div>
+    } @else if (loadError()) {
+      <div class="state error">
+        <span><mat-icon>cloud_off</mat-icon></span>
+        <h3>Could not load variables</h3>
+        <p>{{ loadError() }}</p>
+        <button mat-stroked-button type="button" (click)="reload()">Try again</button>
+      </div>
+    } @else if (filteredVariables().length) {
+      <div class="table-wrap">
+        <table class="env-table">
+          <thead>
+            <tr>
+              <th>Variable name</th>
+              <th>Value</th>
+              <th>Description</th>
+              <th>Required</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (item of filteredVariables(); track item.id) {
+              <tr>
+                <td>
+                  <div class="name-cell">
+                    <code>{{ item.name }}</code>
+                    @if (item.isSensitive) {
+                      <span class="sensitive-badge"><mat-icon>lock</mat-icon>Sensitive</span>
+                    }
+                  </div>
+                </td>
+                <td>
+                  <div class="value-cell">
+                    <code [class.masked]="item.isSensitive && !isValueVisible(item)">
+                      {{ displayValue(item) || '—' }}
+                    </code>
+                    @if (item.isSensitive) {
+                      <button
+                        type="button"
+                        class="icon-action"
+                        (click)="toggleVisibility(item)"
+                        [disabled]="revealingId() === item.id"
+                        [attr.aria-label]="isValueVisible(item) ? 'Hide value' : 'Show value'"
+                        matTooltip="{{ isValueVisible(item) ? 'Hide value' : 'Show value' }}">
+                        <mat-icon>{{ isValueVisible(item) ? 'visibility_off' : 'visibility' }}</mat-icon>
+                      </button>
+                    }
+                    <button
+                      type="button"
+                      class="icon-action"
+                      (click)="copyValue(item, 'value')"
+                      aria-label="Copy value"
+                      matTooltip="Copy value">
+                      <mat-icon>{{ copiedKey() === item.id + ':value' ? 'check' : 'content_copy' }}</mat-icon>
+                    </button>
+                  </div>
+                </td>
+                <td>{{ item.description || '—' }}</td>
+                <td>
+                  <span class="required-pill" [class.required]="item.isRequired">
+                    {{ item.isRequired ? 'Required' : 'Optional' }}
+                  </span>
+                </td>
+                <td class="actions-cell">
+                  <div class="row-actions">
+                    <button
+                      type="button"
+                      class="icon-action"
+                      (click)="copyValue(item, 'name')"
+                      aria-label="Copy name"
+                      matTooltip="Copy name">
+                      <mat-icon>{{ copiedKey() === item.id + ':name' ? 'check' : 'content_copy' }}</mat-icon>
+                    </button>
+                    <button type="button" class="icon-action" (click)="openEdit(item)" aria-label="Edit" matTooltip="Edit">
+                      <mat-icon>edit</mat-icon>
+                    </button>
+                    <button type="button" class="icon-action danger" (click)="requestDelete(item)" aria-label="Delete" matTooltip="Delete">
+                      <mat-icon>delete_outline</mat-icon>
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    } @else {
+      <div class="state">
+        <span><mat-icon>{{ variables().length ? 'filter_alt_off' : pageMeta().icon }}</mat-icon></span>
+        <h3>{{ variables().length ? 'No variables match your search' : 'No variables yet' }}</h3>
+        <p>
+          {{
+            variables().length
+              ? 'Try another search phrase or clear the filter.'
+              : 'Add deployment variables to document what your hosting environment needs.'
+          }}
+        </p>
+        @if (variables().length) {
+          <button mat-stroked-button type="button" (click)="clearSearch()">Clear search</button>
+        } @else {
+          <button mat-flat-button type="button" (click)="openCreate()"><mat-icon>add</mat-icon>Add first variable</button>
+        }
+      </div>
+    }
+  </section>
+</section>
+
+<dialog #formDialog class="env-dialog" (click)="formDialog.close()">
+  <form class="dialog-card" (click)="$event.stopPropagation()" (submit)="$event.preventDefault(); saveForm()">
+    <header class="dialog-head">
+      <div>
+        <p class="dialog-kicker">{{ scope() === 'frontend' ? 'Frontend' : 'Backend' }}</p>
+        <h3>{{ editingId() ? 'Edit variable' : 'Add variable' }}</h3>
+      </div>
+      <button type="button" class="icon-action" (click)="closeFormDialog()" aria-label="Close">
+        <mat-icon>close</mat-icon>
+      </button>
+    </header>
+
+    @if (formError()) {
+      <div class="form-error"><mat-icon>error</mat-icon>{{ formError() }}</div>
+    }
+
+    <label class="field">
+      <span>Variable name</span>
+      <input
+        type="text"
+        [ngModel]="form().name"
+        (ngModelChange)="updateFormField('name', $event)"
+        name="name"
+        placeholder="API_URL"
+        autocomplete="off"
+        required
+      />
+    </label>
+
+    <label class="field">
+      <span>Value</span>
+      <input
+        type="text"
+        [ngModel]="form().value"
+        (ngModelChange)="updateFormField('value', $event)"
+        name="value"
+        placeholder="Enter the deployment value"
+        autocomplete="off"
+      />
+    </label>
+
+    <label class="field">
+      <span>Description</span>
+      <textarea
+        rows="3"
+        [ngModel]="form().description"
+        (ngModelChange)="updateFormField('description', $event)"
+        name="description"
+        placeholder="What this variable is used for when deploying"></textarea>
+    </label>
+
+    <label class="checkbox-field">
+      <input
+        type="checkbox"
+        [ngModel]="form().isRequired"
+        (ngModelChange)="updateFormField('isRequired', $event)"
+        name="isRequired"
+      />
+      <span>Required for deployment</span>
+    </label>
+
+    <footer class="dialog-actions">
+      <button mat-stroked-button type="button" (click)="closeFormDialog()">Cancel</button>
+      <button mat-flat-button type="button" (click)="saveForm()" [disabled]="saving()">
+        {{ saving() ? 'Saving…' : editingId() ? 'Save changes' : 'Add variable' }}
+      </button>
+    </footer>
+  </form>
+</dialog>
+
+<dialog #deleteDialog class="env-dialog" (click)="deleteDialog.close()">
+  <div class="dialog-card confirm-card" (click)="$event.stopPropagation()">
+    <header class="dialog-head">
+      <div>
+        <p class="dialog-kicker">Confirm deletion</p>
+        <h3>Delete this variable?</h3>
+      </div>
+    </header>
+    <p class="confirm-copy">
+      <code>{{ pendingDelete()?.name }}</code> will be removed from the {{ scope() }} registry. This cannot be undone.
+    </p>
+    <footer class="dialog-actions">
+      <button mat-stroked-button type="button" (click)="cancelDelete()">Cancel</button>
+      <button mat-flat-button color="warn" type="button" (click)="confirmDelete()" [disabled]="deleting()">
+        {{ deleting() ? 'Deleting…' : 'Delete variable' }}
+      </button>
+    </footer>
+  </div>
+</dialog>

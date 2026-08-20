@@ -75,6 +75,12 @@ public interface ISyncJobRepository : IRepository<SyncJob>
 {
 }
 
+public interface IEnvironmentVariableRepository : IRepository<EnvironmentVariable>
+{
+    Task<IReadOnlyList<EnvironmentVariable>> GetByScopeAsync(EnvironmentVariableScope scope, CancellationToken cancellationToken = default);
+    Task<bool> NameExistsAsync(string name, EnvironmentVariableScope scope, Guid? excludeId = null, CancellationToken cancellationToken = default);
+}
+
 public interface IUnitOfWork : IDisposable
 {
     IUserRepository Users { get; }
@@ -90,6 +96,7 @@ public interface IUnitOfWork : IDisposable
     IWebhookEventRepository WebhookEvents { get; }
     IWebhookLogRepository WebhookLogs { get; }
     ISyncJobRepository SyncJobs { get; }
+    IEnvironmentVariableRepository EnvironmentVariables { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 }

@@ -6,12 +6,14 @@ import {
   ApiResponse,
   ConnectionDetails,
   DashboardSummary,
+  EnvironmentVariable,
   InboxItem,
   MetaPage,
   PlatformCard,
   PublishPostResponse,
   SocialAccount,
-  SocialPost
+  SocialPost,
+  UpsertEnvironmentVariableRequest
 } from '../models/api.models';
 
 @Injectable({ providedIn: 'root' })
@@ -111,6 +113,38 @@ export class ApiService {
     return this.http.post<ApiResponse<object>>(
       `${this.base}/Webhooks/Subscribe?platformCode=${platformCode}${q ? '&' + q.slice(1) : ''}`,
       {}
+    );
+  }
+
+  getEnvironmentVariables(scope: 'frontend' | 'backend'): Observable<ApiResponse<EnvironmentVariable[]>> {
+    return this.http.get<ApiResponse<EnvironmentVariable[]>>(
+      `${this.base}/EnvironmentVariables/GetByScope?scope=${encodeURIComponent(scope)}`
+    );
+  }
+
+  getEnvironmentVariable(id: string, reveal = false): Observable<ApiResponse<EnvironmentVariable>> {
+    return this.http.get<ApiResponse<EnvironmentVariable>>(
+      `${this.base}/EnvironmentVariables/GetById?id=${encodeURIComponent(id)}&reveal=${reveal}`
+    );
+  }
+
+  createEnvironmentVariable(body: UpsertEnvironmentVariableRequest): Observable<ApiResponse<EnvironmentVariable>> {
+    return this.http.post<ApiResponse<EnvironmentVariable>>(`${this.base}/EnvironmentVariables/Create`, body);
+  }
+
+  updateEnvironmentVariable(
+    id: string,
+    body: UpsertEnvironmentVariableRequest
+  ): Observable<ApiResponse<EnvironmentVariable>> {
+    return this.http.put<ApiResponse<EnvironmentVariable>>(
+      `${this.base}/EnvironmentVariables/Update?id=${encodeURIComponent(id)}`,
+      body
+    );
+  }
+
+  deleteEnvironmentVariable(id: string): Observable<ApiResponse<object>> {
+    return this.http.delete<ApiResponse<object>>(
+      `${this.base}/EnvironmentVariables/Delete?id=${encodeURIComponent(id)}`
     );
   }
 }

@@ -117,3 +117,9 @@ public enum SyncJobStatus
     Completed = 2,
     Failed = 3
 }
+
+public enum EnvironmentVariableScope
+{
+    Frontend = 0,
+    Backend = 1
+}

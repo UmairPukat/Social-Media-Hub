@@ -224,6 +224,31 @@ public class SyncJobRepository : Repository<SyncJob>, ISyncJobRepository
     public SyncJobRepository(AppDbContext context) : base(context) { }
 }
 
+public class EnvironmentVariableRepository : Repository<EnvironmentVariable>, IEnvironmentVariableRepository
+{
+    public EnvironmentVariableRepository(AppDbContext context) : base(context) { }
+
+    public async Task<IReadOnlyList<EnvironmentVariable>> GetByScopeAsync(
+        EnvironmentVariableScope scope,
+        CancellationToken cancellationToken = default)
+        => await DbSet.AsNoTracking()
+            .Where(x => x.Scope == scope)
+            .OrderBy(x => x.Name)
+            .ToListAsync(cancellationToken);
+
+    public Task<bool> NameExistsAsync(
+        string name,
+        EnvironmentVariableScope scope,
+        Guid? excludeId = null,
+        CancellationToken cancellationToken = default)
+    {
+        var query = DbSet.Where(x => x.Scope == scope && x.Name == name);
+        if (excludeId.HasValue)
+            query = query.Where(x => x.Id != excludeId.Value);
+        return query.AnyAsync(cancellationToken);
+    }
+}
+
 public class UnitOfWork : IUnitOfWork
 {
     private readonly AppDbContext _context;
@@ -242,7 +267,8 @@ public class UnitOfWork : IUnitOfWork
         IMessageRepository messages,
         IWebhookEventRepository webhookEvents,
         IWebhookLogRepository webhookLogs,
-        ISyncJobRepository syncJobs)
+        ISyncJobRepository syncJobs,
+        IEnvironmentVariableRepository environmentVariables)
     {
         _context = context;
         Users = users;
@@ -258,6 +284,7 @@ public class UnitOfWork : IUnitOfWork
         WebhookEvents = webhookEvents;
         WebhookLogs = webhookLogs;
         SyncJobs = syncJobs;
+        EnvironmentVariables = environmentVariables;
     }
 
     public IUserRepository Users { get; }
@@ -273,6 +300,7 @@ public class UnitOfWork : IUnitOfWork
     public IWebhookEventRepository WebhookEvents { get; }
     public IWebhookLogRepository WebhookLogs { get; }
     public ISyncJobRepository SyncJobs { get; }
+    public IEnvironmentVariableRepository EnvironmentVariables { get; }
 
     public Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
         => _context.SaveChangesAsync(cancellationToken);
