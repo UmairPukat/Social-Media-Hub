@@ -47,18 +47,6 @@ export const routes: Routes = [
       {
         path: 'settings',
         loadComponent: () => import('./features/settings/settings.component').then(m => m.SettingsComponent)
-      },
-      {
-        path: 'environment-variables',
-        pathMatch: 'full',
-        redirectTo: 'environment-variables/frontend'
-      },
-      {
-        path: 'environment-variables/:scope',
-        loadComponent: () =>
-          import('./features/environment-variables/environment-variables.component').then(
-            m => m.EnvironmentVariablesComponent
-          )
       }
     ]
   },

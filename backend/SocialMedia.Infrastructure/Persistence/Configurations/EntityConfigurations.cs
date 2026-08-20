@@ -194,16 +194,3 @@ public class SyncJobConfiguration : IEntityTypeConfiguration<SyncJob>
         builder.HasOne(x => x.SocialAccount).WithMany(x => x.SyncJobs).HasForeignKey(x => x.SocialAccountId).OnDelete(DeleteBehavior.Cascade);
     }
 }
-
-public class EnvironmentVariableConfiguration : IEntityTypeConfiguration<EnvironmentVariable>
-{
-    public void Configure(EntityTypeBuilder<EnvironmentVariable> builder)
-    {
-        builder.ToTable("EnvironmentVariables");
-        builder.HasKey(x => x.Id);
-        builder.Property(x => x.Name).IsRequired().HasMaxLength(200);
-        builder.Property(x => x.Value).IsRequired().HasMaxLength(4000);
-        builder.Property(x => x.Description).HasMaxLength(1000);
-        builder.HasIndex(x => new { x.Scope, x.Name }).IsUnique();
-    }
-}

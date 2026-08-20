@@ -14,7 +14,6 @@ public static class DependencyInjection
         services.AddScoped<IInboxService, InboxService>();
         services.AddScoped<IDashboardService, DashboardService>();
         services.AddScoped<IWebhookService, WebhookService>();
-        services.AddScoped<IEnvironmentVariableService, EnvironmentVariableService>();
         return services;
     }
 }

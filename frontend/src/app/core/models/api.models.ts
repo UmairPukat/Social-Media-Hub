@@ -183,24 +183,3 @@ export const PLATFORM_COLORS: Record<string, string> = {
   twitter: '#0F1419',
   x: '#0F1419'
 };
-
-export type EnvironmentVariableScope = 'frontend' | 'backend';
-
-export interface EnvironmentVariable {
-  id: string;
-  name: string;
-  value: string;
-  description: string;
-  isRequired: boolean;
-  scope: EnvironmentVariableScope;
-  isSensitive: boolean;
-  isMasked: boolean;
-}
-
-export interface UpsertEnvironmentVariableRequest {
-  name: string;
-  value: string;
-  description: string;
-  isRequired: boolean;
-  scope: EnvironmentVariableScope;
-}

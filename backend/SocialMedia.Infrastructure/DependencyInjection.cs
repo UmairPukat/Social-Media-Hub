@@ -39,7 +39,6 @@ public static class DependencyInjection
         services.AddScoped<IWebhookEventRepository, WebhookEventRepository>();
         services.AddScoped<IWebhookLogRepository, WebhookLogRepository>();
         services.AddScoped<ISyncJobRepository, SyncJobRepository>();
-        services.AddScoped<IEnvironmentVariableRepository, EnvironmentVariableRepository>();
         services.AddScoped<IUnitOfWork, UnitOfWork>();
 
         services.AddScoped<IPasswordHasher, PasswordHasher>();

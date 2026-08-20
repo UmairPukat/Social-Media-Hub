@@ -1,9 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using SocialMedia.Application.Catalog;
-using SocialMedia.Application.Services;
 using SocialMedia.Domain.Entities;
-using SocialMedia.Domain.Enums;
 
 namespace SocialMedia.Infrastructure.Persistence;
 
@@ -66,7 +64,6 @@ public static class DbSeeder
         await db.Database.EnsureCreatedAsync();
         await EnsureWebhookLogsTableAsync(db);
         await EnsureMessageReplyColumnsAsync(db);
-        await EnsureEnvironmentVariablesTableAsync(db);
 
         var catalogCodes = new HashSet<string>(
             PlatformCatalog.All.Select(p => p.Code),
@@ -124,22 +121,6 @@ public static class DbSeeder
             });
         }
 
-        foreach (var def in EnvironmentVariableCatalog.All)
-        {
-            if (db.EnvironmentVariables.Any(v => v.Scope == def.Scope && v.Name == def.Name))
-                continue;
-
-            db.EnvironmentVariables.Add(new EnvironmentVariable
-            {
-                Name = def.Name,
-                Description = def.Description,
-                IsRequired = def.IsRequired,
-                Scope = def.Scope,
-                Value = def.DefaultValue,
-                IsSensitive = EnvironmentVariableService.DetectSensitive(def.Name)
-            });
-        }
-
         await db.SaveChangesAsync();
     }
 
@@ -178,28 +159,6 @@ public static class DbSeeder
             """);
         await db.Database.ExecuteSqlRawAsync("""
             ALTER TABLE "Messages" ADD COLUMN IF NOT EXISTS "ReplyToExternalId" character varying(200) NULL;
-            """);
-    }
-
-    private static async Task EnsureEnvironmentVariablesTableAsync(AppDbContext db)
-    {
-        await db.Database.ExecuteSqlRawAsync("""
-            CREATE TABLE IF NOT EXISTS "EnvironmentVariables" (
-                "Id" uuid NOT NULL,
-                "Name" character varying(200) NOT NULL,
-                "Value" character varying(4000) NOT NULL,
-                "Description" character varying(1000) NOT NULL DEFAULT '',
-                "IsRequired" boolean NOT NULL DEFAULT false,
-                "Scope" integer NOT NULL,
-                "IsSensitive" boolean NOT NULL DEFAULT false,
-                "CreatedAt" timestamp with time zone NOT NULL,
-                "UpdatedAt" timestamp with time zone NULL,
-                CONSTRAINT "PK_EnvironmentVariables" PRIMARY KEY ("Id")
-            );
-            """);
-        await db.Database.ExecuteSqlRawAsync("""
-            CREATE UNIQUE INDEX IF NOT EXISTS "IX_EnvironmentVariables_Scope_Name"
-            ON "EnvironmentVariables" ("Scope", "Name");
             """);
     }
 }
