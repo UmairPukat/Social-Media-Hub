@@ -24,8 +24,10 @@ import {
   IntegrationCardView,
   IntegrationPlatformGroup
 } from '../../shared/integration-card.model';
-import { IntegrationPlatformCardComponent } from '../../shared/integration-platform-card/integration-platform-card.component';
 import {
+  integrationPlatformIcon,
+  integrationShortDesc,
+  integrationTone,
   supportsIntegrationConnectionDetails,
   supportsIntegrationPageSelection
 } from '../../shared/integration-ui.utils';
@@ -49,8 +51,7 @@ const PLATFORM_OPTIONS = [
     MatIconModule,
     MatInputModule,
     MatSelectModule,
-    MatTooltipModule,
-    IntegrationPlatformCardComponent
+    MatTooltipModule
   ],
   templateUrl: './app-connections.component.html',
   styleUrl: './app-connections.component.scss'
@@ -168,8 +169,8 @@ export class AppConnectionsComponent implements OnInit {
     return {
       trackId: conn.id,
       code: conn.platformCode,
-      displayName: conn.platformName,
-      description: conn.name,
+      displayName: conn.name,
+      description: conn.platformName,
       isConnected: conn.isConnected,
       canConnect: conn.canConnect,
       accountName: conn.accountName,
@@ -396,6 +397,22 @@ export class AppConnectionsComponent implements OnInit {
 
   supportsConnectionDetails(code: string): boolean {
     return supportsIntegrationConnectionDetails(code);
+  }
+
+  isConnecting(card: IntegrationCardView): boolean {
+    return this.connecting() === card.connectingKey;
+  }
+
+  tone(code: string): string {
+    return integrationTone(code);
+  }
+
+  shortDesc(text: string): string {
+    return integrationShortDesc(text);
+  }
+
+  platformIcon(code: string): string {
+    return integrationPlatformIcon(code);
   }
 
   isInstagramLoginPlatform(code: string | null | undefined): boolean {
