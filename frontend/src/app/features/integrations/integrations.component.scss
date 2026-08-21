@@ -289,11 +289,39 @@
   z-index: 1;
   margin-top: auto;
   padding-top: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 80px;
+  justify-content: flex-end;
+}
+
+.stat-action-main {
   display: grid;
   gap: 8px;
-  /* Reserve the two-button layout so single-button cards keep the same footprint. */
-  min-height: 80px;
-  align-content: end;
+}
+
+.stat-card-tools {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.stat-card-tools .eye-btn.danger-icon {
+  color: #be123c;
+  background: color-mix(in srgb, #be123c 10%, transparent);
+  border-color: color-mix(in srgb, #be123c 22%, transparent);
+}
+
+.stat-card-tools .eye-btn.danger-icon:hover {
+  background: color-mix(in srgb, #be123c 18%, transparent);
+}
+
+.stat-action-main button {
+  width: 100%;
+  border-radius: 10px !important;
 }
 
 .stat-action button {

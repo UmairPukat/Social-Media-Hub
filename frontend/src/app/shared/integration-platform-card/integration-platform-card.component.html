@@ -1,0 +1,90 @@
+<article
+  class="stat"
+  [attr.data-tone]="tone(card().code)"
+  [class.live]="card().isConnected && !card().requiresPageSelection">
+  <div class="stat-top">
+    <span class="stat-ico">
+      <mat-icon>{{ platformIcon(card().code) }}</mat-icon>
+    </span>
+    <div class="stat-top-end">
+      <span class="stat-label">
+        @if (card().requiresPageSelection) {
+          Select page
+        } @else {
+          {{ card().isConnected ? 'Connected' : card().canConnect ? 'Ready' : 'Soon' }}
+        }
+      </span>
+      @if (card().isConnected && supportsConnectionDetails(card().code) && !card().requiresPageSelection) {
+        <button
+          type="button"
+          class="eye-btn"
+          matTooltip="View account information"
+          [attr.aria-label]="'View ' + card().displayName + ' account information'"
+          (click)="openDetails.emit(card())">
+          <mat-icon>visibility</mat-icon>
+        </button>
+      }
+    </div>
+  </div>
+
+  <strong class="stat-value">{{ card().displayName }}</strong>
+
+  <p class="stat-hint">
+    @if (card().accountName) {
+      Linked as {{ card().accountName }}
+    } @else {
+      {{ shortDesc(card().description) }}
+    }
+  </p>
+
+  <div class="stat-action">
+    <div class="stat-action-main">
+      @if (card().requiresPageSelection) {
+        <button mat-flat-button color="primary" type="button" (click)="changePage.emit(card())">
+          Choose page
+        </button>
+      } @else if (card().isConnected) {
+        @if (supportsPageSelection(card().code)) {
+          <button mat-stroked-button type="button" (click)="changePage.emit(card())">
+            Change page
+          </button>
+        }
+        <button mat-stroked-button type="button" class="danger" (click)="disconnect.emit(card())">
+          Disconnect
+        </button>
+      } @else if (card().canConnect) {
+        <button
+          mat-flat-button
+          color="primary"
+          type="button"
+          [disabled]="isConnecting(card())"
+          (click)="connect.emit(card())">
+          {{ isConnecting(card()) ? 'Connecting…' : 'Connect' }}
+        </button>
+      } @else {
+        <button mat-flat-button type="button" class="soon" disabled>Coming soon</button>
+      }
+    </div>
+
+    @if (showAppActions()) {
+      <div class="stat-card-tools">
+        <button
+          type="button"
+          class="eye-btn"
+          matTooltip="Edit app credentials"
+          [attr.aria-label]="'Edit ' + card().displayName"
+          (click)="edit.emit(card())">
+          <mat-icon>edit</mat-icon>
+        </button>
+        <button
+          type="button"
+          class="eye-btn danger-icon"
+          matTooltip="Delete app connection"
+          [attr.aria-label]="'Delete ' + card().displayName"
+          (click)="delete.emit(card())">
+          <mat-icon>delete</mat-icon>
+        </button>
+      </div>
+    }
+  </div>
+</article>

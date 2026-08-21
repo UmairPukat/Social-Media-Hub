@@ -1,3 +1,4 @@
+using SocialMedia.Application.DTOs.Integration;
 using SocialMedia.Domain.Enums;
 
 namespace SocialMedia.Application.DTOs.AppConnections;
@@ -19,6 +20,7 @@ public class MetaAppConnectionDto
     public bool SupportsMessages { get; set; }
     public bool SupportsPosts { get; set; }
     public bool CanConnect { get; set; }
+    public bool RequiresPageSelection { get; set; }
 }
 
 public class CreateMetaAppConnectionRequest
@@ -98,4 +100,5 @@ public class AppConnectionConnectionDetailsDto
     public string AppId { get; set; } = string.Empty;
     public string CallbackUrl { get; set; } = string.Empty;
     public string Scopes { get; set; } = string.Empty;
+    public IReadOnlyList<SocialProfileDto> Profiles { get; set; } = Array.Empty<SocialProfileDto>();
 }

@@ -103,6 +103,7 @@ export interface MetaAppConnection {
   supportsMessages: boolean;
   supportsPosts: boolean;
   canConnect: boolean;
+  requiresPageSelection?: boolean;
 }
 
 export interface CreateMetaAppConnectionRequest {
@@ -151,6 +152,7 @@ export interface AppConnectionDetails {
   appId: string;
   callbackUrl: string;
   scopes: string;
+  profiles: SocialProfile[];
 }
 
 /** A Facebook Page offered in the page picker after Meta login. */

@@ -1,49 +1,48 @@
 @import '../integrations/integrations.component.scss';
 
-.app-connections {
-  .stat-sub {
-    margin: 0 0 4px;
-    font-size: 0.78rem;
-    color: #64748b;
-    font-weight: 600;
-  }
+.empty-state {
+  padding: 28px 16px;
+  text-align: center;
+  border: 1px dashed rgba(37, 99, 235, 0.2);
+  border-radius: 16px;
+  background: rgba(248, 251, 255, 0.8);
+}
 
-  .empty-state {
-    padding: 28px 16px;
-    text-align: center;
-    border: 1px dashed rgba(37, 99, 235, 0.2);
-    border-radius: 16px;
-    background: rgba(248, 251, 255, 0.8);
-  }
+.form-body {
+  display: grid;
+  gap: 4px;
+  padding: 0 4px 8px;
 
-  .form-body {
-    display: grid;
-    gap: 4px;
-    padding: 0 4px 8px;
-
-    .full {
-      width: 100%;
-    }
+  .full {
+    width: 100%;
   }
+}
 
-  .form-dialog {
-    max-width: 520px;
-  }
+.form-dialog {
+  max-width: 520px;
+}
 
-  .scope-actions {
-    display: flex;
-    justify-content: flex-end;
-    margin-bottom: 8px;
-  }
+.scope-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 8px;
+}
 
-  .scopes-field textarea {
-    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    font-size: 0.82rem;
-    line-height: 1.45;
-  }
+.scopes-field textarea {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
 
-  code.wrap {
-    word-break: break-all;
-    white-space: pre-wrap;
-  }
+code.wrap {
+  word-break: break-all;
+  white-space: pre-wrap;
+}
+
+.app-meta-block {
+  margin-bottom: 12px;
+}
+
+.detail-grid.compact {
+  margin-top: 8px;
 }

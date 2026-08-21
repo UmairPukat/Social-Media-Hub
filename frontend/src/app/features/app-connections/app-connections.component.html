@@ -1,17 +1,25 @@
-<section class="page integrations app-connections">
+<section class="page integrations">
   <header class="int-hero">
     <div>
-      <p class="eyebrow">Meta Apps</p>
+      <p class="eyebrow">Workspace</p>
       <h1>App Connections</h1>
       <p class="lede">
-        Register separate Meta developer apps — each with its own App Id, App Secret, and Callback URL.
-        Connect multiple Meta apps in one workspace. Posts, publishing, and Inbox work the same for connected accounts.
+        Connect separate Meta developer apps — each with its own App Id, App Secret, Callback URL, and scopes.
+        Facebook, Instagram (Facebook Login), Instagram Login, and WhatsApp Business use the same connect flow as Integrations.
       </p>
     </div>
     <div class="hero-actions">
+      <button mat-stroked-button type="button" (click)="setCategory('facebook')">
+        <mat-icon>share</mat-icon>
+        Social
+      </button>
       <button mat-flat-button color="primary" type="button" (click)="openCreateForm()">
         <mat-icon>add_link</mat-icon>
         Add app connection
+      </button>
+      <button mat-stroked-button type="button" (click)="setCategory('all')">
+        <mat-icon>hub</mat-icon>
+        All apps
       </button>
     </div>
   </header>
@@ -21,100 +29,67 @@
   }
 
   <div class="filters">
-    <span class="chip active">
-      <mat-icon>apps</mat-icon>
-      {{ connections().length }} apps
-    </span>
-    <span class="chip">
-      <mat-icon>check_circle</mat-icon>
-      {{ connectedCount() }} connected
-    </span>
+    <button
+      type="button"
+      class="chip"
+      [class.active]="activeCategory() === 'all'"
+      (click)="setCategory('all')">
+      All
+    </button>
+    @for (cat of categories(); track cat.id) {
+      <button
+        type="button"
+        class="chip"
+        [class.active]="activeCategory() === cat.id"
+        [style.--accent]="cat.accent"
+        (click)="setCategory(cat.id)">
+        <mat-icon>{{ cat.icon }}</mat-icon>
+        {{ cat.label }}
+        <span>{{ cat.items.length }}</span>
+      </button>
+    }
   </div>
 
   <div class="catalog">
-    <section class="category">
-      <div class="category-head">
-        <div>
-          <h2>Your Meta apps</h2>
-          <p>Each card is a separate Meta developer app with its own credentials and OAuth callback.</p>
+    @if (!connections().length) {
+      <section class="category">
+        <div class="category-head">
+          <div>
+            <h2>Your Meta apps</h2>
+            <p>Add a Meta developer app to see platform cards here — same layout as Integrations.</p>
+          </div>
         </div>
-      </div>
-
-      @if (!connections().length) {
         <p class="picker-empty empty-state">
-          No app connections yet. Add your first Meta app to connect with custom App Id, App Secret, and Callback URL.
+          No app connections yet. Click <strong>Add app connection</strong> to register App Id, App Secret, and Callback URL.
         </p>
-      } @else {
-        <div class="stats">
-          @for (card of connections(); track card.id) {
-            <article
-              class="stat"
-              [attr.data-tone]="tone(card.platformCode)"
-              [class.live]="card.isConnected">
-              <div class="stat-top">
-                <span class="stat-ico">
-                  <mat-icon>{{ platformIcon(card.platformCode) }}</mat-icon>
-                </span>
-                <div class="stat-top-end">
-                  <span class="stat-label">
-                    {{ card.isConnected ? 'Connected' : 'Ready' }}
-                  </span>
-                  @if (card.isConnected && supportsConnectionDetails(card.platformCode)) {
-                    <button
-                      type="button"
-                      class="eye-btn"
-                      matTooltip="View account information"
-                      [attr.aria-label]="'View ' + card.name + ' account information'"
-                      (click)="openDetails(card)">
-                      <mat-icon>visibility</mat-icon>
-                    </button>
-                  }
-                </div>
-              </div>
+      </section>
+    } @else {
+      @for (cat of visibleCategories(); track cat.id) {
+        <section class="category">
+          <div class="category-head">
+            <div>
+              <h2>{{ cat.label }}</h2>
+              <p>{{ cat.items.length }} app{{ cat.items.length === 1 ? '' : 's' }} in this platform</p>
+            </div>
+          </div>
 
-              <strong class="stat-value">{{ card.name }}</strong>
-              <p class="stat-sub">{{ card.platformName }}</p>
-
-              <p class="stat-hint">
-                @if (card.accountName) {
-                  Linked as {{ card.accountName }}
-                } @else {
-                  App Id {{ maskedAppId(card.appId) }}
-                }
-              </p>
-
-              <div class="stat-action">
-                <button mat-stroked-button type="button" (click)="openEditForm(card)">
-                  Edit
-                </button>
-                @if (card.isConnected) {
-                  @if (supportsPageSelection(card.platformCode)) {
-                    <button mat-stroked-button type="button" (click)="openPagePicker(card)">
-                      Change page
-                    </button>
-                  }
-                  <button mat-stroked-button type="button" class="danger" (click)="disconnect(card)">
-                    Disconnect
-                  </button>
-                } @else {
-                  <button
-                    mat-flat-button
-                    color="primary"
-                    type="button"
-                    [disabled]="connecting() === card.id"
-                    (click)="connect(card)">
-                    {{ connecting() === card.id ? 'Connecting…' : 'Connect' }}
-                  </button>
-                }
-                <button mat-stroked-button type="button" class="danger" (click)="deleteConnection(card)">
-                  Delete
-                </button>
-              </div>
-            </article>
-          }
-        </div>
+          <div class="stats">
+            @for (card of cat.items; track card.trackId) {
+              <app-integration-platform-card
+                [card]="card"
+                [connecting]="connecting()"
+                [showAppActions]="true"
+                (connect)="onConnect($event)"
+                (disconnect)="onDisconnect($event)"
+                (changePage)="onChangePage($event)"
+                (openDetails)="onOpenDetails($event)"
+                (edit)="onEdit($event)"
+                (delete)="onDelete($event)" />
+            }
+          </div>
+        </section>
       }
-    </section>
+    }
   </div>
 
   <dialog #formDialog class="picker form-dialog" aria-labelledby="form-title" (close)="onFormClosed()">
@@ -200,13 +175,14 @@
     @if (pickerConnection(); as conn) {
       <header class="picker-head">
         <div>
-          <p class="eyebrow">{{ conn.name }}</p>
+          <p class="eyebrow">{{ conn.platformName }}</p>
           <h2 id="page-picker-title">Select a page</h2>
           <p class="picker-lede">
             @if (conn.platformCode === 'instagram') {
               Pick the Facebook Page whose Instagram Business account you want to manage.
+              Comments and messages sync for the page you choose.
             } @else {
-              Pick the Facebook Page you want to manage for this Meta app.
+              Pick the Facebook Page you want to manage. Posts, comments, and messages sync for this page.
             }
           </p>
         </div>
@@ -223,7 +199,7 @@
         <p class="picker-empty">Loading your pages…</p>
       } @else if (!pages().length) {
         <p class="picker-empty">
-          No Facebook Pages came back for this login. Reconnect and grant page access in the Meta dialog.
+          No Facebook Pages came back for this login. Make sure you granted page access in the Meta dialog, then reconnect.
         </p>
       } @else {
         <div class="picker-table-wrap">
@@ -269,6 +245,8 @@
                     <td>
                       @if (page.instagramUsername) {
                         <span class="ig-handle">&#64;{{ page.instagramUsername }}</span>
+                      } @else if (page.instagramId) {
+                        <code>{{ page.instagramId }}</code>
                       } @else {
                         <span class="muted">Not linked</span>
                       }
@@ -282,7 +260,9 @@
       }
 
       <footer class="picker-foot">
-        <span class="picker-count">{{ eligiblePages().length }} of {{ pages().length }} pages available</span>
+        <span class="picker-count">
+          {{ eligiblePages().length }} of {{ pages().length }} pages available
+        </span>
         <div class="picker-actions">
           <button mat-stroked-button type="button" (click)="closePagePicker()">Cancel</button>
           <button
@@ -303,8 +283,16 @@
       <header class="picker-head">
         <div>
           <p class="eyebrow">{{ detailsTitle() }}</p>
-          <h2 id="page-details-title">App connection details</h2>
-          <p class="picker-lede">Meta app credentials and connected account information.</p>
+          <h2 id="page-details-title">
+            {{ isInstagramLoginDetails() ? 'Account information' : 'Page information' }}
+          </h2>
+          <p class="picker-lede">
+            @if (isInstagramLoginDetails()) {
+              Connection identity and the Instagram Login token stored for this account.
+            } @else {
+              Connection, page identity, and the webhook fields Meta is sending right now.
+            }
+          </p>
         </div>
         <button type="button" class="picker-close" aria-label="Close" (click)="closeDetails()">
           <mat-icon>close</mat-icon>
@@ -313,31 +301,39 @@
 
       <div class="details-body">
         @if (detailsLoading()) {
-          <p class="picker-empty">Loading account information…</p>
+          <p class="picker-empty">
+            {{ isInstagramLoginDetails() ? 'Loading account information…' : 'Loading page information…' }}
+          </p>
         } @else if (detailsError()) {
           <p class="picker-error">{{ detailsError() }}</p>
         }
 
         @if (details(); as info) {
+          <section class="webhook-block app-meta-block">
+            <h3>Meta app</h3>
+            <dl class="detail-grid compact">
+              <div>
+                <dt>App name</dt>
+                <dd>{{ info.appConnectionName }}</dd>
+              </div>
+              <div>
+                <dt>App Id</dt>
+                <dd><code>{{ info.appId }}</code></dd>
+              </div>
+              <div>
+                <dt>Callback URL</dt>
+                <dd><code class="wrap">{{ info.callbackUrl }}</code></dd>
+              </div>
+              <div class="token-row">
+                <dt>OAuth scopes</dt>
+                <dd><code class="wrap">{{ info.scopes || '—' }}</code></dd>
+              </div>
+            </dl>
+          </section>
+
           <dl class="detail-grid">
             <div>
-              <dt>Meta app</dt>
-              <dd>{{ info.appConnectionName }}</dd>
-            </div>
-            <div>
-              <dt>App Id</dt>
-              <dd><code>{{ info.appId }}</code></dd>
-            </div>
-            <div>
-              <dt>Callback URL</dt>
-              <dd><code class="wrap">{{ info.callbackUrl }}</code></dd>
-            </div>
-            <div class="token-row">
-              <dt>OAuth scopes</dt>
-              <dd><code class="wrap">{{ info.scopes || '—' }}</code></dd>
-            </div>
-            <div>
-              <dt>Meta login</dt>
+              <dt>{{ isInstagramLoginPlatform(info.platformCode) ? 'Instagram login' : 'Meta login' }}</dt>
               <dd>{{ info.accountName || '—' }}</dd>
             </div>
             @if (!isInstagramLoginPlatform(info.platformCode)) {
@@ -356,15 +352,25 @@
                 <dd>
                   @if (info.instagramUsername) {
                     <span class="ig-handle">&#64;{{ info.instagramUsername }}</span>
+                  } @else if (info.pageName) {
+                    {{ info.pageName }}
                   } @else {
                     <span class="muted">Not linked</span>
                   }
                 </dd>
               </div>
+              <div>
+                <dt>Instagram ID</dt>
+                <dd><code>{{ info.instagramId || '—' }}</code></dd>
+              </div>
             }
             <div>
               <dt>Connected</dt>
               <dd>{{ info.connectedAt ? (info.connectedAt | date: 'medium') : '—' }}</dd>
+            </div>
+            <div>
+              <dt>Last sync</dt>
+              <dd>{{ info.lastSyncAt ? (info.lastSyncAt | date: 'medium') : 'Not synced yet' }}</dd>
             </div>
             <div class="token-row">
               <dt>{{ tokenLabel(info.platformCode) }}</dt>
@@ -372,13 +378,16 @@
                 @if (info.accessToken) {
                   <div class="token-line">
                     <code [class.revealed]="tokenRevealed()">{{ tokenRevealed() ? info.accessToken : maskedToken(info.accessToken) }}</code>
-                    <button type="button" class="token-btn" (click)="toggleTokenReveal()">
+                    <button type="button" class="token-btn" (click)="toggleTokenReveal()" [attr.aria-label]="tokenRevealed() ? 'Hide token' : 'Show token'">
                       <mat-icon>{{ tokenRevealed() ? 'visibility_off' : 'visibility' }}</mat-icon>
                     </button>
-                    <button type="button" class="token-btn" (click)="copyToken(info.accessToken!)">
+                    <button type="button" class="token-btn" (click)="copyToken(info.accessToken!)" aria-label="Copy token">
                       <mat-icon>content_copy</mat-icon>
                     </button>
                   </div>
+                  @if (tokenCopied()) {
+                    <span class="token-copied">Copied</span>
+                  }
                 } @else {
                   <span class="muted">No token stored</span>
                 }
@@ -394,6 +403,7 @@
                 {{ info.webhookSubscribed ? 'Subscribed' : 'Not subscribed' }}
               </span>
             </div>
+
             @if (info.subscribedFields.length) {
               <ul class="field-list">
                 @for (field of info.subscribedFields; track field) {
@@ -401,10 +411,28 @@
                 }
               </ul>
             }
+
             @if (info.webhookError) {
-              <p class="picker-error">{{ info.webhookError }}</p>
+              <p [class]="isInstagramLoginPlatform(info.platformCode) ? 'picker-empty' : 'picker-error'">
+                {{ info.webhookError }}
+              </p>
             }
           </section>
+
+          @if (info.profiles.length) {
+            <section class="webhook-block">
+              <h3>Connected profiles</h3>
+              <ul class="profile-list">
+                @for (profile of info.profiles; track profile.id) {
+                  <li>
+                    <strong>{{ profile.name }}</strong>
+                    <span class="muted">{{ profile.profileType }}</span>
+                    <code>{{ profile.externalProfileId }}</code>
+                  </li>
+                }
+              </ul>
+            </section>
+          }
         }
       </div>
 

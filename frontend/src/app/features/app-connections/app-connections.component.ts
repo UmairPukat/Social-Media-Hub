@@ -1,6 +1,7 @@
 import { DatePipe } from '@angular/common';
 import { Component, ElementRef, OnInit, computed, inject, signal, viewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { firstValueFrom } from 'rxjs';
 import { MatButtonModule } from '@angular/material/button';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
@@ -17,6 +18,17 @@ import {
   MetaPage,
   UpdateMetaAppConnectionRequest
 } from '../../core/models/api.models';
+import {
+  APP_CONNECTION_PLATFORM_META,
+  APP_CONNECTION_PLATFORM_ORDER,
+  IntegrationCardView,
+  IntegrationPlatformGroup
+} from '../../shared/integration-card.model';
+import { IntegrationPlatformCardComponent } from '../../shared/integration-platform-card/integration-platform-card.component';
+import {
+  supportsIntegrationConnectionDetails,
+  supportsIntegrationPageSelection
+} from '../../shared/integration-ui.utils';
 import { environment } from '../../../environments/environment';
 
 const PLATFORM_OPTIONS = [
@@ -37,7 +49,8 @@ const PLATFORM_OPTIONS = [
     MatIconModule,
     MatInputModule,
     MatSelectModule,
-    MatTooltipModule
+    MatTooltipModule,
+    IntegrationPlatformCardComponent
   ],
   templateUrl: './app-connections.component.html',
   styleUrl: './app-connections.component.scss'
@@ -50,6 +63,7 @@ export class AppConnectionsComponent implements OnInit {
   readonly message = signal('');
   readonly connecting = signal<string | null>(null);
   readonly savingForm = signal(false);
+  readonly activeCategory = signal<string>('all');
 
   readonly defaultCallbackUrl = `${environment.apiUrl}/AppConnections/Callback`;
 
@@ -59,7 +73,6 @@ export class AppConnectionsComponent implements OnInit {
 
   readonly detailsOpen = signal(false);
   readonly detailsTitle = signal('');
-  readonly detailsConnectionId = signal<string | null>(null);
   readonly details = signal<AppConnectionDetails | null>(null);
   readonly detailsLoading = signal(false);
   readonly detailsError = signal('');
@@ -87,15 +100,116 @@ export class AppConnectionsComponent implements OnInit {
   readonly eligiblePages = computed(() => this.pages().filter((p) => p.isEligible));
   readonly platformOptions = PLATFORM_OPTIONS;
 
+  readonly categories = computed<IntegrationPlatformGroup[]>(() => {
+    const map = new Map<string, IntegrationPlatformGroup>();
+
+    for (const conn of this.connections()) {
+      const id = conn.platformCode.toLowerCase();
+      const meta = APP_CONNECTION_PLATFORM_META[id] || {
+        label: conn.platformName,
+        accent: '#64748b',
+        icon: 'apps'
+      };
+
+      if (!map.has(id)) {
+        map.set(id, {
+          id,
+          label: meta.label,
+          accent: meta.accent,
+          icon: meta.icon,
+          items: []
+        });
+      }
+
+      map.get(id)!.items.push(this.toCardView(conn));
+    }
+
+    return APP_CONNECTION_PLATFORM_ORDER
+      .map((id) => map.get(id))
+      .filter((g): g is IntegrationPlatformGroup => !!g && g.items.length > 0)
+      .concat([...map.values()].filter((g) => !APP_CONNECTION_PLATFORM_ORDER.includes(g.id)));
+  });
+
+  readonly visibleCategories = computed(() => {
+    const active = this.activeCategory();
+    if (active === 'all') return this.categories();
+    return this.categories().filter((c) => c.id === active);
+  });
+
+  readonly isInstagramLoginDetails = computed(() =>
+    this.isInstagramLoginPlatform(this.details()?.platformCode)
+  );
+
   ngOnInit(): void {
     this.reload();
   }
 
   reload(): void {
-    this.api.getAppConnections().subscribe({
-      next: (res: ApiResponse<MetaAppConnection[]>) => this.connections.set(res.data || []),
-      error: () => this.message.set('Failed to load app connections')
-    });
+    void this.reloadAsync();
+  }
+
+  private async reloadAsync(): Promise<MetaAppConnection[]> {
+    try {
+      const res = await firstValueFrom(this.api.getAppConnections());
+      const list = res.data || [];
+      this.connections.set(list);
+      return list;
+    } catch {
+      this.message.set('Failed to load app connections');
+      return [];
+    }
+  }
+
+  setCategory(id: string): void {
+    this.activeCategory.set(id);
+  }
+
+  toCardView(conn: MetaAppConnection): IntegrationCardView {
+    return {
+      trackId: conn.id,
+      code: conn.platformCode,
+      displayName: conn.platformName,
+      description: conn.name,
+      isConnected: conn.isConnected,
+      canConnect: conn.canConnect,
+      accountName: conn.accountName,
+      connectingKey: conn.id,
+      requiresPageSelection: conn.requiresPageSelection
+    };
+  }
+
+  findConnection(view: IntegrationCardView): MetaAppConnection | undefined {
+    return this.connections().find((c) => c.id === view.trackId);
+  }
+
+  onConnect(view: IntegrationCardView): void {
+    const card = this.findConnection(view);
+    if (card) void this.connect(card);
+  }
+
+  onDisconnect(view: IntegrationCardView): void {
+    const card = this.findConnection(view);
+    if (card) this.disconnect(card);
+  }
+
+  onChangePage(view: IntegrationCardView): void {
+    const card = this.findConnection(view);
+    if (card) this.openPagePicker(card);
+  }
+
+  onOpenDetails(view: IntegrationCardView): void {
+    const card = this.findConnection(view);
+    if (card) this.openDetails(card);
+  }
+
+  onEdit(view: IntegrationCardView): void {
+    const card = this.findConnection(view);
+    if (card) this.openEditForm(card);
+  }
+
+  onDelete(view: IntegrationCardView): void {
+    const card = this.findConnection(view);
+    if (card) this.deleteConnection(card);
   }
 
   openCreateForm(): void {
@@ -167,12 +281,8 @@ export class AppConnectionsComponent implements OnInit {
     }
 
     const editing = this.editingId();
-    if (!editing && !this.formAppSecret.trim()) {
-      this.message.set('App Secret is required for new connections.');
-      return;
-    }
-    if (editing && !this.formAppSecret.trim()) {
-      this.message.set('App Secret is required when updating.');
+    if (!this.formAppSecret.trim()) {
+      this.message.set('App Secret is required.');
       return;
     }
 
@@ -237,6 +347,7 @@ export class AppConnectionsComponent implements OnInit {
     if (!confirm(`Delete "${card.name}"? This removes the app configuration${card.isConnected ? ' and disconnects the linked account' : ''}.`)) {
       return;
     }
+
     this.api.deleteAppConnection(card.id).subscribe({
       next: () => {
         this.message.set(`${card.name} deleted.`);
@@ -254,7 +365,7 @@ export class AppConnectionsComponent implements OnInit {
     }
 
     this.connecting.set(card.id);
-    this.message.set(`Opening Meta login for ${card.name}…`);
+    this.message.set(`Opening Meta login for ${card.platformName}…`);
 
     try {
       const result = await this.appAuth.openPopup(card.id);
@@ -263,14 +374,14 @@ export class AppConnectionsComponent implements OnInit {
         return;
       }
 
-      this.reload();
-      const refreshed = this.connections().find((c) => c.id === card.id) ?? card;
+      const list = await this.reloadAsync();
+      const refreshed = list.find((c) => c.id === card.id) ?? card;
 
       if (this.supportsPageSelection(refreshed.platformCode)) {
-        this.message.set(`Signed in with Meta. Choose the page you want to manage for ${refreshed.name}.`);
+        this.message.set(`Signed in with Meta. Choose the ${refreshed.platformName} page you want to manage.`);
         this.openPagePicker(refreshed);
       } else {
-        this.message.set(`${refreshed.name} connected.`);
+        this.message.set(`${refreshed.platformName} connected.`);
       }
     } catch (err) {
       this.message.set(err instanceof Error ? err.message : 'Connection failed');
@@ -280,11 +391,11 @@ export class AppConnectionsComponent implements OnInit {
   }
 
   supportsPageSelection(code: string): boolean {
-    return ['facebook', 'instagram'].includes(code.toLowerCase());
+    return supportsIntegrationPageSelection(code);
   }
 
   supportsConnectionDetails(code: string): boolean {
-    return ['facebook', 'instagram', 'instagram_login'].includes(code.toLowerCase());
+    return supportsIntegrationConnectionDetails(code);
   }
 
   isInstagramLoginPlatform(code: string | null | undefined): boolean {
@@ -295,10 +406,6 @@ export class AppConnectionsComponent implements OnInit {
     const value = (code || '').toLowerCase();
     return value === 'instagram' || value === 'instagram_login';
   }
-
-  readonly isInstagramLoginDetails = computed(() =>
-    this.isInstagramLoginPlatform(this.details()?.platformCode)
-  );
 
   openPagePicker(card: MetaAppConnection): void {
     this.pickerConnection.set(card);
@@ -386,8 +493,7 @@ export class AppConnectionsComponent implements OnInit {
   }
 
   openDetails(card: MetaAppConnection): void {
-    this.detailsTitle.set(card.name);
-    this.detailsConnectionId.set(card.id);
+    this.detailsTitle.set(card.platformName);
     this.details.set(null);
     this.detailsError.set('');
     this.tokenRevealed.set(false);
@@ -429,7 +535,6 @@ export class AppConnectionsComponent implements OnInit {
 
   private resetDetails(): void {
     this.detailsOpen.set(false);
-    this.detailsConnectionId.set(null);
     this.details.set(null);
     this.detailsError.set('');
     this.tokenRevealed.set(false);
@@ -465,36 +570,11 @@ export class AppConnectionsComponent implements OnInit {
   disconnect(card: MetaAppConnection): void {
     this.api.disconnectAppConnection(card.id).subscribe({
       next: () => {
-        this.message.set(`${card.name} disconnected.`);
+        this.message.set(`${card.platformName} disconnected.`);
         this.reload();
       },
       error: (err: { error?: { message?: string } }) =>
         this.message.set(err?.error?.message || 'Disconnect failed')
     });
-  }
-
-  tone(code: string): string {
-    const map: Record<string, string> = {
-      facebook: 'blue',
-      instagram: 'rose',
-      instagram_login: 'rose',
-      whatsapp: 'green'
-    };
-    return map[code.toLowerCase()] || 'slate';
-  }
-
-  platformIcon(code: string): string {
-    const map: Record<string, string> = {
-      facebook: 'public',
-      instagram: 'photo_camera',
-      instagram_login: 'camera_alt',
-      whatsapp: 'chat'
-    };
-    return map[code.toLowerCase()] || 'apps';
-  }
-
-  maskedAppId(appId: string): string {
-    if (appId.length <= 8) return appId;
-    return `${appId.slice(0, 4)}…${appId.slice(-4)}`;
   }
 }

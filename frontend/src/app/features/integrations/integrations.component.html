@@ -58,65 +58,13 @@
 
         <div class="stats">
           @for (card of cat.items; track card.platformId) {
-            <article
-              class="stat"
-              [attr.data-tone]="tone(card.code)"
-              [class.live]="card.isConnected">
-              <div class="stat-top">
-                <span class="stat-ico">
-                  <mat-icon>{{ platformIcon(card.code) }}</mat-icon>
-                </span>
-                <div class="stat-top-end">
-                  <span class="stat-label">
-                    {{ card.isConnected ? 'Connected' : card.canConnect ? 'Ready' : 'Soon' }}
-                  </span>
-                  @if (card.isConnected && supportsConnectionDetails(card.code)) {
-                    <button
-                      type="button"
-                      class="eye-btn"
-                      matTooltip="View account information"
-                      [attr.aria-label]="'View ' + card.displayName + ' account information'"
-                      (click)="openDetails(card)">
-                      <mat-icon>visibility</mat-icon>
-                    </button>
-                  }
-                </div>
-              </div>
-
-              <strong class="stat-value">{{ card.displayName }}</strong>
-
-              <p class="stat-hint">
-                @if (card.accountName) {
-                  Linked as {{ card.accountName }}
-                } @else {
-                  {{ shortDesc(card.description) }}
-                }
-              </p>
-
-              <div class="stat-action">
-                @if (card.isConnected) {
-                  @if (supportsPageSelection(card.code)) {
-                    <button mat-stroked-button type="button" (click)="openPagePicker(card)">
-                      Change page
-                    </button>
-                  }
-                  <button mat-stroked-button type="button" class="danger" (click)="disconnect(card)">
-                    Disconnect
-                  </button>
-                } @else if (card.canConnect) {
-                  <button
-                    mat-flat-button
-                    color="primary"
-                    type="button"
-                    [disabled]="connecting() === card.code.toLowerCase()"
-                    (click)="connect(card)">
-                    {{ connecting() === card.code.toLowerCase() ? 'Connecting…' : 'Connect' }}
-                  </button>
-                } @else {
-                  <button mat-flat-button type="button" class="soon" disabled>Coming soon</button>
-                }
-              </div>
-            </article>
+            <app-integration-platform-card
+              [card]="toCardView(card)"
+              [connecting]="connecting()"
+              (connect)="onConnect($event)"
+              (disconnect)="onDisconnect($event)"
+              (changePage)="onChangePage($event)"
+              (openDetails)="onOpenDetails($event)" />
           }
         </div>
       </section>

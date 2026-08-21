@@ -462,7 +462,15 @@ public class AppConnectionService : IAppConnectionService
                 AccessToken = string.IsNullOrWhiteSpace(account.Auth?.AccessToken) ? null : account.Auth!.AccessToken,
                 AppId = entity.AppId,
                 CallbackUrl = entity.CallbackUrl,
-                Scopes = entity.Scopes
+                Scopes = entity.Scopes,
+                Profiles = account.Profiles.Select(p => new SocialProfileDto
+                {
+                    Id = p.Id,
+                    ExternalProfileId = p.ExternalProfileId,
+                    ProfileType = p.ProfileType.ToString(),
+                    Name = p.Name,
+                    Username = p.Username
+                }).ToList()
             };
 
             await ApplyWebhookStatusAsync(details, entity.PlatformCode, pageId, account.Auth?.AccessToken, cancellationToken);
@@ -666,7 +674,11 @@ public class AppConnectionService : IAppConnectionService
         SupportsComments = def?.SupportsComments ?? false,
         SupportsMessages = def?.SupportsMessages ?? false,
         SupportsPosts = def?.SupportsPosts ?? false,
-        CanConnect = def?.CanConnect ?? true
+        CanConnect = def?.CanConnect ?? true,
+        RequiresPageSelection = account is not null
+            && account.Status == SocialAccountStatus.Connected
+            && SupportsPageSelection(entity.PlatformCode)
+            && string.IsNullOrWhiteSpace(ResolveSelectedPageId(account, entity.PlatformCode))
     };
 
     public Task<ApiResponse<AppConnectionDefaultScopesDto>> GetDefaultScopesAsync(
