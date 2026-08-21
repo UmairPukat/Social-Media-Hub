@@ -196,6 +196,14 @@ public static class DbSeeder
             """);
 
         await db.Database.ExecuteSqlRawAsync("""
+            ALTER TABLE "MetaAppConnections" ADD COLUMN IF NOT EXISTS "Description" character varying(500) NOT NULL DEFAULT '';
+            """);
+
+        await db.Database.ExecuteSqlRawAsync("""
+            ALTER TABLE "MetaAppConnections" ADD COLUMN IF NOT EXISTS "BaseUrl" character varying(500) NOT NULL DEFAULT '';
+            """);
+
+        await db.Database.ExecuteSqlRawAsync("""
             DO $$ BEGIN
               IF NOT EXISTS (
                 SELECT 1 FROM pg_constraint WHERE conname = 'FK_SocialAccounts_MetaAppConnections_MetaAppConnectionId'

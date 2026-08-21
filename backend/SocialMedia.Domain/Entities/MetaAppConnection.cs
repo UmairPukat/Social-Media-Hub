@@ -13,12 +13,19 @@ public class MetaAppConnection : BaseEntity
     /// <summary>Friendly label shown in the App Connections UI.</summary>
     public string Name { get; set; } = string.Empty;
 
+    /// <summary>Optional note shown on the connection card.</summary>
+    public string Description { get; set; } = string.Empty;
+
     /// <summary>facebook, instagram, instagram_login, or whatsapp.</summary>
     public string PlatformCode { get; set; } = string.Empty;
 
     public string AppId { get; set; } = string.Empty;
     public string AppSecret { get; set; } = string.Empty;
     public string CallbackUrl { get; set; } = string.Empty;
+
+    /// <summary>Graph API host, e.g. https://graph.facebook.com or https://graph.instagram.com.</summary>
+    public string BaseUrl { get; set; } = string.Empty;
+
     public string GraphApiVersion { get; set; } = "v21.0";
 
     /// <summary>Comma-separated Meta OAuth scopes for this app connection.</summary>

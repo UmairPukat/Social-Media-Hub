@@ -159,73 +159,103 @@
 
   <dialog #formDialog class="picker form-dialog" aria-labelledby="form-title" (close)="onFormClosed()">
     @if (formOpen()) {
-      <header class="picker-head">
-        <div>
-          <p class="eyebrow">Meta app credentials</p>
+      <header class="picker-head form-head">
+        <div class="form-head-main">
+          <span class="platform-pill">{{ platformLabel(formPlatformCode) }}</span>
           <h2 id="form-title">{{ editingId() ? 'Edit app connection' : 'Add app connection' }}</h2>
-          <p class="picker-lede">
-            Register the App Id, App Secret, and Callback URL from your Meta developer app.
-            Register the callback URL in Meta as a Valid OAuth Redirect URI.
-          </p>
         </div>
         <button type="button" class="picker-close" aria-label="Close" (click)="closeForm()">
           <mat-icon>close</mat-icon>
         </button>
       </header>
 
-      <div class="form-body">
-        <mat-form-field appearance="outline" class="full">
-          <mat-label>Name</mat-label>
-          <input matInput [(ngModel)]="formName" placeholder="Brand A Facebook App" />
-        </mat-form-field>
+      <div class="form-scroll">
+        <div class="form-body">
+          <section class="form-section">
+            <h3 class="form-section-title">General</h3>
+            <div class="form-fields">
+              <div class="ac-field">
+                <label for="ac-name">Name</label>
+                <input
+                  id="ac-name"
+                  class="ac-input"
+                  type="text"
+                  [(ngModel)]="formName"
+                  placeholder="Brand A Facebook App"
+                  autocomplete="off" />
+              </div>
+              <div class="ac-field">
+                <label for="ac-description">Description</label>
+                <textarea
+                  id="ac-description"
+                  class="ac-input ac-textarea"
+                  rows="2"
+                  [(ngModel)]="formDescription"
+                  placeholder="Optional note — shown on the connection card"></textarea>
+              </div>
+            </div>
+          </section>
 
-        @if (!editingId()) {
-          <mat-form-field appearance="outline" class="full">
-            <mat-label>Platform</mat-label>
-            <mat-select [(ngModel)]="formPlatformCode" (ngModelChange)="onPlatformChange($event)">
-              @for (opt of platformOptions; track opt.code) {
-                <mat-option [value]="opt.code">{{ opt.label }}</mat-option>
-              }
-            </mat-select>
-          </mat-form-field>
-        }
+          <section class="form-section">
+            <h3 class="form-section-title">Meta credentials</h3>
+            <p class="form-section-hint">From your Meta developer app dashboard.</p>
+            <div class="form-fields">
+              <div class="ac-field">
+                <label for="ac-base-url">Base URL</label>
+                <input
+                  id="ac-base-url"
+                  class="ac-input ac-mono"
+                  type="url"
+                  [(ngModel)]="formBaseUrl"
+                  placeholder="https://graph.facebook.com" />
+                <p class="ac-hint">{{ baseUrlHint() }}</p>
+              </div>
+              <div class="ac-field">
+                <label for="ac-app-id">App Id</label>
+                <input id="ac-app-id" class="ac-input ac-mono" type="text" [(ngModel)]="formAppId" autocomplete="off" />
+              </div>
+              <div class="ac-field">
+                <label for="ac-app-secret">App Secret</label>
+                <input
+                  id="ac-app-secret"
+                  class="ac-input ac-mono"
+                  type="password"
+                  [(ngModel)]="formAppSecret"
+                  autocomplete="new-password"
+                  [placeholder]="editingId() ? 'Re-enter to save changes' : ''" />
+              </div>
+            </div>
+          </section>
 
-        <mat-form-field appearance="outline" class="full">
-          <mat-label>App Id</mat-label>
-          <input matInput [(ngModel)]="formAppId" />
-        </mat-form-field>
-
-        <mat-form-field appearance="outline" class="full">
-          <mat-label>App Secret</mat-label>
-          <input matInput type="password" [(ngModel)]="formAppSecret" />
-        </mat-form-field>
-
-        <mat-form-field appearance="outline" class="full">
-          <mat-label>Callback URL</mat-label>
-          <input matInput [(ngModel)]="formCallbackUrl" />
-          <mat-hint>Use this exact URL in Meta → Valid OAuth Redirect URIs</mat-hint>
-        </mat-form-field>
-
-        <mat-form-field appearance="outline" class="full">
-          <mat-label>Graph API version</mat-label>
-          <input matInput [(ngModel)]="formGraphApiVersion" placeholder="v21.0" />
-        </mat-form-field>
-
-        <mat-form-field appearance="outline" class="full scopes-field">
-          <mat-label>OAuth scopes</mat-label>
-          <textarea matInput rows="4" [(ngModel)]="formScopes"></textarea>
-          <mat-hint>Comma-separated scopes for this Meta app — separate from Integrations defaults.</mat-hint>
-        </mat-form-field>
-
-        <div class="scope-actions">
-          <button mat-stroked-button type="button" (click)="resetDefaultScopes()">
-            Reset to App Connections defaults
-          </button>
+          <section class="form-section">
+            <h3 class="form-section-title">OAuth settings</h3>
+            <div class="form-fields">
+              <div class="ac-field">
+                <label for="ac-callback">Callback URL</label>
+                <input id="ac-callback" class="ac-input ac-mono" type="url" [(ngModel)]="formCallbackUrl" />
+                <p class="ac-hint">Add this exact URL under Meta → Facebook Login → Valid OAuth Redirect URIs.</p>
+              </div>
+              <div class="form-row-2">
+                <div class="ac-field">
+                  <label for="ac-graph">Graph API version</label>
+                  <input id="ac-graph" class="ac-input ac-mono" type="text" [(ngModel)]="formGraphApiVersion" placeholder="v21.0" />
+                </div>
+                <div class="ac-field ac-field-grow">
+                  <div class="ac-label-row">
+                    <label for="ac-scopes">OAuth scopes</label>
+                    <button type="button" class="ac-link-btn" (click)="resetDefaultScopes()">Reset defaults</button>
+                  </div>
+                  <textarea id="ac-scopes" class="ac-input ac-textarea ac-mono" rows="3" [(ngModel)]="formScopes"></textarea>
+                  <p class="ac-hint">Comma-separated permissions for this Meta app.</p>
+                </div>
+              </div>
+            </div>
+          </section>
         </div>
       </div>
 
-      <footer class="picker-foot">
-        <span class="picker-count">Credentials are stored per workspace user</span>
+      <footer class="picker-foot form-foot">
+        <span class="picker-count">Stored securely per workspace user</span>
         <div class="picker-actions">
           <button mat-stroked-button type="button" (click)="closeForm()">Cancel</button>
           <button mat-flat-button color="primary" type="button" [disabled]="savingForm()" (click)="saveForm()">
@@ -262,11 +292,11 @@
 
       @if (pagesLoading()) {
         <p class="picker-empty">Loading your pages…</p>
-      } @else if (!pages().length) {
+      } @else if (!pages().length && !pagesError()) {
         <p class="picker-empty">
           No Facebook Pages came back for this login. Make sure you granted page access in the Meta dialog, then reconnect.
         </p>
-      } @else {
+      } @else if (pages().length) {
         <div class="picker-table-wrap">
           <table class="picker-table">
             <thead>
@@ -381,9 +411,19 @@
                 <dt>App name</dt>
                 <dd>{{ info.appConnectionName }}</dd>
               </div>
+              @if (info.description) {
+                <div class="token-row">
+                  <dt>Description</dt>
+                  <dd>{{ info.description }}</dd>
+                </div>
+              }
               <div>
                 <dt>App Id</dt>
                 <dd><code>{{ info.appId }}</code></dd>
+              </div>
+              <div>
+                <dt>Base URL</dt>
+                <dd><code class="wrap">{{ info.baseUrl || '—' }}</code></dd>
               </div>
               <div>
                 <dt>Callback URL</dt>

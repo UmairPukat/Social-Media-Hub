@@ -50,6 +50,12 @@ CREATE INDEX IF NOT EXISTS "IX_MetaAppConnections_UserId_Name"
 ALTER TABLE "MetaAppConnections"
     ADD COLUMN IF NOT EXISTS "Scopes" character varying(2000) NOT NULL DEFAULT '';
 
+ALTER TABLE "MetaAppConnections"
+    ADD COLUMN IF NOT EXISTS "Description" character varying(500) NOT NULL DEFAULT '';
+
+ALTER TABLE "MetaAppConnections"
+    ADD COLUMN IF NOT EXISTS "BaseUrl" character varying(500) NOT NULL DEFAULT '';
+
 -- -----------------------------------------------------------------------------
 -- 2. SocialAccounts — link to MetaAppConnections
 -- -----------------------------------------------------------------------------

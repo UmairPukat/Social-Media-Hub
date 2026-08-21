@@ -101,10 +101,12 @@ public class AppConnectionService : IAppConnectionService
             {
                 UserId = userId,
                 Name = request.Name.Trim(),
+                Description = (request.Description ?? string.Empty).Trim(),
                 PlatformCode = platformCode,
                 AppId = request.AppId.Trim(),
                 AppSecret = request.AppSecret.Trim(),
                 CallbackUrl = request.CallbackUrl.Trim(),
+                BaseUrl = MetaBaseUrlHelper.Resolve(request.BaseUrl, platformCode),
                 GraphApiVersion = string.IsNullOrWhiteSpace(request.GraphApiVersion) ? "v21.0" : request.GraphApiVersion.Trim(),
                 Scopes = ResolveScopes(platformCode, request.Scopes)
             };
@@ -143,9 +145,11 @@ public class AppConnectionService : IAppConnectionService
                 return ApiResponse<MetaAppConnectionDto>.Fail("Callback URL is required.");
 
             entity.Name = request.Name.Trim();
+            entity.Description = (request.Description ?? string.Empty).Trim();
             entity.AppId = request.AppId.Trim();
             entity.AppSecret = request.AppSecret.Trim();
             entity.CallbackUrl = request.CallbackUrl.Trim();
+            entity.BaseUrl = MetaBaseUrlHelper.Resolve(request.BaseUrl, entity.PlatformCode);
             entity.GraphApiVersion = string.IsNullOrWhiteSpace(request.GraphApiVersion) ? entity.GraphApiVersion : request.GraphApiVersion.Trim();
             entity.Scopes = ResolveScopes(entity.PlatformCode, request.Scopes);
             entity.UpdatedAt = DateTime.UtcNow;
@@ -204,21 +208,15 @@ public class AppConnectionService : IAppConnectionService
             return ApiResponse<BeginAppConnectionOAuthResponse>.Fail("OAuth scopes must be configured.");
 
         var state = MetaOAuthState.Create(userId, platformCode, _jwt.SecretKey, entity.Id);
-        var version = entity.GraphApiVersion;
 
-        var authUrl = platformCode == "instagram_login"
-            ? "https://www.instagram.com/oauth/authorize"
-              + $"?client_id={Uri.EscapeDataString(entity.AppId)}"
-              + $"&redirect_uri={Uri.EscapeDataString(entity.CallbackUrl)}"
-              + $"&state={Uri.EscapeDataString(state)}"
-              + $"&scope={Uri.EscapeDataString(scopes)}"
-              + "&response_type=code"
-            : $"https://www.facebook.com/{version}/dialog/oauth"
-              + $"?client_id={Uri.EscapeDataString(entity.AppId)}"
-              + $"&redirect_uri={Uri.EscapeDataString(entity.CallbackUrl)}"
-              + $"&state={Uri.EscapeDataString(state)}"
-              + $"&scope={Uri.EscapeDataString(scopes)}"
-              + "&response_type=code";
+        var authUrl = MetaBaseUrlHelper.BuildAuthorizeUrl(
+            entity.PlatformCode,
+            entity.BaseUrl,
+            entity.AppId,
+            entity.CallbackUrl,
+            entity.GraphApiVersion,
+            state,
+            scopes);
 
         return ApiResponse<BeginAppConnectionOAuthResponse>.Ok(new BeginAppConnectionOAuthResponse
         {
@@ -316,7 +314,21 @@ public class AppConnectionService : IAppConnectionService
 
             var (account, _, userToken) = resolved.Value;
 
-            var pages = await ListPagesAsync(entity.PlatformCode, userToken, cancellationToken);
+            var credentials = ToCredentials(entity);
+            var pages = await _metaOAuth.ListPagesAsync(entity.PlatformCode, credentials, userToken, cancellationToken);
+            if (pages.Count == 0)
+            {
+                var granted = await _metaOAuth.DescribeTokenScopesAsync(credentials, userToken, cancellationToken);
+                var scopeHint = !string.IsNullOrWhiteSpace(granted)
+                    ? $" Meta granted: {granted}."
+                    : string.Empty;
+                return ApiResponse<IReadOnlyList<MetaPageDto>>.Fail(
+                    "Meta returned no Facebook Pages for this login. Pages in Business Manager need business_management "
+                    + "in addition to pages_show_list — edit the app connection scopes, reconnect, and grant page access in the Meta dialog."
+                    + scopeHint
+                    + $" Requested scopes: {entity.Scopes}");
+            }
+
             var connectedPageIds = ResolveConnectedPageIds(account, entity.PlatformCode);
             var data = pages
                 .Select(p => MapPage(p, entity.PlatformCode, connectedPageIds))
@@ -362,7 +374,8 @@ public class AppConnectionService : IAppConnectionService
 
             var (account, auth, userToken) = resolved.Value;
 
-            var pages = await ListPagesAsync(entity.PlatformCode, userToken, cancellationToken);
+            var credentials = ToCredentials(entity);
+            var pages = await _metaOAuth.ListPagesAsync(entity.PlatformCode, credentials, userToken, cancellationToken);
             var page = pages.FirstOrDefault(p => p.PageId == request.PageId);
             if (page is null)
                 return ApiResponse<SocialAccountDto>.Fail("That page is no longer granted to this Meta login. Reconnect and try again.");
@@ -461,6 +474,7 @@ public class AppConnectionService : IAppConnectionService
             {
                 AppConnectionId = entity.Id,
                 AppConnectionName = entity.Name,
+                Description = entity.Description,
                 PlatformCode = platform.Code,
                 PlatformName = platform.Name,
                 AccountName = account.DisplayName,
@@ -477,6 +491,7 @@ public class AppConnectionService : IAppConnectionService
                 AccessToken = string.IsNullOrWhiteSpace(account.Auth?.AccessToken) ? null : account.Auth!.AccessToken,
                 AppId = entity.AppId,
                 CallbackUrl = entity.CallbackUrl,
+                BaseUrl = MetaBaseUrlHelper.Resolve(entity.BaseUrl, entity.PlatformCode),
                 Scopes = entity.Scopes,
                 Profiles = account.Profiles.Select(p => new SocialProfileDto
                 {
@@ -533,14 +548,11 @@ public class AppConnectionService : IAppConnectionService
             if (entity is null)
                 return ApiResponse<SocialAccountDto>.Fail("App connection not found.");
 
-            var credentials = new MetaOAuthCredentials(
-                entity.AppId,
-                entity.AppSecret,
-                entity.CallbackUrl,
-                entity.GraphApiVersion);
+            var credentials = ToCredentials(entity);
+            var oauthPlatform = MetaBaseUrlHelper.ResolveOAuthPlatform(entity.PlatformCode, entity.BaseUrl);
 
-            var token = await _metaOAuth.ExchangeCodeAsync(entity.PlatformCode, credentials, code, cancellationToken);
-            var me = await _metaOAuth.GetMeAsync(entity.PlatformCode, entity.GraphApiVersion, token.AccessToken, cancellationToken);
+            var token = await _metaOAuth.ExchangeCodeAsync(oauthPlatform, credentials, code, cancellationToken);
+            var me = await _metaOAuth.GetMeAsync(oauthPlatform, credentials, token.AccessToken, cancellationToken);
 
             return await PersistConnectedAccountAsync(
                 userId,
@@ -602,6 +614,7 @@ public class AppConnectionService : IAppConnectionService
 
         auth.AccessToken = accessToken;
         auth.RefreshToken = accessToken;
+        auth.Scopes = ResolveScopes(entity.PlatformCode, entity.Scopes);
         auth.ExpiresAt = expiresAt;
         auth.UpdatedAt = DateTime.UtcNow;
         MarkUpdated(_unitOfWork.SocialAuths, auth, isNewAuth);
@@ -685,10 +698,12 @@ public class AppConnectionService : IAppConnectionService
     {
         Id = entity.Id,
         Name = entity.Name,
+        Description = entity.Description,
         PlatformCode = entity.PlatformCode,
         PlatformName = def?.Name ?? entity.PlatformCode,
         AppId = entity.AppId,
         CallbackUrl = entity.CallbackUrl,
+        BaseUrl = MetaBaseUrlHelper.Resolve(entity.BaseUrl, entity.PlatformCode),
         GraphApiVersion = entity.GraphApiVersion,
         Scopes = entity.Scopes,
         IsConnected = account?.Status == SocialAccountStatus.Connected,
@@ -722,11 +737,30 @@ public class AppConnectionService : IAppConnectionService
 
     private static string ResolveScopes(string platformCode, string? scopes)
     {
-        if (!string.IsNullOrWhiteSpace(scopes))
-            return scopes.Trim();
+        var code = (platformCode ?? string.Empty).Trim().ToLowerInvariant();
+        var normalized = !string.IsNullOrWhiteSpace(scopes)
+            ? NormalizeScopeList(scopes)
+            : AppConnectionScopeCatalog.GetDefault(code);
 
-        return AppConnectionScopeCatalog.GetDefault(platformCode);
+        if (!SupportsPageSelection(code))
+            return normalized;
+
+        var set = new HashSet<string>(
+            normalized.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
+            StringComparer.OrdinalIgnoreCase);
+        set.Add("pages_show_list");
+        set.Add("public_profile");
+        // Required since Graph API v17 for Pages linked to Meta Business Suite (see me/accounts changelog).
+        set.Add("business_management");
+        return string.Join(",", set);
     }
+
+    private static string NormalizeScopeList(string scopes) =>
+        string.Join(",",
+            scopes.Replace(';', ',')
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Select(s => s.Trim())
+                .Where(s => !string.IsNullOrWhiteSpace(s)));
 
     private static string? NormalizePlatform(string? code)
     {
@@ -834,15 +868,13 @@ public class AppConnectionService : IAppConnectionService
         }
     }
 
-    private async Task<IReadOnlyList<MetaPageInfo>> ListPagesAsync(
-        string platformCode,
-        string userAccessToken,
-        CancellationToken cancellationToken)
-    {
-        return platformCode == "instagram"
-            ? await _instagramService.ListPagesAsync(userAccessToken, cancellationToken)
-            : await _facebookService.ListPagesAsync(userAccessToken, cancellationToken);
-    }
+    private static MetaOAuthCredentials ToCredentials(MetaAppConnection entity) =>
+        new(
+            entity.AppId,
+            entity.AppSecret,
+            entity.CallbackUrl,
+            string.IsNullOrWhiteSpace(entity.GraphApiVersion) ? "v21.0" : entity.GraphApiVersion.Trim(),
+            MetaBaseUrlHelper.Resolve(entity.BaseUrl, entity.PlatformCode));
 
     private static bool SupportsPageSelection(string platformCode) =>
         platformCode.Equals("facebook", StringComparison.OrdinalIgnoreCase) ||

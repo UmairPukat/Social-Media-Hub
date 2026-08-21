@@ -3,10 +3,7 @@ import { Component, ElementRef, OnInit, computed, inject, signal, viewChild } fr
 import { FormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
 import { MatButtonModule } from '@angular/material/button';
-import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
-import { MatInputModule } from '@angular/material/input';
-import { MatSelectModule } from '@angular/material/select';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { ApiService } from '../../core/services/api.service';
 import { AppConnectionAuthService } from '../../core/services/app-connection-auth.service';
@@ -40,6 +37,13 @@ const PLATFORM_OPTIONS = [
   { code: 'whatsapp', label: 'WhatsApp Business' }
 ];
 
+const DEFAULT_BASE_URLS: Record<string, string> = {
+  facebook: 'https://graph.facebook.com',
+  instagram: 'https://graph.facebook.com',
+  instagram_login: 'https://graph.instagram.com',
+  whatsapp: 'https://graph.facebook.com'
+};
+
 @Component({
   selector: 'app-app-connections',
   standalone: true,
@@ -47,10 +51,7 @@ const PLATFORM_OPTIONS = [
     DatePipe,
     FormsModule,
     MatButtonModule,
-    MatFormFieldModule,
     MatIconModule,
-    MatInputModule,
-    MatSelectModule,
     MatTooltipModule
   ],
   templateUrl: './app-connections.component.html',
@@ -90,6 +91,8 @@ export class AppConnectionsComponent implements OnInit {
   readonly formOpen = signal(false);
   readonly editingId = signal<string | null>(null);
   formName = '';
+  formDescription = '';
+  formBaseUrl = DEFAULT_BASE_URLS['facebook'];
   formPlatformCode = 'facebook';
   formAppId = '';
   formAppSecret = '';
@@ -99,7 +102,6 @@ export class AppConnectionsComponent implements OnInit {
 
   readonly connectedCount = computed(() => this.connections().filter((c) => c.isConnected).length);
   readonly eligiblePages = computed(() => this.pages().filter((p) => p.isEligible));
-  readonly platformOptions = PLATFORM_OPTIONS;
 
   readonly categories = computed<IntegrationPlatformGroup[]>(() => {
     const map = new Map<string, IntegrationPlatformGroup>();
@@ -170,7 +172,7 @@ export class AppConnectionsComponent implements OnInit {
       trackId: conn.id,
       code: conn.platformCode,
       displayName: conn.name,
-      description: conn.platformName,
+      description: conn.description?.trim() || conn.platformName,
       isConnected: conn.isConnected,
       canConnect: conn.canConnect,
       accountName: conn.accountName,
@@ -216,7 +218,9 @@ export class AppConnectionsComponent implements OnInit {
   openCreateForm(): void {
     this.editingId.set(null);
     this.formName = '';
-    this.formPlatformCode = 'facebook';
+    this.formDescription = '';
+    this.formPlatformCode = this.resolveCreatePlatformCode();
+    this.formBaseUrl = this.defaultBaseUrl(this.formPlatformCode);
     this.formAppId = '';
     this.formAppSecret = '';
     this.formCallbackUrl = this.defaultCallbackUrl;
@@ -228,9 +232,33 @@ export class AppConnectionsComponent implements OnInit {
     if (dialog && !dialog.open) dialog.showModal();
   }
 
+  platformLabel(code: string): string {
+    return PLATFORM_OPTIONS.find((p) => p.code === code)?.label ?? code;
+  }
+
+  defaultBaseUrl(platformCode: string): string {
+    return DEFAULT_BASE_URLS[platformCode] ?? DEFAULT_BASE_URLS['facebook'];
+  }
+
+  baseUrlHint(): string {
+    return this.formBaseUrl.includes('instagram')
+      ? 'Instagram stack — OAuth uses instagram.com and Graph API uses graph.instagram.com.'
+      : 'Facebook stack — OAuth uses facebook.com and Graph API uses graph.facebook.com.';
+  }
+
+  private resolveCreatePlatformCode(): string {
+    const active = this.activeCategory();
+    if (active !== 'all' && PLATFORM_OPTIONS.some((p) => p.code === active)) {
+      return active;
+    }
+    return 'facebook';
+  }
+
   openEditForm(card: MetaAppConnection): void {
     this.editingId.set(card.id);
     this.formName = card.name;
+    this.formDescription = card.description || '';
+    this.formBaseUrl = card.baseUrl || this.defaultBaseUrl(card.platformCode);
     this.formPlatformCode = card.platformCode;
     this.formAppId = card.appId;
     this.formAppSecret = '';
@@ -240,11 +268,6 @@ export class AppConnectionsComponent implements OnInit {
     this.formOpen.set(true);
     const dialog = this.formDialog()?.nativeElement;
     if (dialog && !dialog.open) dialog.showModal();
-  }
-
-  onPlatformChange(code: string): void {
-    this.formPlatformCode = code;
-    this.loadDefaultScopes(code);
   }
 
   loadDefaultScopes(platformCode: string): void {
@@ -292,9 +315,11 @@ export class AppConnectionsComponent implements OnInit {
     if (editing) {
       const body: UpdateMetaAppConnectionRequest = {
         name: this.formName.trim(),
+        description: this.formDescription.trim(),
         appId: this.formAppId.trim(),
         appSecret: this.formAppSecret.trim(),
         callbackUrl: this.formCallbackUrl.trim(),
+        baseUrl: this.formBaseUrl.trim(),
         graphApiVersion: this.formGraphApiVersion.trim() || 'v21.0',
         scopes: this.formScopes.trim()
       };
@@ -319,10 +344,12 @@ export class AppConnectionsComponent implements OnInit {
 
     const body: CreateMetaAppConnectionRequest = {
       name: this.formName.trim(),
+      description: this.formDescription.trim(),
       platformCode: this.formPlatformCode,
       appId: this.formAppId.trim(),
       appSecret: this.formAppSecret.trim(),
       callbackUrl: this.formCallbackUrl.trim(),
+      baseUrl: this.formBaseUrl.trim(),
       graphApiVersion: this.formGraphApiVersion.trim() || 'v21.0',
       scopes: this.formScopes.trim()
     };
@@ -390,7 +417,7 @@ export class AppConnectionsComponent implements OnInit {
 
       if (this.supportsPageSelection(refreshed.platformCode)) {
         this.message.set(`Signed in with Meta. Choose the ${refreshed.platformName} page you want to manage.`);
-        this.openPagePicker(refreshed);
+        this.openPagePicker(refreshed, true);
       } else {
         this.message.set(`${refreshed.platformName} connected.`);
       }
@@ -439,9 +466,9 @@ export class AppConnectionsComponent implements OnInit {
     return value === 'instagram' || value === 'instagram_login';
   }
 
-  openPagePicker(card: MetaAppConnection): void {
+  openPagePicker(card: MetaAppConnection, retryOnEmpty = false): void {
     this.pickerConnection.set(card);
-    this.loadPages();
+    void this.loadPagesAsync(retryOnEmpty);
 
     const dialog = this.pickerDialog()?.nativeElement;
     if (dialog && !dialog.open) dialog.showModal();
@@ -468,27 +495,47 @@ export class AppConnectionsComponent implements OnInit {
   }
 
   loadPages(): void {
+    void this.loadPagesAsync(false);
+  }
+
+  private async loadPagesAsync(retryOnEmpty: boolean): Promise<void> {
     const card = this.pickerConnection();
     if (!card) return;
 
     this.pagesLoading.set(true);
     this.pagesError.set('');
-    this.api.getAppConnectionPages(card.id).subscribe({
-      next: (res: ApiResponse<MetaPage[]>) => {
-        this.pagesLoading.set(false);
-        if (!res.success) {
-          this.pagesError.set(res.message || 'Could not load your pages.');
-          return;
-        }
-        const list = res.data || [];
-        this.pages.set(list);
-        this.selectedPageId.set(list.find((p) => p.isSelected && p.isEligible)?.pageId || null);
-      },
-      error: (err: { error?: { message?: string } }) => {
-        this.pagesLoading.set(false);
-        this.pagesError.set(err?.error?.message || 'Could not load your pages.');
+
+    const fetchPages = async (): Promise<MetaPage[]> => {
+      const res = await firstValueFrom(this.api.getAppConnectionPages(card.id));
+      if (!res.success) {
+        throw new Error(res.message || 'Could not load your pages.');
       }
-    });
+      return res.data || [];
+    };
+
+    try {
+      let list = await fetchPages();
+      if (list.length === 0 && retryOnEmpty) {
+        await new Promise((resolve) => setTimeout(resolve, 800));
+        list = await fetchPages();
+      }
+
+      this.pages.set(list);
+      this.selectedPageId.set(list.find((p) => p.isSelected && p.isEligible)?.pageId || null);
+
+      if (list.length === 0) {
+        const hint =
+          'No Facebook Pages came back for this login. Add business_management to scopes (required for Business Manager pages), include pages_show_list, then disconnect and reconnect.';
+        this.pagesError.set(hint);
+        this.message.set(hint);
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Could not load your pages.';
+      this.pagesError.set(msg);
+      this.message.set(msg);
+    } finally {
+      this.pagesLoading.set(false);
+    }
   }
 
   togglePage(page: MetaPage): void {

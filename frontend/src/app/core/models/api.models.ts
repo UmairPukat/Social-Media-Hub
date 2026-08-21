@@ -90,10 +90,12 @@ export interface ConnectionDetails {
 export interface MetaAppConnection {
   id: string;
   name: string;
+  description?: string;
   platformCode: string;
   platformName: string;
   appId: string;
   callbackUrl: string;
+  baseUrl?: string;
   graphApiVersion: string;
   scopes: string;
   isConnected: boolean;
@@ -108,19 +110,23 @@ export interface MetaAppConnection {
 
 export interface CreateMetaAppConnectionRequest {
   name: string;
+  description?: string;
   platformCode: string;
   appId: string;
   appSecret: string;
   callbackUrl: string;
+  baseUrl?: string;
   graphApiVersion?: string;
   scopes?: string;
 }
 
 export interface UpdateMetaAppConnectionRequest {
   name: string;
+  description?: string;
   appId: string;
   appSecret: string;
   callbackUrl: string;
+  baseUrl?: string;
   graphApiVersion?: string;
   scopes?: string;
 }
@@ -134,6 +140,7 @@ export interface AppConnectionDefaultScopes {
 export interface AppConnectionDetails {
   appConnectionId: string;
   appConnectionName: string;
+  description?: string;
   platformCode: string;
   platformName: string;
   accountName: string;
@@ -151,6 +158,7 @@ export interface AppConnectionDetails {
   webhookError?: string;
   appId: string;
   callbackUrl: string;
+  baseUrl?: string;
   scopes: string;
   profiles: SocialProfile[];
 }

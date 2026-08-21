@@ -7,10 +7,12 @@ public class MetaAppConnectionDto
 {
     public Guid Id { get; set; }
     public string Name { get; set; } = string.Empty;
+    public string Description { get; set; } = string.Empty;
     public string PlatformCode { get; set; } = string.Empty;
     public string PlatformName { get; set; } = string.Empty;
     public string AppId { get; set; } = string.Empty;
     public string CallbackUrl { get; set; } = string.Empty;
+    public string BaseUrl { get; set; } = string.Empty;
     public string GraphApiVersion { get; set; } = "v21.0";
     public string Scopes { get; set; } = string.Empty;
     public bool IsConnected { get; set; }
@@ -26,10 +28,12 @@ public class MetaAppConnectionDto
 public class CreateMetaAppConnectionRequest
 {
     public string Name { get; set; } = string.Empty;
+    public string? Description { get; set; }
     public string PlatformCode { get; set; } = string.Empty;
     public string AppId { get; set; } = string.Empty;
     public string AppSecret { get; set; } = string.Empty;
     public string CallbackUrl { get; set; } = string.Empty;
+    public string? BaseUrl { get; set; }
     public string? GraphApiVersion { get; set; }
     public string? Scopes { get; set; }
 }
@@ -37,9 +41,11 @@ public class CreateMetaAppConnectionRequest
 public class UpdateMetaAppConnectionRequest
 {
     public string Name { get; set; } = string.Empty;
+    public string? Description { get; set; }
     public string AppId { get; set; } = string.Empty;
     public string AppSecret { get; set; } = string.Empty;
     public string CallbackUrl { get; set; } = string.Empty;
+    public string? BaseUrl { get; set; }
     public string? GraphApiVersion { get; set; }
     public string? Scopes { get; set; }
 }
@@ -85,6 +91,7 @@ public class AppConnectionConnectionDetailsDto
 {
     public Guid AppConnectionId { get; set; }
     public string AppConnectionName { get; set; } = string.Empty;
+    public string Description { get; set; } = string.Empty;
     public string PlatformCode { get; set; } = string.Empty;
     public string PlatformName { get; set; } = string.Empty;
     public string AccountName { get; set; } = string.Empty;
@@ -102,6 +109,7 @@ public class AppConnectionConnectionDetailsDto
     public string? WebhookError { get; set; }
     public string AppId { get; set; } = string.Empty;
     public string CallbackUrl { get; set; } = string.Empty;
+    public string BaseUrl { get; set; } = string.Empty;
     public string Scopes { get; set; } = string.Empty;
     public IReadOnlyList<SocialProfileDto> Profiles { get; set; } = Array.Empty<SocialProfileDto>();
 }

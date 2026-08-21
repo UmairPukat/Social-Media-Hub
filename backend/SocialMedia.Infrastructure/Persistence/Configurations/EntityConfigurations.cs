@@ -208,10 +208,12 @@ public class MetaAppConnectionConfiguration : IEntityTypeConfiguration<MetaAppCo
         builder.ToTable("MetaAppConnections");
         builder.HasKey(x => x.Id);
         builder.Property(x => x.Name).IsRequired().HasMaxLength(150);
+        builder.Property(x => x.Description).HasMaxLength(500);
         builder.Property(x => x.PlatformCode).IsRequired().HasMaxLength(50);
         builder.Property(x => x.AppId).IsRequired().HasMaxLength(100);
         builder.Property(x => x.AppSecret).IsRequired().HasMaxLength(500);
         builder.Property(x => x.CallbackUrl).IsRequired().HasMaxLength(2000);
+        builder.Property(x => x.BaseUrl).IsRequired().HasMaxLength(500);
         builder.Property(x => x.GraphApiVersion).IsRequired().HasMaxLength(20);
         builder.Property(x => x.Scopes).IsRequired().HasMaxLength(2000);
         builder.HasIndex(x => new { x.UserId, x.Name });

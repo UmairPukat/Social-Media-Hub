@@ -44,8 +44,18 @@ public class MetaGraphClient
         string accessToken,
         CancellationToken cancellationToken,
         params (string Key, string Value)[] query)
+        => await GetOnHostAsync(FacebookGraphHost, version, path, accessToken, cancellationToken, query);
+
+    /// <summary>GET against a custom Graph API host (App Connections base URL).</summary>
+    public async Task<JsonDocument> GetOnHostAsync(
+        string graphHost,
+        string version,
+        string path,
+        string accessToken,
+        CancellationToken cancellationToken,
+        params (string Key, string Value)[] query)
     {
-        var url = BuildUrl(FacebookGraphHost, version, path, accessToken, query);
+        var url = BuildUrl(graphHost, version, path, accessToken, query);
         using var response = await _httpClient.GetAsync(url, cancellationToken);
         var body = await response.Content.ReadAsStringAsync(cancellationToken);
 
@@ -78,27 +88,53 @@ public class MetaGraphClient
 
         foreach (var page in data.EnumerateArray())
         {
-            var info = new MetaPageInfo
-            {
-                PageId = page.TryGetProperty("id", out var id) ? id.GetString() ?? string.Empty : string.Empty,
-                PageName = page.TryGetProperty("name", out var name) ? name.GetString() ?? "Facebook Page" : "Facebook Page",
-                PageAccessToken = page.TryGetProperty("access_token", out var token) ? token.GetString() : null,
-                PageImage = ReadPictureUrl(page)
-            };
-
-            if (page.TryGetProperty("instagram_business_account", out var ig))
-            {
-                info.InstagramId = ig.TryGetProperty("id", out var igId) ? igId.GetString() : null;
-                info.InstagramUsername = ig.TryGetProperty("username", out var igUser) ? igUser.GetString() : null;
-                info.InstagramName = ig.TryGetProperty("name", out var igName) ? igName.GetString() : null;
-                info.InstagramImage = ig.TryGetProperty("profile_picture_url", out var igPic) ? igPic.GetString() : null;
-            }
-
+            var info = ParsePageElement(page);
             if (!string.IsNullOrWhiteSpace(info.PageId))
                 pages.Add(info);
         }
 
         return pages;
+    }
+
+    /// <summary>
+    /// Loads one Page by id — used when OAuth grants granular page scopes but me/accounts is empty
+    /// (common for Business Manager–linked Pages without business_management).
+    /// </summary>
+    public async Task<MetaPageInfo> GetPageByIdAsync(
+        string version,
+        string pageId,
+        string userAccessToken,
+        CancellationToken cancellationToken)
+    {
+        using var doc = await GetAsync(
+            version,
+            pageId,
+            userAccessToken,
+            cancellationToken,
+            ("fields", "id,name,access_token,picture{url},instagram_business_account{id,username,name,profile_picture_url}"));
+
+        return ParsePageElement(doc.RootElement);
+    }
+
+    private static MetaPageInfo ParsePageElement(JsonElement page)
+    {
+        var info = new MetaPageInfo
+        {
+            PageId = page.TryGetProperty("id", out var id) ? id.GetString() ?? string.Empty : string.Empty,
+            PageName = page.TryGetProperty("name", out var name) ? name.GetString() ?? "Facebook Page" : "Facebook Page",
+            PageAccessToken = page.TryGetProperty("access_token", out var token) ? token.GetString() : null,
+            PageImage = ReadPictureUrl(page)
+        };
+
+        if (page.TryGetProperty("instagram_business_account", out var ig))
+        {
+            info.InstagramId = ig.TryGetProperty("id", out var igId) ? igId.GetString() : null;
+            info.InstagramUsername = ig.TryGetProperty("username", out var igUser) ? igUser.GetString() : null;
+            info.InstagramName = ig.TryGetProperty("name", out var igName) ? igName.GetString() : null;
+            info.InstagramImage = ig.TryGetProperty("profile_picture_url", out var igPic) ? igPic.GetString() : null;
+        }
+
+        return info;
     }
 
     private static string? ReadPictureUrl(JsonElement page) =>
