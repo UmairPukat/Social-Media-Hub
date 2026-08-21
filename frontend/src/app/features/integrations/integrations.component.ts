@@ -6,15 +6,6 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { ApiService } from '../../core/services/api.service';
 import { MetaAuthUrlService, MetaPlatform } from '../../core/services/meta-auth-url.service';
 import { ApiResponse, ConnectionDetails, MetaPage, PlatformCard } from '../../core/models/api.models';
-import { IntegrationCardView } from '../../shared/integration-card.model';
-import { IntegrationPlatformCardComponent } from '../../shared/integration-platform-card/integration-platform-card.component';
-import {
-  integrationPlatformIcon,
-  integrationShortDesc,
-  integrationTone,
-  supportsIntegrationConnectionDetails,
-  supportsIntegrationPageSelection
-} from '../../shared/integration-ui.utils';
 
 export interface IntegrationCategoryGroup {
   id: string;
@@ -49,7 +40,7 @@ const CATEGORY_ORDER = [
 @Component({
   selector: 'app-integrations',
   standalone: true,
-  imports: [DatePipe, MatButtonModule, MatIconModule, MatTooltipModule, IntegrationPlatformCardComponent],
+  imports: [DatePipe, MatButtonModule, MatIconModule, MatTooltipModule],
   templateUrl: './integrations.component.html',
   styleUrl: './integrations.component.scss'
 })
@@ -136,39 +127,6 @@ export class IntegrationsComponent implements OnInit {
     this.activeCategory.set(id);
   }
 
-  toCardView(card: PlatformCard): IntegrationCardView {
-    return {
-      trackId: card.platformId,
-      code: card.code,
-      displayName: card.displayName,
-      description: card.description,
-      isConnected: card.isConnected,
-      canConnect: card.canConnect,
-      accountName: card.accountName,
-      connectingKey: card.code.toLowerCase()
-    };
-  }
-
-  onConnect(view: IntegrationCardView): void {
-    const card = this.cards().find((c) => c.platformId === view.trackId);
-    if (card) void this.connect(card);
-  }
-
-  onDisconnect(view: IntegrationCardView): void {
-    const card = this.cards().find((c) => c.platformId === view.trackId);
-    if (card) this.disconnect(card);
-  }
-
-  onChangePage(view: IntegrationCardView): void {
-    const card = this.cards().find((c) => c.platformId === view.trackId);
-    if (card) this.openPagePicker(card);
-  }
-
-  onOpenDetails(view: IntegrationCardView): void {
-    const card = this.cards().find((c) => c.platformId === view.trackId);
-    if (card) this.openDetails(card);
-  }
-
   async connect(card: PlatformCard): Promise<void> {
     const code = card.code.toLowerCase() as MetaPlatform;
     if (!card.canConnect || !['facebook', 'instagram', 'instagram_login', 'whatsapp'].includes(code)) {
@@ -211,11 +169,12 @@ export class IntegrationsComponent implements OnInit {
   }
 
   supportsPageSelection(code: string): boolean {
-    return supportsIntegrationPageSelection(code);
+    return ['facebook', 'instagram'].includes(code.toLowerCase());
   }
 
+  /** Eye icon / account details popup — includes Instagram Login (no page picker). */
   supportsConnectionDetails(code: string): boolean {
-    return supportsIntegrationConnectionDetails(code);
+    return ['facebook', 'instagram', 'instagram_login'].includes(code.toLowerCase());
   }
 
   isInstagramLoginPlatform(code: string | null | undefined): boolean {
@@ -410,14 +369,112 @@ export class IntegrationsComponent implements OnInit {
   }
 
   tone(code: string): string {
-    return integrationTone(code);
+    const map: Record<string, string> = {
+      facebook: 'blue',
+      instagram: 'rose',
+      instagram_login: 'rose',
+      threads: 'slate',
+      twitter: 'slate',
+      x: 'slate',
+      linkedin: 'cyan',
+      tiktok: 'slate',
+      youtube: 'rose',
+      pinterest: 'rose',
+      reddit: 'orange',
+      snapchat: 'amber',
+      whatsapp: 'green',
+      outlook: 'blue',
+      gmail: 'rose',
+      microsoft365: 'blue',
+      exchange: 'blue',
+      telegram: 'cyan',
+      discord: 'violet',
+      slack: 'violet',
+      teams: 'violet',
+      shopify: 'green',
+      woocommerce: 'violet',
+      tiktokshop: 'pink',
+      amazon: 'amber',
+      etsy: 'orange',
+      ebay: 'blue',
+      salesforce: 'cyan',
+      hubspot: 'orange',
+      zoho: 'teal',
+      dynamics365: 'blue',
+      pipedrive: 'green',
+      googlecalendar: 'blue',
+      outlookcalendar: 'cyan',
+      applecalendar: 'slate',
+      onedrive: 'blue',
+      googledrive: 'amber',
+      dropbox: 'blue',
+      sharepoint: 'teal',
+      stripe: 'violet',
+      paypal: 'blue',
+      square: 'slate',
+      openai: 'teal',
+      azureopenai: 'blue',
+      claude: 'orange',
+      gemini: 'pink'
+    };
+    return map[code.toLowerCase()] || 'slate';
   }
 
   shortDesc(text: string): string {
-    return integrationShortDesc(text);
+    const clean = (text || '').trim();
+    if (clean.length <= 78) return clean;
+    return `${clean.slice(0, 76)}…`;
   }
 
   platformIcon(code: string): string {
-    return integrationPlatformIcon(code);
+    const map: Record<string, string> = {
+      facebook: 'public',
+      instagram: 'photo_camera',
+      instagram_login: 'camera_alt',
+      threads: 'tag',
+      twitter: 'alternate_email',
+      x: 'alternate_email',
+      linkedin: 'work',
+      tiktok: 'music_note',
+      youtube: 'play_circle',
+      pinterest: 'push_pin',
+      reddit: 'forum',
+      snapchat: 'photo_camera_front',
+      whatsapp: 'chat',
+      outlook: 'mail',
+      gmail: 'mail_outline',
+      microsoft365: 'apps',
+      exchange: 'inbox',
+      telegram: 'send',
+      discord: 'sports_esports',
+      slack: 'tag',
+      teams: 'groups',
+      shopify: 'storefront',
+      woocommerce: 'shopping_bag',
+      tiktokshop: 'store',
+      amazon: 'local_shipping',
+      etsy: 'store',
+      ebay: 'gavel',
+      salesforce: 'cloud',
+      hubspot: 'hub',
+      zoho: 'business',
+      dynamics365: 'apartment',
+      pipedrive: 'trending_up',
+      googlecalendar: 'calendar_month',
+      outlookcalendar: 'event',
+      applecalendar: 'event_available',
+      onedrive: 'cloud_queue',
+      googledrive: 'add_to_drive',
+      dropbox: 'folder',
+      sharepoint: 'folder_shared',
+      stripe: 'credit_card',
+      paypal: 'account_balance_wallet',
+      square: 'payments',
+      openai: 'auto_awesome',
+      azureopenai: 'cloud',
+      claude: 'psychology',
+      gemini: 'auto_awesome'
+    };
+    return map[code.toLowerCase()] || 'extension';
   }
 }
