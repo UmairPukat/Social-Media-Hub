@@ -360,13 +360,23 @@ export class AppConnectionsComponent implements OnInit {
   }
 
   async connect(card: MetaAppConnection): Promise<void> {
+    const code = card.platformCode.toLowerCase();
+    if (!card.canConnect || !['facebook', 'instagram', 'instagram_login', 'whatsapp'].includes(code)) {
+      this.message.set(`${card.platformName} is coming soon.`);
+      return;
+    }
+
     if (!card.appId?.trim()) {
       this.message.set('Configure App Id before connecting.');
       return;
     }
 
     this.connecting.set(card.id);
-    this.message.set(`Opening Meta login for ${card.platformName}…`);
+    this.message.set(
+      code === 'instagram_login'
+        ? `Opening Instagram Login for ${card.platformName}…`
+        : `Opening Meta login for ${card.platformName}…`
+    );
 
     try {
       const result = await this.appAuth.openPopup(card.id);
@@ -401,6 +411,11 @@ export class AppConnectionsComponent implements OnInit {
 
   isConnecting(card: IntegrationCardView): boolean {
     return this.connecting() === card.connectingKey;
+  }
+
+  /** True when OAuth finished and a page/account is fully linked. */
+  isPageLinked(card: IntegrationCardView): boolean {
+    return card.isConnected && !card.requiresPageSelection;
   }
 
   tone(code: string): string {
@@ -486,27 +501,40 @@ export class AppConnectionsComponent implements OnInit {
   }
 
   confirmPage(): void {
+    void this.confirmPageAsync();
+  }
+
+  private async confirmPageAsync(): Promise<void> {
     const card = this.pickerConnection();
     const pageId = this.selectedPageId();
-    if (!card || !pageId) return;
+    if (!card || !pageId) {
+      this.message.set('Select a page before continuing.');
+      return;
+    }
 
     this.savingPage.set(true);
-    this.api.selectAppConnectionPage(card.id, pageId).subscribe({
-      next: (res) => {
-        this.savingPage.set(false);
-        if (!res.success) {
-          this.pagesError.set(res.message || 'Could not connect that page.');
-          return;
-        }
-        this.message.set(res.message || 'Page connected.');
-        this.closePagePicker();
-        this.reload();
-      },
-      error: (err: { error?: { message?: string } }) => {
-        this.savingPage.set(false);
-        this.pagesError.set(err?.error?.message || 'Could not connect that page.');
+    this.pagesError.set('');
+
+    try {
+      const res = await firstValueFrom(this.api.selectAppConnectionPage(card.id, pageId));
+      if (!res.success) {
+        const err = res.message || 'Could not connect that page.';
+        this.pagesError.set(err);
+        this.message.set(err);
+        return;
       }
-    });
+
+      await this.reloadAsync();
+      this.message.set(res.message || 'Page connected.');
+      this.closePagePicker();
+    } catch (err: unknown) {
+      const msg =
+        (err as { error?: { message?: string } })?.error?.message || 'Could not connect that page.';
+      this.pagesError.set(msg);
+      this.message.set(msg);
+    } finally {
+      this.savingPage.set(false);
+    }
   }
 
   openDetails(card: MetaAppConnection): void {

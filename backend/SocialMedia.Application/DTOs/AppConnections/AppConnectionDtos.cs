@@ -74,7 +74,10 @@ public class AppConnectionMetaRedirectResult
 
 public class AppConnectionSelectPageRequest
 {
+    [System.Text.Json.Serialization.JsonPropertyName("appConnectionId")]
     public Guid AppConnectionId { get; set; }
+
+    [System.Text.Json.Serialization.JsonPropertyName("pageId")]
     public string PageId { get; set; } = string.Empty;
 }
 

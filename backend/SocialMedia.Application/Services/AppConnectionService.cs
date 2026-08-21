@@ -300,6 +300,9 @@ public class AppConnectionService : IAppConnectionService
     {
         try
         {
+            if (appConnectionId == Guid.Empty)
+                return ApiResponse<IReadOnlyList<MetaPageDto>>.Fail("App connection id is required.");
+
             var entity = await _unitOfWork.MetaAppConnections.GetByIdForUserAsync(appConnectionId, userId, cancellationToken);
             if (entity is null)
                 return ApiResponse<IReadOnlyList<MetaPageDto>>.Fail("App connection not found.");
@@ -307,12 +310,13 @@ public class AppConnectionService : IAppConnectionService
             if (!SupportsPageSelection(entity.PlatformCode))
                 return ApiResponse<IReadOnlyList<MetaPageDto>>.Fail("Page selection is not available for this platform.");
 
-            var account = await FindLinkedAccountAsync(userId, entity, cancellationToken);
-            var userToken = ResolveUserAccessToken(account);
-            if (account is null || string.IsNullOrWhiteSpace(userToken))
+            var resolved = await ResolveAccountForPageFlowAsync(userId, entity, cancellationToken);
+            if (resolved is null)
                 return ApiResponse<IReadOnlyList<MetaPageDto>>.Fail("Sign in with Meta again — no stored login token was found.");
 
-            var pages = await ListPagesAsync(entity.PlatformCode, userToken!, cancellationToken);
+            var (account, _, userToken) = resolved.Value;
+
+            var pages = await ListPagesAsync(entity.PlatformCode, userToken, cancellationToken);
             var connectedPageIds = ResolveConnectedPageIds(account, entity.PlatformCode);
             var data = pages
                 .Select(p => MapPage(p, entity.PlatformCode, connectedPageIds))
@@ -336,6 +340,9 @@ public class AppConnectionService : IAppConnectionService
     {
         try
         {
+            if (request.AppConnectionId == Guid.Empty)
+                return ApiResponse<SocialAccountDto>.Fail("App connection id is required.");
+
             var entity = await _unitOfWork.MetaAppConnections.GetByIdForUserAsync(request.AppConnectionId, userId, cancellationToken);
             if (entity is null)
                 return ApiResponse<SocialAccountDto>.Fail("App connection not found.");
@@ -349,13 +356,13 @@ public class AppConnectionService : IAppConnectionService
             if (platform is null)
                 return ApiResponse<SocialAccountDto>.Fail("Unknown platform.");
 
-            var account = await FindLinkedAccountAsync(userId, entity, cancellationToken);
-            var auth = account?.Auth;
-            var userToken = ResolveUserAccessToken(account);
-            if (account is null || auth is null || string.IsNullOrWhiteSpace(userToken))
+            var resolved = await ResolveAccountForPageFlowAsync(userId, entity, cancellationToken);
+            if (resolved is null)
                 return ApiResponse<SocialAccountDto>.Fail("Sign in with Meta before selecting a page.");
 
-            var pages = await ListPagesAsync(entity.PlatformCode, userToken!, cancellationToken);
+            var (account, auth, userToken) = resolved.Value;
+
+            var pages = await ListPagesAsync(entity.PlatformCode, userToken, cancellationToken);
             var page = pages.FirstOrDefault(p => p.PageId == request.PageId);
             if (page is null)
                 return ApiResponse<SocialAccountDto>.Fail("That page is no longer granted to this Meta login. Reconnect and try again.");
@@ -363,11 +370,15 @@ public class AppConnectionService : IAppConnectionService
             if (entity.PlatformCode == "instagram" && string.IsNullOrWhiteSpace(page.InstagramId))
                 return ApiResponse<SocialAccountDto>.Fail($"'{page.PageName}' has no Instagram Business account linked to it.");
 
+            var linkedName = entity.PlatformCode == "instagram"
+                ? page.InstagramName ?? page.InstagramUsername ?? page.PageName
+                : page.PageName;
+
             var draft = entity.PlatformCode == "instagram"
                 ? new SocialProfileDraft
                 {
                     ExternalProfileId = page.InstagramId!,
-                    Name = page.InstagramName ?? page.InstagramUsername ?? page.PageName,
+                    Name = linkedName,
                     Username = page.InstagramUsername,
                     ProfileImage = page.InstagramImage,
                     ProfileType = "InstagramBusiness",
@@ -388,18 +399,22 @@ public class AppConnectionService : IAppConnectionService
 
             if (!string.IsNullOrWhiteSpace(page.PageAccessToken))
             {
+                // Page token drives API calls; the user token stays in RefreshToken for future page listing.
                 auth.AccessToken = page.PageAccessToken!;
                 auth.UpdatedAt = DateTime.UtcNow;
-                _unitOfWork.SocialAuths.Update(auth);
+                MarkUpdated(_unitOfWork.SocialAuths, auth, isNew: false);
             }
 
             account.Status = SocialAccountStatus.Connected;
             account.ConnectedAt ??= DateTime.UtcNow;
+            account.DisplayName = linkedName;
+            account.UpdatedAt = DateTime.UtcNow;
             account.MetadataJson = JsonSerializer.Serialize(new
             {
                 selectedPageId = page.PageId,
-                selectedPageName = page.PageName
+                selectedPageName = linkedName
             });
+            MarkUpdated(_unitOfWork.SocialAccounts, account, isNew: false);
             await QueueInitialSyncAsync(account, cancellationToken);
             await _unitOfWork.SaveChangesAsync(cancellationToken);
 
@@ -593,7 +608,12 @@ public class AppConnectionService : IAppConnectionService
         await _unitOfWork.SaveChangesAsync(cancellationToken);
 
         var requiresPageSelection = SupportsPageSelection(entity.PlatformCode);
-        if (!requiresPageSelection)
+        if (requiresPageSelection)
+        {
+            await ClearPageSelectionAsync(account, cancellationToken);
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+        }
+        else
         {
             IReadOnlyList<SocialProfileDraft> drafts = entity.PlatformCode switch
             {
@@ -652,6 +672,9 @@ public class AppConnectionService : IAppConnectionService
             _unitOfWork.SocialAuths.Update(auth);
         }
 
+        if (SupportsPageSelection(code))
+            await ClearPageSelectionAsync(account, cancellationToken);
+
         await _unitOfWork.SaveChangesAsync(cancellationToken);
     }
 
@@ -669,7 +692,7 @@ public class AppConnectionService : IAppConnectionService
         GraphApiVersion = entity.GraphApiVersion,
         Scopes = entity.Scopes,
         IsConnected = account?.Status == SocialAccountStatus.Connected,
-        AccountName = account?.DisplayName,
+        AccountName = ResolveLinkedAccountName(account, entity.PlatformCode),
         ConnectedAt = account?.ConnectedAt,
         SupportsComments = def?.SupportsComments ?? false,
         SupportsMessages = def?.SupportsMessages ?? false,
@@ -884,9 +907,63 @@ public class AppConnectionService : IAppConnectionService
         account.UpdatedAt = DateTime.UtcNow;
     }
 
-    private static string? ResolveUserAccessToken(SocialAccount? account)
+    private async Task<(SocialAccount Account, SocialAuth Auth, string UserToken)?> ResolveAccountForPageFlowAsync(
+        Guid userId,
+        MetaAppConnection entity,
+        CancellationToken cancellationToken)
     {
-        var auth = account?.Auth;
+        var account = await FindLinkedAccountAsync(userId, entity, cancellationToken);
+        if (account is null)
+            return null;
+
+        var auth = account.Auth;
+        if (auth is null)
+            auth = await _unitOfWork.SocialAuths.GetBySocialAccountIdAsync(account.Id, cancellationToken);
+
+        if (auth is null)
+            return null;
+
+        var userToken = ResolveUserAccessToken(account, auth);
+        if (string.IsNullOrWhiteSpace(userToken))
+            return null;
+
+        return (account, auth, userToken);
+    }
+
+    private async Task ClearPageSelectionAsync(SocialAccount account, CancellationToken cancellationToken)
+    {
+        account.MetadataJson = null;
+        account.UpdatedAt = DateTime.UtcNow;
+        MarkUpdated(_unitOfWork.SocialAccounts, account, isNew: false);
+
+        var profiles = await _unitOfWork.SocialProfiles.GetBySocialAccountAsync(account.Id, cancellationToken);
+        foreach (var profile in profiles.Where(p =>
+                     p.ProfileType is ProfileType.FacebookPage or ProfileType.InstagramBusiness))
+        {
+            var tracked = await _unitOfWork.SocialProfiles.GetByIdAsync(profile.Id, cancellationToken);
+            if (tracked is not null)
+                _unitOfWork.SocialProfiles.Remove(tracked);
+        }
+    }
+
+    private static string? ResolveLinkedAccountName(SocialAccount? account, string platformCode)
+    {
+        if (account is null)
+            return null;
+
+        var selectedName = ReadJsonString(account.MetadataJson, "selectedPageName");
+        if (!string.IsNullOrWhiteSpace(selectedName))
+            return selectedName;
+
+        if (!string.IsNullOrWhiteSpace(ResolveSelectedPageId(account, platformCode)))
+            return account.Profiles.FirstOrDefault()?.Name ?? account.DisplayName;
+
+        return account.DisplayName;
+    }
+
+    private static string? ResolveUserAccessToken(SocialAccount? account, SocialAuth? auth = null)
+    {
+        auth ??= account?.Auth;
         if (auth is null)
             return null;
 

@@ -78,25 +78,21 @@
               <article
                 class="stat"
                 [attr.data-tone]="tone(card.code)"
-                [class.live]="card.isConnected && !card.requiresPageSelection">
+                [class.live]="isPageLinked(card)">
                 <div class="stat-top">
                   <span class="stat-ico">
                     <mat-icon>{{ platformIcon(card.code) }}</mat-icon>
                   </span>
                   <div class="stat-top-end">
                     <span class="stat-label">
-                      @if (card.requiresPageSelection) {
-                        Select page
-                      } @else {
-                        {{ card.isConnected ? 'Connected' : card.canConnect ? 'Ready' : 'Soon' }}
-                      }
+                      {{ isPageLinked(card) ? 'Connected' : 'Ready' }}
                     </span>
-                    @if (card.isConnected && supportsConnectionDetails(card.code) && !card.requiresPageSelection) {
+                    @if (isPageLinked(card)) {
                       <button
                         type="button"
                         class="eye-btn"
-                        matTooltip="View account information"
-                        [attr.aria-label]="'View ' + card.displayName + ' account information'"
+                        matTooltip="View connected page details"
+                        [attr.aria-label]="'View ' + card.displayName + ' connection details'"
                         (click)="onOpenDetails(card)">
                         <mat-icon>visibility</mat-icon>
                       </button>
@@ -107,7 +103,7 @@
                 <strong class="stat-value">{{ card.displayName }}</strong>
 
                 <p class="stat-hint">
-                  @if (card.accountName) {
+                  @if (isPageLinked(card) && card.accountName) {
                     Linked as {{ card.accountName }}
                   } @else {
                     {{ shortDesc(card.description) }}
@@ -116,16 +112,7 @@
 
                 <div class="stat-action">
                   <div class="stat-action-main">
-                    @if (card.requiresPageSelection) {
-                      <button mat-flat-button color="primary" type="button" (click)="onChangePage(card)">
-                        Choose page
-                      </button>
-                    } @else if (card.isConnected) {
-                      @if (supportsPageSelection(card.code)) {
-                        <button mat-stroked-button type="button" (click)="onChangePage(card)">
-                          Change page
-                        </button>
-                      }
+                    @if (isPageLinked(card)) {
                       <button mat-stroked-button type="button" class="danger" (click)="onDisconnect(card)">
                         Disconnect
                       </button>
