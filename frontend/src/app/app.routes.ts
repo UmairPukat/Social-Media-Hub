@@ -21,6 +21,10 @@ export const routes: Routes = [
         loadComponent: () => import('./features/integrations/integrations.component').then(m => m.IntegrationsComponent)
       },
       {
+        path: 'app-connections',
+        loadComponent: () => import('./features/app-connections/app-connections.component').then(m => m.AppConnectionsComponent)
+      },
+      {
         path: 'create-post',
         loadComponent: () => import('./features/create-post/create-post.component').then(m => m.CreatePostComponent)
       },

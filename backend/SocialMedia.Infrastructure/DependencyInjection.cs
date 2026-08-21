@@ -39,6 +39,7 @@ public static class DependencyInjection
         services.AddScoped<IWebhookEventRepository, WebhookEventRepository>();
         services.AddScoped<IWebhookLogRepository, WebhookLogRepository>();
         services.AddScoped<ISyncJobRepository, SyncJobRepository>();
+        services.AddScoped<IMetaAppConnectionRepository, MetaAppConnectionRepository>();
         services.AddScoped<IUnitOfWork, UnitOfWork>();
 
         services.AddScoped<IPasswordHasher, PasswordHasher>();
@@ -49,6 +50,7 @@ public static class DependencyInjection
         services.AddScoped<IFacebookService, FacebookService>();
         services.AddScoped<IInstagramService, InstagramService>();
         services.AddScoped<IWhatsAppService, WhatsAppService>();
+        services.AddScoped<IMetaOAuthClient, MetaOAuthClient>();
 
         var jwt = configuration.GetSection(JwtSettings.SectionName).Get<JwtSettings>()
             ?? throw new InvalidOperationException("JwtSettings section is missing.");

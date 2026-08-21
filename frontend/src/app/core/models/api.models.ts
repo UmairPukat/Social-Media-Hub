@@ -86,6 +86,73 @@ export interface ConnectionDetails {
   profiles: SocialProfile[];
 }
 
+/** User-owned Meta app with its own App Id, secret, and callback URL. */
+export interface MetaAppConnection {
+  id: string;
+  name: string;
+  platformCode: string;
+  platformName: string;
+  appId: string;
+  callbackUrl: string;
+  graphApiVersion: string;
+  scopes: string;
+  isConnected: boolean;
+  accountName?: string;
+  connectedAt?: string;
+  supportsComments: boolean;
+  supportsMessages: boolean;
+  supportsPosts: boolean;
+  canConnect: boolean;
+}
+
+export interface CreateMetaAppConnectionRequest {
+  name: string;
+  platformCode: string;
+  appId: string;
+  appSecret: string;
+  callbackUrl: string;
+  graphApiVersion?: string;
+  scopes?: string;
+}
+
+export interface UpdateMetaAppConnectionRequest {
+  name: string;
+  appId: string;
+  appSecret: string;
+  callbackUrl: string;
+  graphApiVersion?: string;
+  scopes?: string;
+}
+
+export interface AppConnectionDefaultScopes {
+  platformCode: string;
+  scopes: string;
+}
+
+/** App Connections account details popup. */
+export interface AppConnectionDetails {
+  appConnectionId: string;
+  appConnectionName: string;
+  platformCode: string;
+  platformName: string;
+  accountName: string;
+  status: number;
+  connectedAt?: string;
+  lastSyncAt?: string;
+  pageId?: string;
+  pageName?: string;
+  pageImage?: string;
+  instagramId?: string;
+  instagramUsername?: string;
+  accessToken?: string;
+  webhookSubscribed: boolean;
+  subscribedFields: string[];
+  webhookError?: string;
+  appId: string;
+  callbackUrl: string;
+  scopes: string;
+}
+
 /** A Facebook Page offered in the page picker after Meta login. */
 export interface MetaPage {
   pageId: string;

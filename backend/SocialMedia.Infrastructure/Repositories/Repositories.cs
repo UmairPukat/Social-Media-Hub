@@ -80,7 +80,17 @@ public class SocialAccountRepository : Repository<SocialAccount>, ISocialAccount
 
     public Task<SocialAccount?> GetByUserAndPlatformAsync(Guid userId, Guid platformId, CancellationToken cancellationToken = default)
         => DbSet.Include(a => a.Auth).Include(a => a.Profiles)
-            .FirstOrDefaultAsync(a => a.UserId == userId && a.PlatformId == platformId, cancellationToken);
+            .FirstOrDefaultAsync(a => a.UserId == userId && a.PlatformId == platformId && a.MetaAppConnectionId == null, cancellationToken);
+
+    public Task<SocialAccount?> GetByUserPlatformAndAppConnectionAsync(
+        Guid userId,
+        Guid platformId,
+        Guid appConnectionId,
+        CancellationToken cancellationToken = default)
+        => DbSet.Include(a => a.Auth).Include(a => a.Profiles)
+            .FirstOrDefaultAsync(
+                a => a.UserId == userId && a.PlatformId == platformId && a.MetaAppConnectionId == appConnectionId,
+                cancellationToken);
 
     public Task<SocialAccount?> GetByExternalAccountIdAsync(string externalAccountId, CancellationToken cancellationToken = default)
         => DbSet.Include(a => a.Auth).Include(a => a.Profiles)
@@ -224,6 +234,20 @@ public class SyncJobRepository : Repository<SyncJob>, ISyncJobRepository
     public SyncJobRepository(AppDbContext context) : base(context) { }
 }
 
+public class MetaAppConnectionRepository : Repository<MetaAppConnection>, IMetaAppConnectionRepository
+{
+    public MetaAppConnectionRepository(AppDbContext context) : base(context) { }
+
+    public async Task<IReadOnlyList<MetaAppConnection>> GetByUserAsync(Guid userId, CancellationToken cancellationToken = default)
+        => await DbSet.AsNoTracking()
+            .Where(c => c.UserId == userId)
+            .OrderBy(c => c.Name)
+            .ToListAsync(cancellationToken);
+
+    public Task<MetaAppConnection?> GetByIdForUserAsync(Guid id, Guid userId, CancellationToken cancellationToken = default)
+        => DbSet.FirstOrDefaultAsync(c => c.Id == id && c.UserId == userId, cancellationToken);
+}
+
 public class UnitOfWork : IUnitOfWork
 {
     private readonly AppDbContext _context;
@@ -242,7 +266,8 @@ public class UnitOfWork : IUnitOfWork
         IMessageRepository messages,
         IWebhookEventRepository webhookEvents,
         IWebhookLogRepository webhookLogs,
-        ISyncJobRepository syncJobs)
+        ISyncJobRepository syncJobs,
+        IMetaAppConnectionRepository metaAppConnections)
     {
         _context = context;
         Users = users;
@@ -258,6 +283,7 @@ public class UnitOfWork : IUnitOfWork
         WebhookEvents = webhookEvents;
         WebhookLogs = webhookLogs;
         SyncJobs = syncJobs;
+        MetaAppConnections = metaAppConnections;
     }
 
     public IUserRepository Users { get; }
@@ -273,6 +299,7 @@ public class UnitOfWork : IUnitOfWork
     public IWebhookEventRepository WebhookEvents { get; }
     public IWebhookLogRepository WebhookLogs { get; }
     public ISyncJobRepository SyncJobs { get; }
+    public IMetaAppConnectionRepository MetaAppConnections { get; }
 
     public Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
         => _context.SaveChangesAsync(cancellationToken);

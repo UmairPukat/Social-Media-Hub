@@ -64,6 +64,7 @@ public static class DbSeeder
         await db.Database.EnsureCreatedAsync();
         await EnsureWebhookLogsTableAsync(db);
         await EnsureMessageReplyColumnsAsync(db);
+        await EnsureMetaAppConnectionsSchemaAsync(db);
 
         var catalogCodes = new HashSet<string>(
             PlatformCatalog.All.Select(p => p.Code),
@@ -159,6 +160,67 @@ public static class DbSeeder
             """);
         await db.Database.ExecuteSqlRawAsync("""
             ALTER TABLE "Messages" ADD COLUMN IF NOT EXISTS "ReplyToExternalId" character varying(200) NULL;
+            """);
+    }
+
+    private static async Task EnsureMetaAppConnectionsSchemaAsync(AppDbContext db)
+    {
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE IF NOT EXISTS "MetaAppConnections" (
+                "Id" uuid NOT NULL,
+                "UserId" uuid NOT NULL,
+                "Name" character varying(150) NOT NULL,
+                "PlatformCode" character varying(50) NOT NULL,
+                "AppId" character varying(100) NOT NULL,
+                "AppSecret" character varying(500) NOT NULL,
+                "CallbackUrl" character varying(2000) NOT NULL,
+                "GraphApiVersion" character varying(20) NOT NULL DEFAULT 'v21.0',
+                "Scopes" character varying(2000) NOT NULL DEFAULT '',
+                "CreatedAt" timestamp with time zone NOT NULL,
+                "UpdatedAt" timestamp with time zone NULL,
+                CONSTRAINT "PK_MetaAppConnections" PRIMARY KEY ("Id"),
+                CONSTRAINT "FK_MetaAppConnections_Users_UserId" FOREIGN KEY ("UserId") REFERENCES "Users" ("Id") ON DELETE CASCADE
+            );
+            """);
+
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE INDEX IF NOT EXISTS "IX_MetaAppConnections_UserId_Name" ON "MetaAppConnections" ("UserId", "Name");
+            """);
+
+        await db.Database.ExecuteSqlRawAsync("""
+            ALTER TABLE "SocialAccounts" ADD COLUMN IF NOT EXISTS "MetaAppConnectionId" uuid NULL;
+            """);
+
+        await db.Database.ExecuteSqlRawAsync("""
+            ALTER TABLE "MetaAppConnections" ADD COLUMN IF NOT EXISTS "Scopes" character varying(2000) NOT NULL DEFAULT '';
+            """);
+
+        await db.Database.ExecuteSqlRawAsync("""
+            DO $$ BEGIN
+              IF NOT EXISTS (
+                SELECT 1 FROM pg_constraint WHERE conname = 'FK_SocialAccounts_MetaAppConnections_MetaAppConnectionId'
+              ) THEN
+                ALTER TABLE "SocialAccounts"
+                  ADD CONSTRAINT "FK_SocialAccounts_MetaAppConnections_MetaAppConnectionId"
+                  FOREIGN KEY ("MetaAppConnectionId") REFERENCES "MetaAppConnections" ("Id") ON DELETE SET NULL;
+              END IF;
+            END $$;
+            """);
+
+        await db.Database.ExecuteSqlRawAsync("""
+            DROP INDEX IF EXISTS "IX_SocialAccounts_UserId_PlatformId";
+            """);
+
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE UNIQUE INDEX IF NOT EXISTS "IX_SocialAccounts_UserId_PlatformId"
+                ON "SocialAccounts" ("UserId", "PlatformId")
+                WHERE "MetaAppConnectionId" IS NULL;
+            """);
+
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE UNIQUE INDEX IF NOT EXISTS "IX_SocialAccounts_UserId_PlatformId_MetaAppConnectionId"
+                ON "SocialAccounts" ("UserId", "PlatformId", "MetaAppConnectionId")
+                WHERE "MetaAppConnectionId" IS NOT NULL;
             """);
     }
 }

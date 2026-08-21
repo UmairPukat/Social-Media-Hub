@@ -58,7 +58,8 @@ public class IntegrationService : IIntegrationService
         {
             var platforms = await _unitOfWork.Platforms.GetActiveAsync(cancellationToken);
             var accounts = await _unitOfWork.SocialAccounts.GetByUserAsync(userId, cancellationToken);
-            var byPlatform = accounts.Where(a => a.Status == SocialAccountStatus.Connected)
+            var byPlatform = accounts
+                .Where(a => a.Status == SocialAccountStatus.Connected && a.MetaAppConnectionId is null)
                 .ToDictionary(a => a.PlatformId);
 
             var cards = platforms

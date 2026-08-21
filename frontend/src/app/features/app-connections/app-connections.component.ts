@@ -1,0 +1,500 @@
+import { DatePipe } from '@angular/common';
+import { Component, ElementRef, OnInit, computed, inject, signal, viewChild } from '@angular/core';
+import { FormsModule } from '@angular/forms';
+import { MatButtonModule } from '@angular/material/button';
+import { MatFormFieldModule } from '@angular/material/form-field';
+import { MatIconModule } from '@angular/material/icon';
+import { MatInputModule } from '@angular/material/input';
+import { MatSelectModule } from '@angular/material/select';
+import { MatTooltipModule } from '@angular/material/tooltip';
+import { ApiService } from '../../core/services/api.service';
+import { AppConnectionAuthService } from '../../core/services/app-connection-auth.service';
+import {
+  ApiResponse,
+  AppConnectionDetails,
+  CreateMetaAppConnectionRequest,
+  MetaAppConnection,
+  MetaPage,
+  UpdateMetaAppConnectionRequest
+} from '../../core/models/api.models';
+import { environment } from '../../../environments/environment';
+
+const PLATFORM_OPTIONS = [
+  { code: 'facebook', label: 'Facebook' },
+  { code: 'instagram', label: 'Instagram (Facebook Login)' },
+  { code: 'instagram_login', label: 'Instagram Login' },
+  { code: 'whatsapp', label: 'WhatsApp Business' }
+];
+
+@Component({
+  selector: 'app-app-connections',
+  standalone: true,
+  imports: [
+    DatePipe,
+    FormsModule,
+    MatButtonModule,
+    MatFormFieldModule,
+    MatIconModule,
+    MatInputModule,
+    MatSelectModule,
+    MatTooltipModule
+  ],
+  templateUrl: './app-connections.component.html',
+  styleUrl: './app-connections.component.scss'
+})
+export class AppConnectionsComponent implements OnInit {
+  private readonly api = inject(ApiService);
+  private readonly appAuth = inject(AppConnectionAuthService);
+
+  readonly connections = signal<MetaAppConnection[]>([]);
+  readonly message = signal('');
+  readonly connecting = signal<string | null>(null);
+  readonly savingForm = signal(false);
+
+  readonly defaultCallbackUrl = `${environment.apiUrl}/AppConnections/Callback`;
+
+  private readonly pickerDialog = viewChild<ElementRef<HTMLDialogElement>>('pickerDialog');
+  private readonly detailsDialog = viewChild<ElementRef<HTMLDialogElement>>('detailsDialog');
+  private readonly formDialog = viewChild<ElementRef<HTMLDialogElement>>('formDialog');
+
+  readonly detailsOpen = signal(false);
+  readonly detailsTitle = signal('');
+  readonly detailsConnectionId = signal<string | null>(null);
+  readonly details = signal<AppConnectionDetails | null>(null);
+  readonly detailsLoading = signal(false);
+  readonly detailsError = signal('');
+  readonly tokenRevealed = signal(false);
+  readonly tokenCopied = signal(false);
+
+  readonly pickerConnection = signal<MetaAppConnection | null>(null);
+  readonly pages = signal<MetaPage[]>([]);
+  readonly pagesLoading = signal(false);
+  readonly pagesError = signal('');
+  readonly selectedPageId = signal<string | null>(null);
+  readonly savingPage = signal(false);
+
+  readonly formOpen = signal(false);
+  readonly editingId = signal<string | null>(null);
+  formName = '';
+  formPlatformCode = 'facebook';
+  formAppId = '';
+  formAppSecret = '';
+  formCallbackUrl = this.defaultCallbackUrl;
+  formGraphApiVersion = 'v21.0';
+  formScopes = '';
+
+  readonly connectedCount = computed(() => this.connections().filter((c) => c.isConnected).length);
+  readonly eligiblePages = computed(() => this.pages().filter((p) => p.isEligible));
+  readonly platformOptions = PLATFORM_OPTIONS;
+
+  ngOnInit(): void {
+    this.reload();
+  }
+
+  reload(): void {
+    this.api.getAppConnections().subscribe({
+      next: (res: ApiResponse<MetaAppConnection[]>) => this.connections.set(res.data || []),
+      error: () => this.message.set('Failed to load app connections')
+    });
+  }
+
+  openCreateForm(): void {
+    this.editingId.set(null);
+    this.formName = '';
+    this.formPlatformCode = 'facebook';
+    this.formAppId = '';
+    this.formAppSecret = '';
+    this.formCallbackUrl = this.defaultCallbackUrl;
+    this.formGraphApiVersion = 'v21.0';
+    this.formScopes = '';
+    this.formOpen.set(true);
+    this.loadDefaultScopes(this.formPlatformCode);
+    const dialog = this.formDialog()?.nativeElement;
+    if (dialog && !dialog.open) dialog.showModal();
+  }
+
+  openEditForm(card: MetaAppConnection): void {
+    this.editingId.set(card.id);
+    this.formName = card.name;
+    this.formPlatformCode = card.platformCode;
+    this.formAppId = card.appId;
+    this.formAppSecret = '';
+    this.formCallbackUrl = card.callbackUrl;
+    this.formGraphApiVersion = card.graphApiVersion || 'v21.0';
+    this.formScopes = card.scopes || '';
+    this.formOpen.set(true);
+    const dialog = this.formDialog()?.nativeElement;
+    if (dialog && !dialog.open) dialog.showModal();
+  }
+
+  onPlatformChange(code: string): void {
+    this.formPlatformCode = code;
+    this.loadDefaultScopes(code);
+  }
+
+  loadDefaultScopes(platformCode: string): void {
+    this.api.getAppConnectionDefaultScopes(platformCode).subscribe({
+      next: (res) => {
+        if (res.success && res.data?.scopes) {
+          this.formScopes = res.data.scopes;
+        }
+      }
+    });
+  }
+
+  resetDefaultScopes(): void {
+    this.loadDefaultScopes(this.formPlatformCode);
+  }
+
+  closeForm(): void {
+    const dialog = this.formDialog()?.nativeElement;
+    if (dialog?.open) {
+      dialog.close();
+      return;
+    }
+    this.formOpen.set(false);
+  }
+
+  onFormClosed(): void {
+    this.formOpen.set(false);
+    this.editingId.set(null);
+  }
+
+  saveForm(): void {
+    if (!this.formName.trim() || !this.formAppId.trim() || !this.formCallbackUrl.trim()) {
+      this.message.set('Name, App Id, and Callback URL are required.');
+      return;
+    }
+
+    const editing = this.editingId();
+    if (!editing && !this.formAppSecret.trim()) {
+      this.message.set('App Secret is required for new connections.');
+      return;
+    }
+    if (editing && !this.formAppSecret.trim()) {
+      this.message.set('App Secret is required when updating.');
+      return;
+    }
+
+    this.savingForm.set(true);
+
+    if (editing) {
+      const body: UpdateMetaAppConnectionRequest = {
+        name: this.formName.trim(),
+        appId: this.formAppId.trim(),
+        appSecret: this.formAppSecret.trim(),
+        callbackUrl: this.formCallbackUrl.trim(),
+        graphApiVersion: this.formGraphApiVersion.trim() || 'v21.0',
+        scopes: this.formScopes.trim()
+      };
+      this.api.updateAppConnection(editing, body).subscribe({
+        next: (res) => {
+          this.savingForm.set(false);
+          if (!res.success) {
+            this.message.set(res.message || 'Update failed');
+            return;
+          }
+          this.message.set(res.message || 'App connection updated.');
+          this.closeForm();
+          this.reload();
+        },
+        error: (err: { error?: { message?: string } }) => {
+          this.savingForm.set(false);
+          this.message.set(err?.error?.message || 'Update failed');
+        }
+      });
+      return;
+    }
+
+    const body: CreateMetaAppConnectionRequest = {
+      name: this.formName.trim(),
+      platformCode: this.formPlatformCode,
+      appId: this.formAppId.trim(),
+      appSecret: this.formAppSecret.trim(),
+      callbackUrl: this.formCallbackUrl.trim(),
+      graphApiVersion: this.formGraphApiVersion.trim() || 'v21.0',
+      scopes: this.formScopes.trim()
+    };
+    this.api.createAppConnection(body).subscribe({
+      next: (res) => {
+        this.savingForm.set(false);
+        if (!res.success) {
+          this.message.set(res.message || 'Create failed');
+          return;
+        }
+        this.message.set(res.message || 'App connection created.');
+        this.closeForm();
+        this.reload();
+      },
+      error: (err: { error?: { message?: string } }) => {
+        this.savingForm.set(false);
+        this.message.set(err?.error?.message || 'Create failed');
+      }
+    });
+  }
+
+  deleteConnection(card: MetaAppConnection): void {
+    if (!confirm(`Delete "${card.name}"? This removes the app configuration${card.isConnected ? ' and disconnects the linked account' : ''}.`)) {
+      return;
+    }
+    this.api.deleteAppConnection(card.id).subscribe({
+      next: () => {
+        this.message.set(`${card.name} deleted.`);
+        this.reload();
+      },
+      error: (err: { error?: { message?: string } }) =>
+        this.message.set(err?.error?.message || 'Delete failed')
+    });
+  }
+
+  async connect(card: MetaAppConnection): Promise<void> {
+    if (!card.appId?.trim()) {
+      this.message.set('Configure App Id before connecting.');
+      return;
+    }
+
+    this.connecting.set(card.id);
+    this.message.set(`Opening Meta login for ${card.name}…`);
+
+    try {
+      const result = await this.appAuth.openPopup(card.id);
+      if (!result.ok) {
+        this.message.set(result.message || 'Connection failed');
+        return;
+      }
+
+      this.reload();
+      const refreshed = this.connections().find((c) => c.id === card.id) ?? card;
+
+      if (this.supportsPageSelection(refreshed.platformCode)) {
+        this.message.set(`Signed in with Meta. Choose the page you want to manage for ${refreshed.name}.`);
+        this.openPagePicker(refreshed);
+      } else {
+        this.message.set(`${refreshed.name} connected.`);
+      }
+    } catch (err) {
+      this.message.set(err instanceof Error ? err.message : 'Connection failed');
+    } finally {
+      this.connecting.set(null);
+    }
+  }
+
+  supportsPageSelection(code: string): boolean {
+    return ['facebook', 'instagram'].includes(code.toLowerCase());
+  }
+
+  supportsConnectionDetails(code: string): boolean {
+    return ['facebook', 'instagram', 'instagram_login'].includes(code.toLowerCase());
+  }
+
+  isInstagramLoginPlatform(code: string | null | undefined): boolean {
+    return (code || '').toLowerCase() === 'instagram_login';
+  }
+
+  isInstagramPlatform(code: string | null | undefined): boolean {
+    const value = (code || '').toLowerCase();
+    return value === 'instagram' || value === 'instagram_login';
+  }
+
+  readonly isInstagramLoginDetails = computed(() =>
+    this.isInstagramLoginPlatform(this.details()?.platformCode)
+  );
+
+  openPagePicker(card: MetaAppConnection): void {
+    this.pickerConnection.set(card);
+    this.loadPages();
+
+    const dialog = this.pickerDialog()?.nativeElement;
+    if (dialog && !dialog.open) dialog.showModal();
+  }
+
+  closePagePicker(): void {
+    const dialog = this.pickerDialog()?.nativeElement;
+    if (dialog?.open) {
+      dialog.close();
+      return;
+    }
+    this.resetPicker();
+  }
+
+  onPickerClosed(): void {
+    this.resetPicker();
+  }
+
+  private resetPicker(): void {
+    this.pickerConnection.set(null);
+    this.pages.set([]);
+    this.pagesError.set('');
+    this.selectedPageId.set(null);
+  }
+
+  loadPages(): void {
+    const card = this.pickerConnection();
+    if (!card) return;
+
+    this.pagesLoading.set(true);
+    this.pagesError.set('');
+    this.api.getAppConnectionPages(card.id).subscribe({
+      next: (res: ApiResponse<MetaPage[]>) => {
+        this.pagesLoading.set(false);
+        if (!res.success) {
+          this.pagesError.set(res.message || 'Could not load your pages.');
+          return;
+        }
+        const list = res.data || [];
+        this.pages.set(list);
+        this.selectedPageId.set(list.find((p) => p.isSelected && p.isEligible)?.pageId || null);
+      },
+      error: (err: { error?: { message?: string } }) => {
+        this.pagesLoading.set(false);
+        this.pagesError.set(err?.error?.message || 'Could not load your pages.');
+      }
+    });
+  }
+
+  togglePage(page: MetaPage): void {
+    if (!page.isEligible) return;
+    this.selectedPageId.update((current) => (current === page.pageId ? null : page.pageId));
+  }
+
+  isPageChecked(page: MetaPage): boolean {
+    return this.selectedPageId() === page.pageId;
+  }
+
+  confirmPage(): void {
+    const card = this.pickerConnection();
+    const pageId = this.selectedPageId();
+    if (!card || !pageId) return;
+
+    this.savingPage.set(true);
+    this.api.selectAppConnectionPage(card.id, pageId).subscribe({
+      next: (res) => {
+        this.savingPage.set(false);
+        if (!res.success) {
+          this.pagesError.set(res.message || 'Could not connect that page.');
+          return;
+        }
+        this.message.set(res.message || 'Page connected.');
+        this.closePagePicker();
+        this.reload();
+      },
+      error: (err: { error?: { message?: string } }) => {
+        this.savingPage.set(false);
+        this.pagesError.set(err?.error?.message || 'Could not connect that page.');
+      }
+    });
+  }
+
+  openDetails(card: MetaAppConnection): void {
+    this.detailsTitle.set(card.name);
+    this.detailsConnectionId.set(card.id);
+    this.details.set(null);
+    this.detailsError.set('');
+    this.tokenRevealed.set(false);
+    this.tokenCopied.set(false);
+    this.detailsLoading.set(true);
+    this.detailsOpen.set(true);
+
+    const dialog = this.detailsDialog()?.nativeElement;
+    if (dialog && !dialog.open) dialog.showModal();
+
+    this.api.getAppConnectionDetails(card.id).subscribe({
+      next: (res: ApiResponse<AppConnectionDetails>) => {
+        this.detailsLoading.set(false);
+        if (!res.success) {
+          this.detailsError.set(res.message || 'Could not load account details.');
+          return;
+        }
+        this.details.set(res.data);
+      },
+      error: (err: { error?: { message?: string } }) => {
+        this.detailsLoading.set(false);
+        this.detailsError.set(err?.error?.message || 'Could not load account details.');
+      }
+    });
+  }
+
+  closeDetails(): void {
+    const dialog = this.detailsDialog()?.nativeElement;
+    if (dialog?.open) {
+      dialog.close();
+      return;
+    }
+    this.resetDetails();
+  }
+
+  onDetailsClosed(): void {
+    this.resetDetails();
+  }
+
+  private resetDetails(): void {
+    this.detailsOpen.set(false);
+    this.detailsConnectionId.set(null);
+    this.details.set(null);
+    this.detailsError.set('');
+    this.tokenRevealed.set(false);
+    this.tokenCopied.set(false);
+  }
+
+  tokenLabel(platformCode: string): string {
+    const code = (platformCode || '').toLowerCase();
+    if (code === 'facebook' || code === 'instagram') return 'Page access token';
+    if (code === 'instagram_login') return 'Instagram access token';
+    return 'Access token';
+  }
+
+  maskedToken(token: string): string {
+    if (token.length <= 12) return '••••••••';
+    return `${token.slice(0, 6)}…${token.slice(-4)}`;
+  }
+
+  toggleTokenReveal(): void {
+    this.tokenRevealed.update((v) => !v);
+  }
+
+  async copyToken(token: string): Promise<void> {
+    try {
+      await navigator.clipboard.writeText(token);
+      this.tokenCopied.set(true);
+      window.setTimeout(() => this.tokenCopied.set(false), 1600);
+    } catch {
+      this.tokenCopied.set(false);
+    }
+  }
+
+  disconnect(card: MetaAppConnection): void {
+    this.api.disconnectAppConnection(card.id).subscribe({
+      next: () => {
+        this.message.set(`${card.name} disconnected.`);
+        this.reload();
+      },
+      error: (err: { error?: { message?: string } }) =>
+        this.message.set(err?.error?.message || 'Disconnect failed')
+    });
+  }
+
+  tone(code: string): string {
+    const map: Record<string, string> = {
+      facebook: 'blue',
+      instagram: 'rose',
+      instagram_login: 'rose',
+      whatsapp: 'green'
+    };
+    return map[code.toLowerCase()] || 'slate';
+  }
+
+  platformIcon(code: string): string {
+    const map: Record<string, string> = {
+      facebook: 'public',
+      instagram: 'photo_camera',
+      instagram_login: 'camera_alt',
+      whatsapp: 'chat'
+    };
+    return map[code.toLowerCase()] || 'apps';
+  }
+
+  maskedAppId(appId: string): string {
+    if (appId.length <= 8) return appId;
+    return `${appId.slice(0, 4)}…${appId.slice(-4)}`;
+  }
+}

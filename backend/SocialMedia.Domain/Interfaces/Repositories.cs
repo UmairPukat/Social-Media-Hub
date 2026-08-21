@@ -23,8 +23,19 @@ public interface ISocialAccountRepository : IRepository<SocialAccount>
 {
     Task<IReadOnlyList<SocialAccount>> GetByUserAsync(Guid userId, CancellationToken cancellationToken = default);
     Task<SocialAccount?> GetByUserAndPlatformAsync(Guid userId, Guid platformId, CancellationToken cancellationToken = default);
+    Task<SocialAccount?> GetByUserPlatformAndAppConnectionAsync(
+        Guid userId,
+        Guid platformId,
+        Guid appConnectionId,
+        CancellationToken cancellationToken = default);
     Task<SocialAccount?> GetByExternalAccountIdAsync(string externalAccountId, CancellationToken cancellationToken = default);
     Task<SocialAccount?> GetWithAuthAndProfilesAsync(Guid id, CancellationToken cancellationToken = default);
+}
+
+public interface IMetaAppConnectionRepository : IRepository<MetaAppConnection>
+{
+    Task<IReadOnlyList<MetaAppConnection>> GetByUserAsync(Guid userId, CancellationToken cancellationToken = default);
+    Task<MetaAppConnection?> GetByIdForUserAsync(Guid id, Guid userId, CancellationToken cancellationToken = default);
 }
 
 public interface ISocialAuthRepository : IRepository<SocialAuth>
@@ -90,6 +101,7 @@ public interface IUnitOfWork : IDisposable
     IWebhookEventRepository WebhookEvents { get; }
     IWebhookLogRepository WebhookLogs { get; }
     ISyncJobRepository SyncJobs { get; }
+    IMetaAppConnectionRepository MetaAppConnections { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 }

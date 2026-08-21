@@ -4,14 +4,19 @@ import { Observable } from 'rxjs';
 import { environment } from '../../../environments/environment';
 import {
   ApiResponse,
+  AppConnectionDetails,
   ConnectionDetails,
+  CreateMetaAppConnectionRequest,
   DashboardSummary,
   InboxItem,
+  MetaAppConnection,
   MetaPage,
   PlatformCard,
   PublishPostResponse,
+  AppConnectionDefaultScopes,
   SocialAccount,
-  SocialPost
+  SocialPost,
+  UpdateMetaAppConnectionRequest
 } from '../models/api.models';
 
 @Injectable({ providedIn: 'root' })
@@ -110,6 +115,54 @@ export class ApiService {
     const q = callbackUrl ? `?callbackUrl=${encodeURIComponent(callbackUrl)}` : '';
     return this.http.post<ApiResponse<object>>(
       `${this.base}/Webhooks/Subscribe?platformCode=${platformCode}${q ? '&' + q.slice(1) : ''}`,
+      {}
+    );
+  }
+
+  getAppConnections(): Observable<ApiResponse<MetaAppConnection[]>> {
+    return this.http.get<ApiResponse<MetaAppConnection[]>>(`${this.base}/AppConnections/GetAll`);
+  }
+
+  getAppConnectionDefaultScopes(platformCode: string): Observable<ApiResponse<AppConnectionDefaultScopes>> {
+    return this.http.get<ApiResponse<AppConnectionDefaultScopes>>(
+      `${this.base}/AppConnections/GetDefaultScopes?platformCode=${encodeURIComponent(platformCode)}`
+    );
+  }
+
+  createAppConnection(body: CreateMetaAppConnectionRequest): Observable<ApiResponse<MetaAppConnection>> {
+    return this.http.post<ApiResponse<MetaAppConnection>>(`${this.base}/AppConnections/Create`, body);
+  }
+
+  updateAppConnection(id: string, body: UpdateMetaAppConnectionRequest): Observable<ApiResponse<MetaAppConnection>> {
+    return this.http.put<ApiResponse<MetaAppConnection>>(`${this.base}/AppConnections/Update?id=${id}`, body);
+  }
+
+  deleteAppConnection(id: string): Observable<ApiResponse<object>> {
+    return this.http.delete<ApiResponse<object>>(`${this.base}/AppConnections/Delete?id=${id}`);
+  }
+
+  getAppConnectionPages(appConnectionId: string): Observable<ApiResponse<MetaPage[]>> {
+    return this.http.get<ApiResponse<MetaPage[]>>(
+      `${this.base}/AppConnections/GetPages?appConnectionId=${encodeURIComponent(appConnectionId)}`
+    );
+  }
+
+  selectAppConnectionPage(appConnectionId: string, pageId: string): Observable<ApiResponse<SocialAccount>> {
+    return this.http.post<ApiResponse<SocialAccount>>(`${this.base}/AppConnections/SelectPage`, {
+      appConnectionId,
+      pageId
+    });
+  }
+
+  getAppConnectionDetails(appConnectionId: string): Observable<ApiResponse<AppConnectionDetails>> {
+    return this.http.get<ApiResponse<AppConnectionDetails>>(
+      `${this.base}/AppConnections/GetConnectionDetails?appConnectionId=${encodeURIComponent(appConnectionId)}`
+    );
+  }
+
+  disconnectAppConnection(appConnectionId: string): Observable<ApiResponse<object>> {
+    return this.http.post<ApiResponse<object>>(
+      `${this.base}/AppConnections/Disconnect?appConnectionId=${encodeURIComponent(appConnectionId)}`,
       {}
     );
   }

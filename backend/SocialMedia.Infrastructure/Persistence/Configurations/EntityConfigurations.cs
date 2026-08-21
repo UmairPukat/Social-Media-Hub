@@ -52,10 +52,16 @@ public class SocialAccountConfiguration : IEntityTypeConfiguration<SocialAccount
         builder.Property(x => x.DisplayName).IsRequired().HasMaxLength(200);
         builder.Property(x => x.Username).HasMaxLength(200);
         builder.Property(x => x.Email).HasMaxLength(256);
-        builder.HasIndex(x => new { x.UserId, x.PlatformId }).IsUnique();
+        builder.HasIndex(x => new { x.UserId, x.PlatformId })
+            .IsUnique()
+            .HasFilter("\"MetaAppConnectionId\" IS NULL");
+        builder.HasIndex(x => new { x.UserId, x.PlatformId, x.MetaAppConnectionId })
+            .IsUnique()
+            .HasFilter("\"MetaAppConnectionId\" IS NOT NULL");
 
         builder.HasOne(x => x.User).WithMany(x => x.SocialAccounts).HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
         builder.HasOne(x => x.Platform).WithMany(x => x.SocialAccounts).HasForeignKey(x => x.PlatformId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne(x => x.MetaAppConnection).WithMany(x => x.SocialAccounts).HasForeignKey(x => x.MetaAppConnectionId).OnDelete(DeleteBehavior.SetNull);
         builder.HasOne(x => x.Auth).WithOne(x => x.SocialAccount).HasForeignKey<SocialAuth>(x => x.SocialAccountId).OnDelete(DeleteBehavior.Cascade);
     }
 }
@@ -192,5 +198,23 @@ public class SyncJobConfiguration : IEntityTypeConfiguration<SyncJob>
         builder.ToTable("SyncJobs");
         builder.HasKey(x => x.Id);
         builder.HasOne(x => x.SocialAccount).WithMany(x => x.SyncJobs).HasForeignKey(x => x.SocialAccountId).OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
+public class MetaAppConnectionConfiguration : IEntityTypeConfiguration<MetaAppConnection>
+{
+    public void Configure(EntityTypeBuilder<MetaAppConnection> builder)
+    {
+        builder.ToTable("MetaAppConnections");
+        builder.HasKey(x => x.Id);
+        builder.Property(x => x.Name).IsRequired().HasMaxLength(150);
+        builder.Property(x => x.PlatformCode).IsRequired().HasMaxLength(50);
+        builder.Property(x => x.AppId).IsRequired().HasMaxLength(100);
+        builder.Property(x => x.AppSecret).IsRequired().HasMaxLength(500);
+        builder.Property(x => x.CallbackUrl).IsRequired().HasMaxLength(2000);
+        builder.Property(x => x.GraphApiVersion).IsRequired().HasMaxLength(20);
+        builder.Property(x => x.Scopes).IsRequired().HasMaxLength(2000);
+        builder.HasIndex(x => new { x.UserId, x.Name });
+        builder.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
     }
 }

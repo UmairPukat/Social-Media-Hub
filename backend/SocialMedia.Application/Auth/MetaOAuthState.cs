@@ -16,11 +16,15 @@ public static class MetaOAuthState
     };
 
     public static string Create(Guid userId, string platformCode, string signingKey, TimeSpan? lifetime = null)
+        => Create(userId, platformCode, signingKey, null, lifetime);
+
+    public static string Create(Guid userId, string platformCode, string signingKey, Guid? appConnectionId, TimeSpan? lifetime = null)
     {
         var payload = new Payload
         {
             UserId = userId,
             Platform = platformCode.Trim().ToLowerInvariant(),
+            AppConnectionId = appConnectionId,
             Nonce = Guid.NewGuid().ToString("N"),
             ExpiresAtUnix = DateTimeOffset.UtcNow.Add(lifetime ?? TimeSpan.FromMinutes(15)).ToUnixTimeSeconds()
         };
@@ -32,8 +36,21 @@ public static class MetaOAuthState
 
     public static bool TryValidate(string? state, string signingKey, out Guid userId, out string platformCode, out string error)
     {
+        Guid? appConnectionId;
+        return TryValidate(state, signingKey, out userId, out platformCode, out appConnectionId, out error);
+    }
+
+    public static bool TryValidate(
+        string? state,
+        string signingKey,
+        out Guid userId,
+        out string platformCode,
+        out Guid? appConnectionId,
+        out string error)
+    {
         userId = Guid.Empty;
         platformCode = string.Empty;
+        appConnectionId = null;
         error = "Invalid OAuth state.";
 
         if (string.IsNullOrWhiteSpace(state))
@@ -75,6 +92,7 @@ public static class MetaOAuthState
 
             userId = payload.UserId;
             platformCode = payload.Platform;
+            appConnectionId = payload.AppConnectionId;
             error = string.Empty;
             return true;
         }
@@ -108,6 +126,7 @@ public static class MetaOAuthState
     {
         public Guid UserId { get; set; }
         public string Platform { get; set; } = string.Empty;
+        public Guid? AppConnectionId { get; set; }
         public string Nonce { get; set; } = string.Empty;
         public long ExpiresAtUnix { get; set; }
     }

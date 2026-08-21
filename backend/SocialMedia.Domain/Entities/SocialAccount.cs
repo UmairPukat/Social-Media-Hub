@@ -11,6 +11,9 @@ public class SocialAccount : BaseEntity
     public Guid UserId { get; set; }
     public Guid PlatformId { get; set; }
 
+    /// <summary>Set when connected via App Connections; null for the default Integrations flow.</summary>
+    public Guid? MetaAppConnectionId { get; set; }
+
     /// <summary>External user / business id from the platform.</summary>
     public string ExternalAccountId { get; set; } = string.Empty;
 
@@ -26,6 +29,7 @@ public class SocialAccount : BaseEntity
 
     public User? User { get; set; }
     public Platform? Platform { get; set; }
+    public MetaAppConnection? MetaAppConnection { get; set; }
     public SocialAuth? Auth { get; set; }
     public ICollection<SocialProfile> Profiles { get; set; } = new List<SocialProfile>();
     public ICollection<SyncJob> SyncJobs { get; set; } = new List<SyncJob>();

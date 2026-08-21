@@ -27,6 +27,7 @@ public class AppDbContext : DbContext
     public DbSet<WebhookEvent> WebhookEvents => Set<WebhookEvent>();
     public DbSet<WebhookLog> WebhookLogs => Set<WebhookLog>();
     public DbSet<SyncJob> SyncJobs => Set<SyncJob>();
+    public DbSet<MetaAppConnection> MetaAppConnections => Set<MetaAppConnection>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
