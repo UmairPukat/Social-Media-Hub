@@ -1,3 +1,4 @@
+using SocialMedia.Application.DTOs.Meta;
 using SocialMedia.Application.Interfaces;
 
 namespace SocialMedia.Application.Interfaces;
@@ -34,5 +35,20 @@ public interface IMetaOAuthClient
     Task<string?> DescribeTokenScopesAsync(
         MetaOAuthCredentials credentials,
         string userAccessToken,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>POST {pageId}/subscribed_apps — subscribes the App Connection Meta app to page webhooks.</summary>
+    Task SubscribePageWebhooksAsync(
+        string platformCode,
+        MetaOAuthCredentials credentials,
+        MetaPageInfo page,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>GET {pageId}/subscribed_apps — webhook fields the page currently sends for this app.</summary>
+    Task<IReadOnlyList<string>> GetSubscribedFieldsAsync(
+        string platformCode,
+        MetaOAuthCredentials credentials,
+        string pageId,
+        string pageAccessToken,
         CancellationToken cancellationToken = default);
 }

@@ -50,110 +50,93 @@
     }
   </div>
 
-  <div class="catalog">
+  <div class="catalog app-connections-catalog">
     @if (!connections().length) {
-      <section class="category">
-        <div class="category-head">
-          <div>
-            <h2>Your Meta apps</h2>
-            <p>Add a Meta developer app to see platform cards here — same layout as Integrations.</p>
-          </div>
-        </div>
-        <p class="picker-empty empty-state">
-          No app connections yet. Click <strong>Add app connection</strong> to register App Id, App Secret, and Callback URL.
-        </p>
-      </section>
+      <p class="picker-empty empty-state">
+        No app connections yet. Click <strong>Add app connection</strong> to register App Id, App Secret, and Callback URL.
+      </p>
+    } @else if (!visibleCards().length) {
+      <p class="picker-empty empty-state">No app connections match this filter.</p>
     } @else {
-      @for (cat of visibleCategories(); track cat.id) {
-        <section class="category">
-          <div class="category-head">
-            <div>
-              <h2>{{ cat.label }}</h2>
-              <p>{{ cat.items.length }} app{{ cat.items.length === 1 ? '' : 's' }} in this platform</p>
+      <div class="stats">
+        @for (card of visibleCards(); track card.trackId) {
+          <article
+            class="stat"
+            [attr.data-tone]="tone(card.code)"
+            [class.live]="isPageLinked(card)">
+            <div class="stat-top">
+              <span class="stat-ico">
+                <mat-icon>{{ platformIcon(card.code) }}</mat-icon>
+              </span>
+              <div class="stat-top-end">
+                <span class="stat-label">
+                  {{ isPageLinked(card) ? 'Connected' : 'Ready' }}
+                </span>
+                @if (isPageLinked(card)) {
+                  <button
+                    type="button"
+                    class="eye-btn"
+                    matTooltip="View connected page details"
+                    [attr.aria-label]="'View ' + card.displayName + ' connection details'"
+                    (click)="onOpenDetails(card)">
+                    <mat-icon>visibility</mat-icon>
+                  </button>
+                }
+              </div>
             </div>
-          </div>
 
-          <div class="stats">
-            @for (card of cat.items; track card.trackId) {
-              <article
-                class="stat"
-                [attr.data-tone]="tone(card.code)"
-                [class.live]="isPageLinked(card)">
-                <div class="stat-top">
-                  <span class="stat-ico">
-                    <mat-icon>{{ platformIcon(card.code) }}</mat-icon>
-                  </span>
-                  <div class="stat-top-end">
-                    <span class="stat-label">
-                      {{ isPageLinked(card) ? 'Connected' : 'Ready' }}
-                    </span>
-                    @if (isPageLinked(card)) {
-                      <button
-                        type="button"
-                        class="eye-btn"
-                        matTooltip="View connected page details"
-                        [attr.aria-label]="'View ' + card.displayName + ' connection details'"
-                        (click)="onOpenDetails(card)">
-                        <mat-icon>visibility</mat-icon>
-                      </button>
-                    }
-                  </div>
-                </div>
+            <strong class="stat-value">{{ card.displayName }}</strong>
 
-                <strong class="stat-value">{{ card.displayName }}</strong>
+            <p class="stat-hint">
+              @if (isPageLinked(card) && card.accountName) {
+                Linked as {{ card.accountName }}
+              } @else {
+                {{ shortDesc(card.description) }}
+              }
+            </p>
 
-                <p class="stat-hint">
-                  @if (isPageLinked(card) && card.accountName) {
-                    Linked as {{ card.accountName }}
-                  } @else {
-                    {{ shortDesc(card.description) }}
-                  }
-                </p>
+            <div class="stat-action">
+              <div class="stat-action-main">
+                @if (isPageLinked(card)) {
+                  <button mat-stroked-button type="button" class="danger" (click)="onDisconnect(card)">
+                    Disconnect
+                  </button>
+                } @else if (card.canConnect) {
+                  <button
+                    mat-flat-button
+                    color="primary"
+                    type="button"
+                    [disabled]="isConnecting(card)"
+                    (click)="onConnect(card)">
+                    {{ isConnecting(card) ? 'Connecting…' : 'Connect' }}
+                  </button>
+                } @else {
+                  <button mat-flat-button type="button" class="soon" disabled>Coming soon</button>
+                }
+              </div>
 
-                <div class="stat-action">
-                  <div class="stat-action-main">
-                    @if (isPageLinked(card)) {
-                      <button mat-stroked-button type="button" class="danger" (click)="onDisconnect(card)">
-                        Disconnect
-                      </button>
-                    } @else if (card.canConnect) {
-                      <button
-                        mat-flat-button
-                        color="primary"
-                        type="button"
-                        [disabled]="isConnecting(card)"
-                        (click)="onConnect(card)">
-                        {{ isConnecting(card) ? 'Connecting…' : 'Connect' }}
-                      </button>
-                    } @else {
-                      <button mat-flat-button type="button" class="soon" disabled>Coming soon</button>
-                    }
-                  </div>
-
-                  <div class="stat-card-tools">
-                    <button
-                      type="button"
-                      class="eye-btn"
-                      matTooltip="Edit app credentials"
-                      [attr.aria-label]="'Edit ' + card.displayName"
-                      (click)="onEdit(card)">
-                      <mat-icon>edit</mat-icon>
-                    </button>
-                    <button
-                      type="button"
-                      class="eye-btn danger-icon"
-                      matTooltip="Delete app connection"
-                      [attr.aria-label]="'Delete ' + card.displayName"
-                      (click)="onDelete(card)">
-                      <mat-icon>delete</mat-icon>
-                    </button>
-                  </div>
-                </div>
-              </article>
-            }
-          </div>
-        </section>
-      }
+              <div class="stat-card-tools">
+                <button
+                  type="button"
+                  class="eye-btn"
+                  matTooltip="Edit app credentials"
+                  [attr.aria-label]="'Edit ' + card.displayName"
+                  (click)="onEdit(card)">
+                  <mat-icon>edit</mat-icon>
+                </button>
+                <button
+                  type="button"
+                  class="eye-btn danger-icon"
+                  matTooltip="Delete app connection"
+                  [attr.aria-label]="'Delete ' + card.displayName"
+                  (click)="onDelete(card)">
+                  <mat-icon>delete</mat-icon>
+                </button>
+              </div>
+            </div>
+          </article>
+        }
+      </div>
     }
   </div>
 

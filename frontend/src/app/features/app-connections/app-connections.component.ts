@@ -133,10 +133,13 @@ export class AppConnectionsComponent implements OnInit {
       .concat([...map.values()].filter((g) => !APP_CONNECTION_PLATFORM_ORDER.includes(g.id)));
   });
 
-  readonly visibleCategories = computed(() => {
+  readonly visibleCards = computed<IntegrationCardView[]>(() => {
     const active = this.activeCategory();
-    if (active === 'all') return this.categories();
-    return this.categories().filter((c) => c.id === active);
+    const list =
+      active === 'all'
+        ? this.connections()
+        : this.connections().filter((c) => c.platformCode.toLowerCase() === active);
+    return list.map((c) => this.toCardView(c));
   });
 
   readonly isInstagramLoginDetails = computed(() =>

@@ -486,7 +486,7 @@ public class AppConnectionService : IAppConnectionService
             await QueueInitialSyncAsync(account, cancellationToken);
             await _unitOfWork.SaveChangesAsync(cancellationToken);
 
-            var subscribeWarning = await SubscribePageWebhooksAsync(entity.PlatformCode, page, cancellationToken);
+            var subscribeWarning = await SubscribePageWebhooksAsync(entity, page, cancellationToken);
             var reloaded = await _unitOfWork.SocialAccounts.GetWithAuthAndProfilesAsync(account.Id, cancellationToken);
             var message = string.IsNullOrWhiteSpace(subscribeWarning)
                 ? $"{page.PageName} connected."
@@ -558,7 +558,7 @@ public class AppConnectionService : IAppConnectionService
                 }).ToList()
             };
 
-            await ApplyWebhookStatusAsync(details, entity.PlatformCode, pageId, account.Auth?.AccessToken, cancellationToken);
+            await ApplyWebhookStatusAsync(details, entity, pageId, account.Auth?.AccessToken, cancellationToken);
             return ApiResponse<AppConnectionConnectionDetailsDto>.Ok(details);
         }
         catch (Exception ex)
@@ -900,11 +900,12 @@ public class AppConnectionService : IAppConnectionService
 
     private async Task ApplyWebhookStatusAsync(
         AppConnectionConnectionDetailsDto details,
-        string platformCode,
+        MetaAppConnection entity,
         string? pageId,
         string? pageAccessToken,
         CancellationToken cancellationToken)
     {
+        var platformCode = entity.PlatformCode.Trim().ToLowerInvariant();
         if (!SupportsPageSelection(platformCode))
         {
             if (platformCode == "instagram_login")
@@ -920,9 +921,12 @@ public class AppConnectionService : IAppConnectionService
 
         try
         {
-            var fields = platformCode == "instagram"
-                ? await _instagramService.GetSubscribedFieldsAsync(pageId!, pageAccessToken!, cancellationToken)
-                : await _facebookService.GetSubscribedFieldsAsync(pageId!, pageAccessToken!, cancellationToken);
+            var fields = await _metaOAuth.GetSubscribedFieldsAsync(
+                platformCode,
+                ToCredentials(entity),
+                pageId!,
+                pageAccessToken!,
+                cancellationToken);
 
             details.SubscribedFields = fields;
             details.WebhookSubscribed = fields.Count > 0;
@@ -935,18 +939,21 @@ public class AppConnectionService : IAppConnectionService
         }
     }
 
-    private async Task<string?> SubscribePageWebhooksAsync(string platformCode, MetaPageInfo page, CancellationToken cancellationToken)
+    private async Task<string?> SubscribePageWebhooksAsync(
+        MetaAppConnection entity,
+        MetaPageInfo page,
+        CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(page.PageAccessToken))
             return "no page access token was returned by Meta.";
 
+        var platformCode = entity.PlatformCode.Trim().ToLowerInvariant();
+        if (platformCode is not ("facebook" or "instagram"))
+            return null;
+
         try
         {
-            if (platformCode == "instagram")
-                await _instagramService.SubscribePageWebhooksAsync(page.PageId, page.PageAccessToken!, cancellationToken);
-            else
-                await _facebookService.SubscribePageWebhooksAsync(page.PageId, page.PageAccessToken!, cancellationToken);
-
+            await _metaOAuth.SubscribePageWebhooksAsync(platformCode, ToCredentials(entity), page, cancellationToken);
             return null;
         }
         catch (Exception ex)

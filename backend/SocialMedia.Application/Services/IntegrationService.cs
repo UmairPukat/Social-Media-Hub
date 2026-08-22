@@ -657,30 +657,6 @@ public class IntegrationService : IIntegrationService
         }
     }
 
-    /// <summary>Best-effort unsubscribe so a disconnected page stops sending webhooks.</summary>
-    private async Task UnsubscribePageWebhooksAsync(
-        string platformCode,
-        SocialAccount account,
-        string? pageAccessToken,
-        CancellationToken cancellationToken)
-    {
-        var pageId = ResolveSelectedPageId(account, platformCode);
-        if (string.IsNullOrWhiteSpace(pageId) || string.IsNullOrWhiteSpace(pageAccessToken))
-            return;
-
-        try
-        {
-            if (platformCode == "instagram")
-                await _instagramService.UnsubscribePageWebhooksAsync(pageId!, pageAccessToken!, cancellationToken);
-            else
-                await _facebookService.UnsubscribePageWebhooksAsync(pageId!, pageAccessToken!, cancellationToken);
-        }
-        catch
-        {
-            // The local account still disconnects; the page subscription can be removed in Meta.
-        }
-    }
-
     private static string? ResolveSelectedPageId(SocialAccount account, string platformCode)
     {
         var selected = ReadJsonString(account.MetadataJson, "selectedPageId");
@@ -863,12 +839,7 @@ public class IntegrationService : IIntegrationService
             if (account is null)
                 return ApiResponse<object>.Fail("Account not connected.");
 
-            var code = platformCode.Trim().ToLowerInvariant();
             var auth = await _unitOfWork.SocialAuths.GetBySocialAccountIdAsync(account.Id, cancellationToken);
-
-            // Stop Meta from sending webhooks for this page before the token is cleared.
-            if (SupportsPageSelection(code))
-                await UnsubscribePageWebhooksAsync(code, account, auth?.AccessToken, cancellationToken);
 
             account.Status = SocialAccountStatus.Disconnected;
             account.UpdatedAt = DateTime.UtcNow;

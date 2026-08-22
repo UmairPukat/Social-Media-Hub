@@ -1,5 +1,14 @@
 @import '../integrations/integrations.component.scss';
 
+/* Flat grid — no per-platform section headers (Integrations keeps grouped layout). */
+.app-connections-catalog {
+  display: block;
+}
+
+.app-connections-catalog .stats {
+  margin: 0;
+}
+
 /* App Connections card layout — not used by Integrations. */
 .stat-action {
   display: flex;
