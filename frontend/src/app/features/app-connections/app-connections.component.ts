@@ -317,6 +317,19 @@ export class AppConnectionsComponent implements OnInit {
     return 'facebook';
   }
 
+  private containsInstagramBusinessScopes(scopes: string | null | undefined): boolean {
+    return (scopes ?? '').toLowerCase().includes('instagram_business_');
+  }
+
+  /** instagram_business_* scopes require PlatformCode instagram_login, not instagram (Facebook Login). */
+  private alignPlatformForInstagramBusinessScopes(): void {
+    if (!this.containsInstagramBusinessScopes(this.formScopes)) return;
+    if (this.formPlatformCode === 'instagram_login') return;
+
+    this.formPlatformCode = 'instagram_login';
+    this.formBaseUrl = this.defaultBaseUrl('instagram_login');
+  }
+
   openEditForm(card: MetaAppConnection): void {
     this.editingId.set(card.id);
     this.formName = card.name;
@@ -328,6 +341,7 @@ export class AppConnectionsComponent implements OnInit {
     this.formCallbackUrl = card.callbackUrl;
     this.formGraphApiVersion = card.graphApiVersion || 'v21.0';
     this.formScopes = card.scopes || '';
+    this.alignPlatformForInstagramBusinessScopes();
     this.formOpen.set(true);
     const dialog = this.formDialog()?.nativeElement;
     if (dialog && !dialog.open) dialog.showModal();
@@ -378,6 +392,8 @@ export class AppConnectionsComponent implements OnInit {
       this.message.set(scopeError);
       return;
     }
+
+    this.alignPlatformForInstagramBusinessScopes();
 
     const editing = this.editingId();
     if (!this.formAppSecret.trim()) {

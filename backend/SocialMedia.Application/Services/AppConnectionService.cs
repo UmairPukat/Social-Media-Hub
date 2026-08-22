@@ -88,6 +88,9 @@ public class AppConnectionService : IAppConnectionService
             if (platformCode is null)
                 return ApiResponse<MetaAppConnectionDto>.Fail("Platform must be facebook, instagram, instagram_login, or whatsapp.");
 
+            if (platformCode == "instagram" && InstagramLoginScopeHelper.ContainsInstagramBusinessScopes(request.Scopes))
+                platformCode = "instagram_login";
+
             if (string.IsNullOrWhiteSpace(request.Name))
                 return ApiResponse<MetaAppConnectionDto>.Fail("Name is required.");
             if (string.IsNullOrWhiteSpace(request.AppId))
@@ -149,6 +152,9 @@ public class AppConnectionService : IAppConnectionService
                 return ApiResponse<MetaAppConnectionDto>.Fail("App Secret is required.");
             if (string.IsNullOrWhiteSpace(request.CallbackUrl))
                 return ApiResponse<MetaAppConnectionDto>.Fail("Callback URL is required.");
+
+            if (entity.PlatformCode == "instagram" && InstagramLoginScopeHelper.ContainsInstagramBusinessScopes(request.Scopes))
+                entity.PlatformCode = "instagram_login";
 
             entity.Name = request.Name.Trim();
             entity.Description = (request.Description ?? string.Empty).Trim();
@@ -215,13 +221,27 @@ public class AppConnectionService : IAppConnectionService
         if (string.IsNullOrWhiteSpace(entity.CallbackUrl))
             return ApiResponse<BeginAppConnectionOAuthResponse>.Fail("Callback URL must be configured.");
 
-        var scopes = ResolveScopes(entity.PlatformCode, entity.Scopes);
+        // instagram_business_* scopes only work with PlatformCode instagram_login — repair legacy rows.
+        if (!platformCode.Equals("instagram_login", StringComparison.OrdinalIgnoreCase)
+            && InstagramLoginScopeHelper.ContainsInstagramBusinessScopes(entity.Scopes))
+        {
+            entity.PlatformCode = "instagram_login";
+            entity.BaseUrl = MetaBaseUrlHelper.InstagramGraph;
+            platformCode = entity.PlatformCode;
+        }
+
+        var scopes = ResolveScopes(platformCode, entity.Scopes);
         if (string.IsNullOrWhiteSpace(scopes))
             return ApiResponse<BeginAppConnectionOAuthResponse>.Fail("OAuth scopes must be configured.");
 
-        if (!string.Equals(entity.Scopes, scopes, StringComparison.Ordinal))
+        var scopesOrPlatformChanged =
+            !string.Equals(entity.Scopes, scopes, StringComparison.Ordinal)
+            || !string.Equals(entity.PlatformCode, platformCode, StringComparison.OrdinalIgnoreCase);
+        if (scopesOrPlatformChanged)
         {
             entity.Scopes = scopes;
+            entity.PlatformCode = platformCode;
+            entity.BaseUrl = ResolveStoredBaseUrl(platformCode, entity.BaseUrl);
             entity.UpdatedAt = DateTime.UtcNow;
             _unitOfWork.MetaAppConnections.Update(entity);
             await _unitOfWork.SaveChangesAsync(cancellationToken);
@@ -236,12 +256,6 @@ public class AppConnectionService : IAppConnectionService
             var configError = ValidateInstagramLoginConfig(entity, scopes, appId);
             if (configError is not null)
                 return ApiResponse<BeginAppConnectionOAuthResponse>.Fail(configError);
-        }
-        else if (InstagramLoginScopeHelper.ContainsInstagramBusinessScopes(entity.Scopes))
-        {
-            return ApiResponse<BeginAppConnectionOAuthResponse>.Fail(
-                "This connection stores instagram_business_* scopes but PlatformCode is not instagram_login. "
-                + "Create an Instagram Login app connection (filter Instagram Login before Add), not Instagram (Facebook Login).");
         }
 
         var state = MetaOAuthState.Create(userId, platformCode, _jwt.SecretKey, entity.Id);
@@ -786,6 +800,9 @@ public class AppConnectionService : IAppConnectionService
         if (code == "instagram_login")
             return InstagramLoginScopeHelper.Sanitize(normalized);
 
+        if (code == "instagram")
+            normalized = StripInstagramLoginScopes(normalized);
+
         if (!SupportsPageSelection(code))
             return normalized;
 
@@ -797,6 +814,16 @@ public class AppConnectionService : IAppConnectionService
         // Required since Graph API v17 for Pages linked to Meta Business Suite (see me/accounts changelog).
         set.Add("business_management");
         return string.Join(",", set);
+    }
+
+    private static string StripInstagramLoginScopes(string scopes)
+    {
+        var parts = scopes
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(s => !s.StartsWith("instagram_business_", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        return parts.Count > 0 ? string.Join(",", parts) : AppConnectionScopeCatalog.GetDefault("instagram");
     }
 
     private static string ResolveStoredBaseUrl(string platformCode, string? baseUrl)
