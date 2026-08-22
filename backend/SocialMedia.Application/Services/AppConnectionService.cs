@@ -92,6 +92,9 @@ public class AppConnectionService : IAppConnectionService
                 return ApiResponse<MetaAppConnectionDto>.Fail("Name is required.");
             if (string.IsNullOrWhiteSpace(request.AppId))
                 return ApiResponse<MetaAppConnectionDto>.Fail("App Id is required.");
+            var createAppIdError = MetaAppIdValidator.ValidateOrError(request.AppId, ResolveAppIdLabel(platformCode));
+            if (createAppIdError is not null)
+                return ApiResponse<MetaAppConnectionDto>.Fail(createAppIdError);
             if (string.IsNullOrWhiteSpace(request.AppSecret))
                 return ApiResponse<MetaAppConnectionDto>.Fail("App Secret is required.");
             if (string.IsNullOrWhiteSpace(request.CallbackUrl))
@@ -106,7 +109,7 @@ public class AppConnectionService : IAppConnectionService
                 AppId = request.AppId.Trim(),
                 AppSecret = request.AppSecret.Trim(),
                 CallbackUrl = request.CallbackUrl.Trim(),
-                BaseUrl = MetaBaseUrlHelper.Resolve(request.BaseUrl, platformCode),
+                BaseUrl = ResolveStoredBaseUrl(platformCode, request.BaseUrl),
                 GraphApiVersion = string.IsNullOrWhiteSpace(request.GraphApiVersion) ? "v21.0" : request.GraphApiVersion.Trim(),
                 Scopes = ResolveScopes(platformCode, request.Scopes)
             };
@@ -139,6 +142,9 @@ public class AppConnectionService : IAppConnectionService
                 return ApiResponse<MetaAppConnectionDto>.Fail("Name is required.");
             if (string.IsNullOrWhiteSpace(request.AppId))
                 return ApiResponse<MetaAppConnectionDto>.Fail("App Id is required.");
+            var updateAppIdError = MetaAppIdValidator.ValidateOrError(request.AppId, ResolveAppIdLabel(entity.PlatformCode));
+            if (updateAppIdError is not null)
+                return ApiResponse<MetaAppConnectionDto>.Fail(updateAppIdError);
             if (string.IsNullOrWhiteSpace(request.AppSecret))
                 return ApiResponse<MetaAppConnectionDto>.Fail("App Secret is required.");
             if (string.IsNullOrWhiteSpace(request.CallbackUrl))
@@ -149,7 +155,7 @@ public class AppConnectionService : IAppConnectionService
             entity.AppId = request.AppId.Trim();
             entity.AppSecret = request.AppSecret.Trim();
             entity.CallbackUrl = request.CallbackUrl.Trim();
-            entity.BaseUrl = MetaBaseUrlHelper.Resolve(request.BaseUrl, entity.PlatformCode);
+            entity.BaseUrl = ResolveStoredBaseUrl(entity.PlatformCode, request.BaseUrl);
             entity.GraphApiVersion = string.IsNullOrWhiteSpace(request.GraphApiVersion) ? entity.GraphApiVersion : request.GraphApiVersion.Trim();
             entity.Scopes = ResolveScopes(entity.PlatformCode, request.Scopes);
             entity.UpdatedAt = DateTime.UtcNow;
@@ -198,8 +204,14 @@ public class AppConnectionService : IAppConnectionService
             return ApiResponse<BeginAppConnectionOAuthResponse>.Fail("App connection not found.");
 
         var platformCode = entity.PlatformCode;
-        if (string.IsNullOrWhiteSpace(entity.AppId) || string.IsNullOrWhiteSpace(entity.AppSecret))
+        var appId = entity.AppId.Trim();
+        if (string.IsNullOrWhiteSpace(appId) || string.IsNullOrWhiteSpace(entity.AppSecret))
             return ApiResponse<BeginAppConnectionOAuthResponse>.Fail("App Id and App Secret must be configured.");
+
+        var appIdError = MetaAppIdValidator.ValidateOrError(appId, ResolveAppIdLabel(platformCode));
+        if (appIdError is not null)
+            return ApiResponse<BeginAppConnectionOAuthResponse>.Fail(appIdError);
+
         if (string.IsNullOrWhiteSpace(entity.CallbackUrl))
             return ApiResponse<BeginAppConnectionOAuthResponse>.Fail("Callback URL must be configured.");
 
@@ -207,16 +219,45 @@ public class AppConnectionService : IAppConnectionService
         if (string.IsNullOrWhiteSpace(scopes))
             return ApiResponse<BeginAppConnectionOAuthResponse>.Fail("OAuth scopes must be configured.");
 
+        if (!string.Equals(entity.Scopes, scopes, StringComparison.Ordinal))
+        {
+            entity.Scopes = scopes;
+            entity.UpdatedAt = DateTime.UtcNow;
+            _unitOfWork.MetaAppConnections.Update(entity);
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+        }
+
+        if (platformCode.Equals("instagram_login", StringComparison.OrdinalIgnoreCase))
+        {
+            var rawScopeError = InstagramLoginScopeHelper.DetectInvalidStoredScopes(entity.Scopes);
+            if (rawScopeError is not null)
+                return ApiResponse<BeginAppConnectionOAuthResponse>.Fail(rawScopeError);
+
+            var configError = ValidateInstagramLoginConfig(entity, scopes, appId);
+            if (configError is not null)
+                return ApiResponse<BeginAppConnectionOAuthResponse>.Fail(configError);
+        }
+        else if (InstagramLoginScopeHelper.ContainsInstagramBusinessScopes(entity.Scopes))
+        {
+            return ApiResponse<BeginAppConnectionOAuthResponse>.Fail(
+                "This connection stores instagram_business_* scopes but PlatformCode is not instagram_login. "
+                + "Create an Instagram Login app connection (filter Instagram Login before Add), not Instagram (Facebook Login).");
+        }
+
         var state = MetaOAuthState.Create(userId, platformCode, _jwt.SecretKey, entity.Id);
+
+        var oauthScopes = platformCode.Equals("instagram_login", StringComparison.OrdinalIgnoreCase)
+            ? InstagramLoginScopeHelper.FormatForAuthorizeUrl(scopes)
+            : scopes;
 
         var authUrl = MetaBaseUrlHelper.BuildAuthorizeUrl(
             entity.PlatformCode,
             entity.BaseUrl,
-            entity.AppId,
-            entity.CallbackUrl,
+            appId,
+            entity.CallbackUrl.Trim(),
             entity.GraphApiVersion,
             state,
-            scopes);
+            oauthScopes);
 
         return ApiResponse<BeginAppConnectionOAuthResponse>.Ok(new BeginAppConnectionOAuthResponse
         {
@@ -742,6 +783,9 @@ public class AppConnectionService : IAppConnectionService
             ? NormalizeScopeList(scopes)
             : AppConnectionScopeCatalog.GetDefault(code);
 
+        if (code == "instagram_login")
+            return InstagramLoginScopeHelper.Sanitize(normalized);
+
         if (!SupportsPageSelection(code))
             return normalized;
 
@@ -754,6 +798,45 @@ public class AppConnectionService : IAppConnectionService
         set.Add("business_management");
         return string.Join(",", set);
     }
+
+    private static string ResolveStoredBaseUrl(string platformCode, string? baseUrl)
+    {
+        var code = (platformCode ?? string.Empty).Trim().ToLowerInvariant();
+        if (code == "instagram_login")
+            return MetaBaseUrlHelper.InstagramGraph;
+
+        return MetaBaseUrlHelper.Resolve(baseUrl, code);
+    }
+
+    private string? ValidateInstagramLoginConfig(MetaAppConnection entity, string scopes, string appId)
+    {
+        var facebookAppIds = new[]
+        {
+            _meta.Facebook.AppId,
+            _meta.Instagram.AppId
+        }.Where(id => !string.IsNullOrWhiteSpace(id)).Select(id => id.Trim()).Distinct(StringComparer.Ordinal);
+
+        if (facebookAppIds.Any(id => id.Equals(appId, StringComparison.Ordinal)))
+        {
+            return "Invalid App Id for Instagram Login. Use the Instagram App Id from Meta Dashboard → "
+                   + "Instagram → API setup with Instagram login → Business login settings — "
+                   + "not the main Facebook App Id from App settings → Basic.";
+        }
+
+        if (scopes.Contains("pages_", StringComparison.OrdinalIgnoreCase)
+            || scopes.Contains("public_profile", StringComparison.OrdinalIgnoreCase)
+            || scopes.Contains("business_management", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Instagram Login scopes must be instagram_business_* only.";
+        }
+
+        return null;
+    }
+
+    private static string ResolveAppIdLabel(string platformCode) =>
+        platformCode.Equals("instagram_login", StringComparison.OrdinalIgnoreCase)
+            ? "Instagram App Id"
+            : "App Id";
 
     private static string NormalizeScopeList(string scopes) =>
         string.Join(",",

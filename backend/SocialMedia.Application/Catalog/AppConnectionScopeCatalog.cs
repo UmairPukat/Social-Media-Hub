@@ -19,8 +19,7 @@ public static class AppConnectionScopeCatalog
             "instagram_manage_messages,instagram_content_publish",
 
         ["instagram_login"] =
-            "instagram_business_basic,instagram_business_content_publish,instagram_business_manage_messages," +
-            "instagram_business_manage_comments",
+            "instagram_business_basic,instagram_business_manage_messages,instagram_business_manage_comments",
 
         ["whatsapp"] =
             "whatsapp_business_management,whatsapp_business_messaging,business_management"

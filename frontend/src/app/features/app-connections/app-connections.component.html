@@ -207,15 +207,19 @@
                   class="ac-input ac-mono"
                   type="url"
                   [(ngModel)]="formBaseUrl"
+                  [readonly]="isInstagramLoginForm()"
                   placeholder="https://graph.facebook.com" />
                 <p class="ac-hint">{{ baseUrlHint() }}</p>
               </div>
               <div class="ac-field">
-                <label for="ac-app-id">App Id</label>
-                <input id="ac-app-id" class="ac-input ac-mono" type="text" [(ngModel)]="formAppId" autocomplete="off" />
+                <label for="ac-app-id">{{ appIdLabel() }}</label>
+                <input id="ac-app-id" class="ac-input ac-mono" type="text" inputmode="numeric" [(ngModel)]="formAppId" autocomplete="off" />
+                @if (appIdHint()) {
+                  <p class="ac-hint ac-hint-warn">{{ appIdHint() }}</p>
+                }
               </div>
               <div class="ac-field">
-                <label for="ac-app-secret">App Secret</label>
+                <label for="ac-app-secret">{{ appSecretLabel() }}</label>
                 <input
                   id="ac-app-secret"
                   class="ac-input ac-mono"
@@ -233,7 +237,7 @@
               <div class="ac-field">
                 <label for="ac-callback">Callback URL</label>
                 <input id="ac-callback" class="ac-input ac-mono" type="url" [(ngModel)]="formCallbackUrl" />
-                <p class="ac-hint">Add this exact URL under Meta → Facebook Login → Valid OAuth Redirect URIs.</p>
+                <p class="ac-hint">{{ callbackHint() }}</p>
               </div>
               <div class="form-row-2">
                 <div class="ac-field">

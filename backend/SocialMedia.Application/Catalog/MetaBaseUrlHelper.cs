@@ -59,7 +59,8 @@ public static class MetaBaseUrlHelper
                    + $"&redirect_uri={Uri.EscapeDataString(callbackUrl)}"
                    + $"&state={Uri.EscapeDataString(state)}"
                    + $"&scope={Uri.EscapeDataString(scopes)}"
-                   + "&response_type=code";
+                   + "&response_type=code"
+                   + "&enable_fb_login=false";
         }
 
         var version = string.IsNullOrWhiteSpace(graphApiVersion) ? "v21.0" : graphApiVersion.Trim().Trim('/');

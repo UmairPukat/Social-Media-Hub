@@ -126,6 +126,7 @@ public class IntegrationService : IIntegrationService
               + $"&state={Uri.EscapeDataString(state)}"
               + $"&scope={Uri.EscapeDataString(scopes)}"
               + "&response_type=code"
+              + "&enable_fb_login=false"
             : $"https://www.facebook.com/{version}/dialog/oauth"
               + $"?client_id={Uri.EscapeDataString(appId)}"
               + $"&redirect_uri={Uri.EscapeDataString(redirectUri)}"

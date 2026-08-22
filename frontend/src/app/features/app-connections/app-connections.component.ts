@@ -241,9 +241,72 @@ export class AppConnectionsComponent implements OnInit {
   }
 
   baseUrlHint(): string {
+    if (this.isInstagramLoginForm()) {
+      return 'Instagram Login always uses graph.instagram.com for token and API calls.';
+    }
     return this.formBaseUrl.includes('instagram')
       ? 'Instagram stack — OAuth uses instagram.com and Graph API uses graph.instagram.com.'
       : 'Facebook stack — OAuth uses facebook.com and Graph API uses graph.facebook.com.';
+  }
+
+  isInstagramLoginForm(): boolean {
+    return this.formPlatformCode === 'instagram_login';
+  }
+
+  appIdLabel(): string {
+    return this.isInstagramLoginForm() ? 'Instagram App Id' : 'App Id';
+  }
+
+  appSecretLabel(): string {
+    return this.isInstagramLoginForm() ? 'Instagram App Secret' : 'App Secret';
+  }
+
+  appIdHint(): string | null {
+    if (!this.isInstagramLoginForm()) return null;
+    return 'From Meta Dashboard → Instagram → API setup with Instagram login → Business login settings. Do not use the Facebook App Id from App settings → Basic.';
+  }
+
+  callbackHint(): string {
+    if (this.isInstagramLoginForm()) {
+      return 'Add this URL under Instagram Business login → OAuth redirect URIs (not only Facebook Login URIs).';
+    }
+    return 'Add this exact URL under Meta → Facebook Login → Valid OAuth Redirect URIs.';
+  }
+
+  private validateAppId(appId: string): string | null {
+    const trimmed = appId.trim();
+    if (/^\d{8,20}$/.test(trimmed)) return null;
+    const label = this.isInstagramLoginForm() ? 'Instagram App Id' : 'App Id';
+    return `${label} must be a numeric Meta app id from the Developer Dashboard (not an email or username).`;
+  }
+
+  private resolveFormScopes(): string {
+    const raw = this.formScopes.trim();
+    if (!this.isInstagramLoginForm()) return raw;
+
+    const allowed = raw
+      .split(',')
+      .map((s) => s.trim())
+      .filter((s) => s.startsWith('instagram_business_'));
+
+    if (!allowed.some((s) => s === 'instagram_business_basic')) {
+      allowed.unshift('instagram_business_basic');
+    }
+
+    return allowed.join(',');
+  }
+
+  private validateInstagramLoginScopes(): string | null {
+    if (!this.isInstagramLoginForm()) return null;
+
+    const invalid = this.formScopes
+      .split(',')
+      .map((s) => s.trim())
+      .filter((s) => s && !s.startsWith('instagram_business_'));
+
+    if (!invalid.length) return null;
+
+    return `Instagram Login cannot use Facebook scopes (${invalid.join(', ')}). Click Reset defaults and save.`;
   }
 
   private resolveCreatePlatformCode(): string {
@@ -304,6 +367,18 @@ export class AppConnectionsComponent implements OnInit {
       return;
     }
 
+    const appIdError = this.validateAppId(this.formAppId);
+    if (appIdError) {
+      this.message.set(appIdError);
+      return;
+    }
+
+    const scopeError = this.validateInstagramLoginScopes();
+    if (scopeError) {
+      this.message.set(scopeError);
+      return;
+    }
+
     const editing = this.editingId();
     if (!this.formAppSecret.trim()) {
       this.message.set('App Secret is required.');
@@ -321,7 +396,7 @@ export class AppConnectionsComponent implements OnInit {
         callbackUrl: this.formCallbackUrl.trim(),
         baseUrl: this.formBaseUrl.trim(),
         graphApiVersion: this.formGraphApiVersion.trim() || 'v21.0',
-        scopes: this.formScopes.trim()
+        scopes: this.resolveFormScopes()
       };
       this.api.updateAppConnection(editing, body).subscribe({
         next: (res) => {
@@ -351,7 +426,7 @@ export class AppConnectionsComponent implements OnInit {
       callbackUrl: this.formCallbackUrl.trim(),
       baseUrl: this.formBaseUrl.trim(),
       graphApiVersion: this.formGraphApiVersion.trim() || 'v21.0',
-      scopes: this.formScopes.trim()
+      scopes: this.resolveFormScopes()
     };
     this.api.createAppConnection(body).subscribe({
       next: (res) => {
@@ -395,6 +470,12 @@ export class AppConnectionsComponent implements OnInit {
 
     if (!card.appId?.trim()) {
       this.message.set('Configure App Id before connecting.');
+      return;
+    }
+
+    const appIdError = this.validateAppId(card.appId);
+    if (appIdError) {
+      this.message.set(appIdError);
       return;
     }
 

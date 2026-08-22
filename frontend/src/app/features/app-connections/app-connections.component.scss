@@ -213,6 +213,16 @@
     color: var(--app-muted, #64748b);
   }
 
+  .ac-hint-warn {
+    color: #b45309;
+  }
+
+  .ac-input[readonly] {
+    background: var(--app-surface-soft, #f1f5f9);
+    color: var(--app-muted, #64748b);
+    cursor: default;
+  }
+
   .form-foot {
     flex-shrink: 0;
     background: var(--app-surface, #ffffff);
