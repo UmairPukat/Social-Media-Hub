@@ -52,14 +52,21 @@ public class IntegrationService : IIntegrationService
         _configuration = configuration;
     }
 
-    public async Task<ApiResponse<IReadOnlyList<PlatformCardDto>>> GetPlatformCardsAsync(Guid userId, CancellationToken cancellationToken = default)
+    public async Task<ApiResponse<IReadOnlyList<PlatformCardDto>>> GetPlatformCardsAsync(
+        Guid userId,
+        string menuType,
+        CancellationToken cancellationToken = default)
     {
         try
         {
-            var platforms = await _unitOfWork.Platforms.GetActiveAsync(cancellationToken);
+            var normalizedMenu = MenuTypes.Normalize(menuType);
+            var platforms = (await _unitOfWork.Platforms.GetActiveAsync(cancellationToken))
+                .Where(p => string.Equals(p.MenuType, normalizedMenu, StringComparison.OrdinalIgnoreCase))
+                .ToList();
             var accounts = await _unitOfWork.SocialAccounts.GetByUserAsync(userId, cancellationToken);
             var byPlatform = accounts
-                .Where(a => a.Status == SocialAccountStatus.Connected)
+                .Where(a => a.Status == SocialAccountStatus.Connected
+                            && string.Equals(a.MenuType, normalizedMenu, StringComparison.OrdinalIgnoreCase))
                 .GroupBy(a => a.PlatformId)
                 .ToDictionary(
                     g => g.Key,
@@ -77,6 +84,7 @@ public class IntegrationService : IIntegrationService
                     {
                         PlatformId = p.Id,
                         Code = p.Code,
+                        MenuType = p.MenuType,
                         DisplayName = def?.Name ?? p.Name,
                         Icon = def?.Icon ?? p.Icon,
                         Description = def?.Description ?? $"{p.Name} integration",
@@ -110,6 +118,7 @@ public class IntegrationService : IIntegrationService
         CancellationToken cancellationToken = default)
     {
         var platformCode = (request.PlatformCode ?? string.Empty).Trim().ToLowerInvariant();
+        var menuType = MenuTypes.Normalize(request.MenuType);
         if (platformCode is not ("facebook" or "instagram" or "instagram_login" or "whatsapp"))
             return Task.FromResult(ApiResponse<BeginOAuthResponse>.Fail($"Unsupported platform '{request.PlatformCode}'."));
 
@@ -123,7 +132,7 @@ public class IntegrationService : IIntegrationService
 
         var version = ResolveGraphVersion(platformCode);
         var scopes = PlatformScopes[platformCode];
-        var state = MetaOAuthState.Create(userId, platformCode, _jwt.SecretKey);
+        var state = MetaOAuthState.Create(userId, platformCode, menuType, _jwt.SecretKey);
 
         var authUrl = platformCode == "instagram_login"
             ? "https://www.instagram.com/oauth/authorize"
@@ -143,7 +152,8 @@ public class IntegrationService : IIntegrationService
         {
             AuthUrl = authUrl,
             RedirectUri = redirectUri,
-            PlatformCode = platformCode
+            PlatformCode = platformCode,
+            MenuType = menuType
         }));
     }
 
@@ -165,7 +175,7 @@ public class IntegrationService : IIntegrationService
             };
         }
 
-        if (!MetaOAuthState.TryValidate(state, _jwt.SecretKey, out var userId, out var platformCode, out var stateError))
+        if (!MetaOAuthState.TryValidate(state, _jwt.SecretKey, out var userId, out var platformCode, out var menuType, out var stateError))
         {
             return new MetaRedirectResult
             {
@@ -181,6 +191,7 @@ public class IntegrationService : IIntegrationService
             {
                 Ok = false,
                 PlatformCode = platformCode,
+                MenuType = menuType,
                 Message = "Missing authorization code.",
                 FrontendOrigins = origins
             };
@@ -189,6 +200,7 @@ public class IntegrationService : IIntegrationService
         var response = await ExchangeAuthCodeAsync(userId, new OAuthCallbackRequest
         {
             PlatformCode = platformCode,
+            MenuType = menuType,
             Code = code!
         }, cancellationToken);
 
@@ -196,6 +208,7 @@ public class IntegrationService : IIntegrationService
         {
             Ok = response.Success,
             PlatformCode = platformCode,
+            MenuType = menuType,
             Message = response.Success
                 ? (response.Message ?? "Connected. You can close this window.")
                 : (response.Message ?? "Connection failed."),
@@ -292,6 +305,7 @@ public class IntegrationService : IIntegrationService
             return await PersistConnectedAccountAsync(
                 userId,
                 platformCode,
+                MenuTypes.Normalize(request.MenuType),
                 token.AccessToken,
                 token.ExpiresAt,
                 me.Id,
@@ -332,6 +346,7 @@ public class IntegrationService : IIntegrationService
     private async Task<ApiResponse<SocialAccountDto>> PersistConnectedAccountAsync(
         Guid userId,
         string platformCode,
+        string menuType,
         string accessToken,
         DateTime? expiresAt,
         string externalAccountId,
@@ -341,22 +356,25 @@ public class IntegrationService : IIntegrationService
         if (string.IsNullOrWhiteSpace(accessToken))
             return ApiResponse<SocialAccountDto>.Fail("Meta did not return an access token. Try connecting again.");
 
+        var normalizedMenu = MenuTypes.Normalize(menuType);
         var platform = await _unitOfWork.Platforms.GetByCodeAsync(platformCode, cancellationToken);
         if (platform is null)
             return ApiResponse<SocialAccountDto>.Fail($"Unknown platform '{platformCode}'.");
 
-        var account = await _unitOfWork.SocialAccounts.GetByUserAndPlatformAsync(userId, platform.Id, cancellationToken);
+        var account = await _unitOfWork.SocialAccounts.GetByUserAndPlatformAsync(userId, platform.Id, normalizedMenu, cancellationToken);
         var isNewAccount = account is null;
         if (account is null)
         {
             account = new SocialAccount
             {
                 UserId = userId,
-                PlatformId = platform.Id
+                PlatformId = platform.Id,
+                MenuType = normalizedMenu
             };
             await _unitOfWork.SocialAccounts.AddAsync(account, cancellationToken);
         }
 
+        account.MenuType = normalizedMenu;
         account.ExternalAccountId = externalAccountId;
         account.DisplayName = displayName;
         account.Status = SocialAccountStatus.Connected;
@@ -385,8 +403,8 @@ public class IntegrationService : IIntegrationService
 
         // Legacy App Connections may have left extra rows for the same user+platform.
         // Merge profiles into this account and delete duplicates — updating multiple rows
-        // that share the unique (UserId, PlatformId) index causes an EF circular dependency.
-        await ConsolidateLegacyDuplicateAccountsAsync(userId, platform.Id, account.Id, cancellationToken);
+        // that share the unique (UserId, PlatformId, MenuType) index causes an EF circular dependency.
+        await ConsolidateLegacyDuplicateAccountsAsync(userId, platform.Id, normalizedMenu, account.Id, cancellationToken);
 
         await _unitOfWork.SaveChangesAsync(cancellationToken);
 
@@ -424,11 +442,13 @@ public class IntegrationService : IIntegrationService
     public async Task<ApiResponse<IReadOnlyList<MetaPageDto>>> GetPagesAsync(
         Guid userId,
         string platformCode,
+        string menuType,
         CancellationToken cancellationToken = default)
     {
         try
         {
             var code = (platformCode ?? string.Empty).Trim().ToLowerInvariant();
+            var normalizedMenu = MenuTypes.Normalize(menuType);
             if (!SupportsPageSelection(code))
                 return ApiResponse<IReadOnlyList<MetaPageDto>>.Fail($"Page selection is not available for '{platformCode}'.");
 
@@ -436,7 +456,7 @@ public class IntegrationService : IIntegrationService
             if (platform is null)
                 return ApiResponse<IReadOnlyList<MetaPageDto>>.Fail("Unknown platform.");
 
-            var account = await _unitOfWork.SocialAccounts.GetByUserAndPlatformAsync(userId, platform.Id, cancellationToken);
+            var account = await _unitOfWork.SocialAccounts.GetByUserAndPlatformAsync(userId, platform.Id, normalizedMenu, cancellationToken);
             var userToken = ResolveUserAccessToken(account);
             if (string.IsNullOrWhiteSpace(userToken))
                 return ApiResponse<IReadOnlyList<MetaPageDto>>.Fail("Sign in with Meta again — no stored login token was found.");
@@ -466,6 +486,7 @@ public class IntegrationService : IIntegrationService
         try
         {
             var code = (request.PlatformCode ?? string.Empty).Trim().ToLowerInvariant();
+            var normalizedMenu = MenuTypes.Normalize(request.MenuType);
             if (!SupportsPageSelection(code))
                 return ApiResponse<SocialAccountDto>.Fail($"Page selection is not available for '{request.PlatformCode}'.");
             if (string.IsNullOrWhiteSpace(request.PageId))
@@ -475,7 +496,7 @@ public class IntegrationService : IIntegrationService
             if (platform is null)
                 return ApiResponse<SocialAccountDto>.Fail("Unknown platform.");
 
-            var account = await _unitOfWork.SocialAccounts.GetByUserAndPlatformAsync(userId, platform.Id, cancellationToken);
+            var account = await _unitOfWork.SocialAccounts.GetByUserAndPlatformAsync(userId, platform.Id, normalizedMenu, cancellationToken);
             var auth = account?.Auth;
             var userToken = ResolveUserAccessToken(account);
             if (account is null || auth is null || string.IsNullOrWhiteSpace(userToken))
@@ -549,16 +570,18 @@ public class IntegrationService : IIntegrationService
     public async Task<ApiResponse<ConnectionDetailsDto>> GetConnectionDetailsAsync(
         Guid userId,
         string platformCode,
+        string menuType,
         CancellationToken cancellationToken = default)
     {
         try
         {
             var code = (platformCode ?? string.Empty).Trim().ToLowerInvariant();
+            var normalizedMenu = MenuTypes.Normalize(menuType);
             var platform = await _unitOfWork.Platforms.GetByCodeAsync(code, cancellationToken);
             if (platform is null)
                 return ApiResponse<ConnectionDetailsDto>.Fail("Unknown platform.");
 
-            var account = await _unitOfWork.SocialAccounts.GetByUserAndPlatformAsync(userId, platform.Id, cancellationToken);
+            var account = await _unitOfWork.SocialAccounts.GetByUserAndPlatformAsync(userId, platform.Id, normalizedMenu, cancellationToken);
             if (account is null || account.Status != SocialAccountStatus.Connected)
                 return ApiResponse<ConnectionDetailsDto>.Fail($"{platform.Name} is not connected.");
 
@@ -573,6 +596,7 @@ public class IntegrationService : IIntegrationService
             var details = new ConnectionDetailsDto
             {
                 PlatformCode = platform.Code,
+                MenuType = normalizedMenu,
                 PlatformName = platform.Name,
                 AccountName = account.DisplayName,
                 Status = account.Status,
@@ -826,7 +850,8 @@ public class IntegrationService : IIntegrationService
         foreach (var orphan in orphans)
         {
             var owner = await _unitOfWork.SocialAccounts.GetByIdAsync(orphan.SocialAccountId, cancellationToken);
-            if (owner is null || owner.UserId != account.UserId || owner.PlatformId != account.PlatformId)
+            if (owner is null || owner.UserId != account.UserId || owner.PlatformId != account.PlatformId
+                || !string.Equals(owner.MenuType, account.MenuType, StringComparison.OrdinalIgnoreCase))
                 continue;
 
             orphan.SocialAccountId = account.Id;
@@ -869,11 +894,15 @@ public class IntegrationService : IIntegrationService
     private async Task ConsolidateLegacyDuplicateAccountsAsync(
         Guid userId,
         Guid platformId,
+        string menuType,
         Guid primaryAccountId,
         CancellationToken cancellationToken)
     {
         var duplicateAccounts = await _unitOfWork.SocialAccounts.FindAsync(
-            a => a.UserId == userId && a.PlatformId == platformId && a.Id != primaryAccountId,
+            a => a.UserId == userId
+                 && a.PlatformId == platformId
+                 && a.MenuType == menuType
+                 && a.Id != primaryAccountId,
             cancellationToken);
         if (duplicateAccounts.Count == 0)
             return;
@@ -960,7 +989,11 @@ public class IntegrationService : IIntegrationService
         };
     }
 
-    public async Task<ApiResponse<object>> DisconnectAsync(Guid userId, string platformCode, CancellationToken cancellationToken = default)
+    public async Task<ApiResponse<object>> DisconnectAsync(
+        Guid userId,
+        string platformCode,
+        string menuType,
+        CancellationToken cancellationToken = default)
     {
         try
         {
@@ -968,12 +1001,13 @@ public class IntegrationService : IIntegrationService
             if (platform is null)
                 return ApiResponse<object>.Fail("Unknown platform.");
 
-            var account = await _unitOfWork.SocialAccounts.GetByUserAndPlatformAsync(userId, platform.Id, cancellationToken);
+            var normalizedMenu = MenuTypes.Normalize(menuType);
+            var account = await _unitOfWork.SocialAccounts.GetByUserAndPlatformAsync(userId, platform.Id, normalizedMenu, cancellationToken);
             if (account is null)
                 return ApiResponse<object>.Fail("Account not connected.");
 
-            await ConsolidateLegacyDuplicateAccountsAsync(userId, platform.Id, account.Id, cancellationToken);
-            account = await _unitOfWork.SocialAccounts.GetByUserAndPlatformAsync(userId, platform.Id, cancellationToken)
+            await ConsolidateLegacyDuplicateAccountsAsync(userId, platform.Id, normalizedMenu, account.Id, cancellationToken);
+            account = await _unitOfWork.SocialAccounts.GetByUserAndPlatformAsync(userId, platform.Id, normalizedMenu, cancellationToken)
                 ?? account;
 
             var code = platformCode.Trim().ToLowerInvariant();
@@ -1003,13 +1037,18 @@ public class IntegrationService : IIntegrationService
         }
     }
 
-    public async Task<ApiResponse<IReadOnlyList<SocialAccountDto>>> GetConnectedAccountsAsync(Guid userId, CancellationToken cancellationToken = default)
+    public async Task<ApiResponse<IReadOnlyList<SocialAccountDto>>> GetConnectedAccountsAsync(
+        Guid userId,
+        string menuType,
+        CancellationToken cancellationToken = default)
     {
         try
         {
+            var normalizedMenu = MenuTypes.Normalize(menuType);
             var accounts = await _unitOfWork.SocialAccounts.GetByUserAsync(userId, cancellationToken);
             var data = accounts
-                .Where(a => a.Status == SocialAccountStatus.Connected)
+                .Where(a => a.Status == SocialAccountStatus.Connected
+                            && string.Equals(a.MenuType, normalizedMenu, StringComparison.OrdinalIgnoreCase))
                 .Select(a => MapAccount(a, a.Platform!))
                 .ToList();
             return ApiResponse<IReadOnlyList<SocialAccountDto>>.Ok(data);
@@ -1034,6 +1073,7 @@ public class IntegrationService : IIntegrationService
         Id = account.Id,
         PlatformId = account.PlatformId,
         PlatformCode = platform.Code,
+        MenuType = account.MenuType,
         PlatformName = platform.Name,
         ExternalAccountId = account.ExternalAccountId,
         DisplayName = account.DisplayName,

@@ -4,6 +4,14 @@ export interface ApiResponse<T> {
   data: T;
 }
 
+/** Which UI menu owns platform catalog rows and connected accounts. */
+export const MENU_TYPES = {
+  integration: 'integration',
+  appConnection: 'app_connection'
+} as const;
+
+export type MenuType = (typeof MENU_TYPES)[keyof typeof MENU_TYPES];
+
 export interface AuthResponse {
   token: string;
   email: string;
@@ -39,6 +47,7 @@ export interface PlatformCard {
   supportsComments: boolean;
   supportsMessages: boolean;
   supportsPosts: boolean;
+  menuType?: string;
 }
 
 export interface SocialProfile {
@@ -63,6 +72,7 @@ export interface SocialAccount {
   profiles: SocialProfile[];
   /** True right after Meta login, while no page has been picked yet. */
   requiresPageSelection?: boolean;
+  menuType?: string;
 }
 
 /** Connected page details shown in the account information popup. */
@@ -84,6 +94,7 @@ export interface ConnectionDetails {
   subscribedFields: string[];
   webhookError?: string;
   profiles: SocialProfile[];
+  menuType?: string;
 }
 
 /** A Facebook Page offered in the page picker after Meta login. */

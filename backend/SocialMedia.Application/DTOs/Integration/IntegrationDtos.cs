@@ -1,3 +1,4 @@
+using SocialMedia.Application.Catalog;
 using SocialMedia.Domain.Enums;
 
 namespace SocialMedia.Application.DTOs.Integration;
@@ -6,6 +7,7 @@ public class PlatformCardDto
 {
     public Guid PlatformId { get; set; }
     public string Code { get; set; } = string.Empty;
+    public string MenuType { get; set; } = MenuTypes.Integration;
     public string DisplayName { get; set; } = string.Empty;
     public string Description { get; set; } = string.Empty;
     public string? Icon { get; set; }
@@ -28,6 +30,7 @@ public class OAuthCallbackRequest
 {
     /// <summary>Which Meta product the code belongs to: facebook, instagram, or whatsapp.</summary>
     public string PlatformCode { get; set; } = string.Empty;
+    public string MenuType { get; set; } = MenuTypes.Integration;
 
     /// <summary>Authorization code returned by Meta in the redirect query string.</summary>
     public string Code { get; set; } = string.Empty;
@@ -43,6 +46,7 @@ public class OAuthCallbackRequest
 public class BeginOAuthRequest
 {
     public string PlatformCode { get; set; } = string.Empty;
+    public string MenuType { get; set; } = MenuTypes.Integration;
 }
 
 public class BeginOAuthResponse
@@ -50,6 +54,7 @@ public class BeginOAuthResponse
     public string AuthUrl { get; set; } = string.Empty;
     public string RedirectUri { get; set; } = string.Empty;
     public string PlatformCode { get; set; } = string.Empty;
+    public string MenuType { get; set; } = MenuTypes.Integration;
 }
 
 /// <summary>Result of Meta's browser redirect to the shared backend Callback URL.</summary>
@@ -57,6 +62,7 @@ public class MetaRedirectResult
 {
     public bool Ok { get; set; }
     public string PlatformCode { get; set; } = string.Empty;
+    public string MenuType { get; set; } = MenuTypes.Integration;
     public string Message { get; set; } = string.Empty;
     public IReadOnlyList<string> FrontendOrigins { get; set; } = Array.Empty<string>();
 }
@@ -66,6 +72,7 @@ public class SocialAccountDto
     public Guid Id { get; set; }
     public Guid PlatformId { get; set; }
     public string PlatformCode { get; set; } = string.Empty;
+    public string MenuType { get; set; } = MenuTypes.Integration;
     public string PlatformName { get; set; } = string.Empty;
     public string ExternalAccountId { get; set; } = string.Empty;
     public string DisplayName { get; set; } = string.Empty;
@@ -107,6 +114,7 @@ public class MetaPageDto
 public class SelectPageRequest
 {
     public string PlatformCode { get; set; } = string.Empty;
+    public string MenuType { get; set; } = MenuTypes.Integration;
     public string PageId { get; set; } = string.Empty;
 }
 
@@ -117,6 +125,7 @@ public class SelectPageRequest
 public class ConnectionDetailsDto
 {
     public string PlatformCode { get; set; } = string.Empty;
+    public string MenuType { get; set; } = MenuTypes.Integration;
     public string PlatformName { get; set; } = string.Empty;
     public string AccountName { get; set; } = string.Empty;
     public SocialAccountStatus Status { get; set; }

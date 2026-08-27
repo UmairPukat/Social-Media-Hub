@@ -1,12 +1,13 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using SocialMedia.Application.Catalog;
 
 namespace SocialMedia.Application.Auth;
 
 /// <summary>
 /// Signed OAuth state so Meta can redirect to the backend without a JWT cookie.
-/// Payload carries the signed-in user and platform for the shared Callback URL.
+/// Payload carries the signed-in user, platform, and menu for the shared Callback URL.
 /// </summary>
 public static class MetaOAuthState
 {
@@ -15,12 +16,13 @@ public static class MetaOAuthState
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase
     };
 
-    public static string Create(Guid userId, string platformCode, string signingKey, TimeSpan? lifetime = null)
+    public static string Create(Guid userId, string platformCode, string menuType, string signingKey, TimeSpan? lifetime = null)
     {
         var payload = new Payload
         {
             UserId = userId,
             Platform = platformCode.Trim().ToLowerInvariant(),
+            MenuType = MenuTypes.Normalize(menuType),
             Nonce = Guid.NewGuid().ToString("N"),
             ExpiresAtUnix = DateTimeOffset.UtcNow.Add(lifetime ?? TimeSpan.FromMinutes(15)).ToUnixTimeSeconds()
         };
@@ -30,10 +32,17 @@ public static class MetaOAuthState
         return $"{body}.{sig}";
     }
 
-    public static bool TryValidate(string? state, string signingKey, out Guid userId, out string platformCode, out string error)
+    public static bool TryValidate(
+        string? state,
+        string signingKey,
+        out Guid userId,
+        out string platformCode,
+        out string menuType,
+        out string error)
     {
         userId = Guid.Empty;
         platformCode = string.Empty;
+        menuType = MenuTypes.Integration;
         error = "Invalid OAuth state.";
 
         if (string.IsNullOrWhiteSpace(state))
@@ -75,6 +84,7 @@ public static class MetaOAuthState
 
             userId = payload.UserId;
             platformCode = payload.Platform;
+            menuType = MenuTypes.Normalize(payload.MenuType);
             error = string.Empty;
             return true;
         }
@@ -108,6 +118,7 @@ public static class MetaOAuthState
     {
         public Guid UserId { get; set; }
         public string Platform { get; set; } = string.Empty;
+        public string MenuType { get; set; } = MenuTypes.Integration;
         public string Nonce { get; set; } = string.Empty;
         public long ExpiresAtUnix { get; set; }
     }

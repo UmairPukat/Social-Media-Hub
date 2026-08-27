@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using SocialMedia.Api.Extensions;
+using SocialMedia.Application.Catalog;
 using SocialMedia.Application.Interfaces;
 
 namespace SocialMedia.Api.Controllers;
@@ -21,23 +22,30 @@ public class SocialAccountsController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<IActionResult> GetPlatformCards()
+    public async Task<IActionResult> GetPlatformCards([FromQuery] string? menuType = null)
     {
-        var response = await _integrationService.GetPlatformCardsAsync(User.GetUserId());
+        var response = await _integrationService.GetPlatformCardsAsync(
+            User.GetUserId(),
+            MenuTypes.Normalize(menuType));
         return Ok(response);
     }
 
     [HttpGet]
-    public async Task<IActionResult> GetConnectedAccounts()
+    public async Task<IActionResult> GetConnectedAccounts([FromQuery] string? menuType = null)
     {
-        var response = await _integrationService.GetConnectedAccountsAsync(User.GetUserId());
+        var response = await _integrationService.GetConnectedAccountsAsync(
+            User.GetUserId(),
+            MenuTypes.Normalize(menuType));
         return Ok(response);
     }
 
     [HttpPost]
-    public async Task<IActionResult> Disconnect(string platformCode)
+    public async Task<IActionResult> Disconnect([FromQuery] string platformCode, [FromQuery] string? menuType = null)
     {
-        var response = await _integrationService.DisconnectAsync(User.GetUserId(), platformCode);
+        var response = await _integrationService.DisconnectAsync(
+            User.GetUserId(),
+            platformCode,
+            MenuTypes.Normalize(menuType));
         return Ok(response);
     }
 }

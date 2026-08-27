@@ -7,6 +7,8 @@ import {
   ConnectionDetails,
   DashboardSummary,
   InboxItem,
+  MENU_TYPES,
+  MenuType,
   MetaPage,
   PlatformCard,
   PublishPostResponse,
@@ -20,42 +22,53 @@ export class ApiService {
 
   constructor(private http: HttpClient) {}
 
+  private withMenuType(params: URLSearchParams, menuType?: MenuType): URLSearchParams {
+    params.set('menuType', menuType ?? MENU_TYPES.integration);
+    return params;
+  }
+
   getDashboard(): Observable<ApiResponse<DashboardSummary>> {
     return this.http.get<ApiResponse<DashboardSummary>>(`${this.base}/Dashboard/GetSummary`);
   }
 
-  getPlatforms(): Observable<ApiResponse<PlatformCard[]>> {
-    return this.http.get<ApiResponse<PlatformCard[]>>(`${this.base}/SocialAccounts/GetPlatformCards`);
+  getPlatforms(menuType: MenuType = MENU_TYPES.integration): Observable<ApiResponse<PlatformCard[]>> {
+    const params = this.withMenuType(new URLSearchParams(), menuType);
+    return this.http.get<ApiResponse<PlatformCard[]>>(`${this.base}/SocialAccounts/GetPlatformCards?${params}`);
   }
 
-  getAccounts(): Observable<ApiResponse<SocialAccount[]>> {
-    return this.http.get<ApiResponse<SocialAccount[]>>(`${this.base}/SocialAccounts/GetConnectedAccounts`);
+  getAccounts(menuType: MenuType = MENU_TYPES.integration): Observable<ApiResponse<SocialAccount[]>> {
+    const params = this.withMenuType(new URLSearchParams(), menuType);
+    return this.http.get<ApiResponse<SocialAccount[]>>(`${this.base}/SocialAccounts/GetConnectedAccounts?${params}`);
   }
 
-  getMetaPages(platformCode: string): Observable<ApiResponse<MetaPage[]>> {
-    return this.http.get<ApiResponse<MetaPage[]>>(
-      `${this.base}/Integrations/GetPages?platformCode=${encodeURIComponent(platformCode)}`
-    );
+  getMetaPages(platformCode: string, menuType: MenuType = MENU_TYPES.integration): Observable<ApiResponse<MetaPage[]>> {
+    const params = this.withMenuType(new URLSearchParams({ platformCode }), menuType);
+    return this.http.get<ApiResponse<MetaPage[]>>(`${this.base}/Integrations/GetPages?${params}`);
   }
 
-  selectMetaPage(platformCode: string, pageId: string): Observable<ApiResponse<SocialAccount>> {
+  selectMetaPage(
+    platformCode: string,
+    pageId: string,
+    menuType: MenuType = MENU_TYPES.integration
+  ): Observable<ApiResponse<SocialAccount>> {
     return this.http.post<ApiResponse<SocialAccount>>(`${this.base}/Integrations/SelectPage`, {
       platformCode,
-      pageId
+      pageId,
+      menuType
     });
   }
 
-  getConnectionDetails(platformCode: string): Observable<ApiResponse<ConnectionDetails>> {
-    return this.http.get<ApiResponse<ConnectionDetails>>(
-      `${this.base}/Integrations/GetConnectionDetails?platformCode=${encodeURIComponent(platformCode)}`
-    );
+  getConnectionDetails(
+    platformCode: string,
+    menuType: MenuType = MENU_TYPES.integration
+  ): Observable<ApiResponse<ConnectionDetails>> {
+    const params = this.withMenuType(new URLSearchParams({ platformCode }), menuType);
+    return this.http.get<ApiResponse<ConnectionDetails>>(`${this.base}/Integrations/GetConnectionDetails?${params}`);
   }
 
-  disconnect(platformCode: string): Observable<ApiResponse<object>> {
-    return this.http.post<ApiResponse<object>>(
-      `${this.base}/SocialAccounts/Disconnect?platformCode=${encodeURIComponent(platformCode)}`,
-      {}
-    );
+  disconnect(platformCode: string, menuType: MenuType = MENU_TYPES.integration): Observable<ApiResponse<object>> {
+    const params = this.withMenuType(new URLSearchParams({ platformCode }), menuType);
+    return this.http.post<ApiResponse<object>>(`${this.base}/SocialAccounts/Disconnect?${params}`, {});
   }
 
   getPosts(platformId?: string): Observable<ApiResponse<SocialPost[]>> {

@@ -1,6 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { environment } from '../../../environments/environment';
+import { MENU_TYPES, MenuType } from '../models/api.models';
 
 export type MetaPlatform = 'facebook' | 'instagram' | 'instagram_login' | 'whatsapp';
 
@@ -39,7 +40,7 @@ export class MetaAuthUrlService {
    * Opens Meta Login in a popup. Resolves when the backend Callback page posts
    * a success/error message, or rejects if the window closes early.
    */
-  openPopup(platform: MetaPlatform): Promise<{ ok: boolean; message?: string }> {
+  openPopup(platform: MetaPlatform, menuType: MenuType = MENU_TYPES.integration): Promise<{ ok: boolean; message?: string }> {
     const width = 600;
     const height = 720;
     const left = Math.max(0, (window.screen.width - width) / 2);
@@ -90,7 +91,8 @@ export class MetaAuthUrlService {
 
       this.http
         .post<ApiResponse<BeginOAuthResponse>>(`${environment.apiUrl}/Integrations/BeginOAuth`, {
-          platformCode: platform
+          platformCode: platform,
+          menuType
         })
         .subscribe({
           next: (res) => {

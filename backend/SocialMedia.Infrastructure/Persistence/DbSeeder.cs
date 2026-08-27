@@ -64,6 +64,7 @@ public static class DbSeeder
         await db.Database.EnsureCreatedAsync();
         await EnsureWebhookLogsTableAsync(db);
         await EnsureMessageReplyColumnsAsync(db);
+        await EnsureMenuTypeColumnsAsync(db);
 
         var catalogCodes = new HashSet<string>(
             PlatformCatalog.All.Select(p => p.Code),
@@ -80,6 +81,7 @@ public static class DbSeeder
                     Name = def.Name,
                     Code = def.Code,
                     Icon = def.Icon,
+                    MenuType = MenuTypes.Integration,
                     IsActive = true
                 });
             }
@@ -87,6 +89,7 @@ public static class DbSeeder
             {
                 existing.Name = def.Name;
                 existing.Icon = def.Icon;
+                existing.MenuType = MenuTypes.Integration;
                 existing.IsActive = true;
             }
         }
@@ -159,6 +162,32 @@ public static class DbSeeder
             """);
         await db.Database.ExecuteSqlRawAsync("""
             ALTER TABLE "Messages" ADD COLUMN IF NOT EXISTS "ReplyToExternalId" character varying(200) NULL;
+            """);
+    }
+
+    /// <summary>
+    /// Adds MenuType to Platforms / SocialAccounts and updates the unique index on accounts.
+    /// </summary>
+    private static async Task EnsureMenuTypeColumnsAsync(AppDbContext db)
+    {
+        await db.Database.ExecuteSqlRawAsync("""
+            ALTER TABLE "Platforms" ADD COLUMN IF NOT EXISTS "MenuType" character varying(50) NOT NULL DEFAULT 'integration';
+            """);
+        await db.Database.ExecuteSqlRawAsync("""
+            ALTER TABLE "SocialAccounts" ADD COLUMN IF NOT EXISTS "MenuType" character varying(50) NOT NULL DEFAULT 'integration';
+            """);
+        await db.Database.ExecuteSqlRawAsync("""
+            UPDATE "Platforms" SET "MenuType" = 'integration' WHERE "MenuType" IS NULL OR TRIM("MenuType") = '';
+            """);
+        await db.Database.ExecuteSqlRawAsync("""
+            UPDATE "SocialAccounts" SET "MenuType" = 'integration' WHERE "MenuType" IS NULL OR TRIM("MenuType") = '';
+            """);
+        await db.Database.ExecuteSqlRawAsync("""
+            DROP INDEX IF EXISTS "IX_SocialAccounts_UserId_PlatformId";
+            """);
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE UNIQUE INDEX IF NOT EXISTS "IX_SocialAccounts_UserId_PlatformId_MenuType"
+            ON "SocialAccounts" ("UserId", "PlatformId", "MenuType");
             """);
     }
 }

@@ -322,9 +322,13 @@ public class InboxService : IInboxService
         if (!platformId.HasValue)
             return null;
 
+        var menuType = linked?.MenuType;
         var accounts = await _unitOfWork.SocialAccounts.GetByUserAsync(userId, cancellationToken);
         foreach (var row in accounts
-            .Where(a => a.Status == SocialAccountStatus.Connected && a.PlatformId == platformId.Value)
+            .Where(a => a.Status == SocialAccountStatus.Connected
+                        && a.PlatformId == platformId.Value
+                        && (string.IsNullOrWhiteSpace(menuType)
+                            || string.Equals(a.MenuType, menuType, StringComparison.OrdinalIgnoreCase)))
             .OrderByDescending(a => a.ConnectedAt ?? a.UpdatedAt ?? a.CreatedAt))
         {
             var loaded = await _unitOfWork.SocialAccounts.GetWithAuthAndProfilesAsync(row.Id, cancellationToken);
@@ -336,7 +340,10 @@ public class InboxService : IInboxService
         }
 
         foreach (var row in accounts
-            .Where(a => a.Status == SocialAccountStatus.Connected && a.PlatformId == platformId.Value)
+            .Where(a => a.Status == SocialAccountStatus.Connected
+                        && a.PlatformId == platformId.Value
+                        && (string.IsNullOrWhiteSpace(menuType)
+                            || string.Equals(a.MenuType, menuType, StringComparison.OrdinalIgnoreCase)))
             .OrderByDescending(a => a.ConnectedAt ?? a.UpdatedAt ?? a.CreatedAt))
         {
             var loaded = await _unitOfWork.SocialAccounts.GetWithAuthAndProfilesAsync(row.Id, cancellationToken);

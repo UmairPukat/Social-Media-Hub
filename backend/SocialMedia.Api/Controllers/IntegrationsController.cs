@@ -3,6 +3,7 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using SocialMedia.Api.Extensions;
+using SocialMedia.Application.Catalog;
 using SocialMedia.Application.DTOs.Integration;
 using SocialMedia.Application.Interfaces;
 
@@ -56,9 +57,12 @@ public class IntegrationsController : ControllerBase
 
     /// <summary>Facebook Pages granted by the stored Meta login, shown in the page picker.</summary>
     [HttpGet]
-    public async Task<IActionResult> GetPages([FromQuery] string platformCode)
+    public async Task<IActionResult> GetPages([FromQuery] string platformCode, [FromQuery] string? menuType = null)
     {
-        var response = await _integrationService.GetPagesAsync(User.GetUserId(), platformCode);
+        var response = await _integrationService.GetPagesAsync(
+            User.GetUserId(),
+            platformCode,
+            MenuTypes.Normalize(menuType));
         return Ok(response);
     }
 
@@ -72,9 +76,12 @@ public class IntegrationsController : ControllerBase
 
     /// <summary>Connected page details and live webhook subscription for the details popup.</summary>
     [HttpGet]
-    public async Task<IActionResult> GetConnectionDetails([FromQuery] string platformCode)
+    public async Task<IActionResult> GetConnectionDetails([FromQuery] string platformCode, [FromQuery] string? menuType = null)
     {
-        var response = await _integrationService.GetConnectionDetailsAsync(User.GetUserId(), platformCode);
+        var response = await _integrationService.GetConnectionDetailsAsync(
+            User.GetUserId(),
+            platformCode,
+            MenuTypes.Normalize(menuType));
         return Ok(response);
     }
 

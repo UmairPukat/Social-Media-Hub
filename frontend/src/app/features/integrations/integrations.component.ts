@@ -5,7 +5,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { ApiService } from '../../core/services/api.service';
 import { MetaAuthUrlService, MetaPlatform } from '../../core/services/meta-auth-url.service';
-import { ApiResponse, ConnectionDetails, MetaPage, PlatformCard } from '../../core/models/api.models';
+import { ApiResponse, ConnectionDetails, MENU_TYPES, MetaPage, PlatformCard } from '../../core/models/api.models';
 
 export interface IntegrationCategoryGroup {
   id: string;
@@ -47,6 +47,7 @@ const CATEGORY_ORDER = [
 export class IntegrationsComponent implements OnInit {
   private readonly api = inject(ApiService);
   private readonly metaAuth = inject(MetaAuthUrlService);
+  private readonly menuType = MENU_TYPES.integration;
 
   readonly cards = signal<PlatformCard[]>([]);
   readonly message = signal('');
@@ -117,7 +118,7 @@ export class IntegrationsComponent implements OnInit {
   }
 
   reload(): void {
-    this.api.getPlatforms().subscribe({
+    this.api.getPlatforms(this.menuType).subscribe({
       next: (res: ApiResponse<PlatformCard[]>) => this.cards.set(res.data || []),
       error: () => this.message.set('Failed to load integrations')
     });
@@ -147,7 +148,7 @@ export class IntegrationsComponent implements OnInit {
     );
 
     try {
-      const result = await this.metaAuth.openPopup(code);
+      const result = await this.metaAuth.openPopup(code, this.menuType);
       if (!result.ok) {
         this.message.set(result.message || 'Connection failed');
         return;
@@ -228,7 +229,7 @@ export class IntegrationsComponent implements OnInit {
 
     this.pagesLoading.set(true);
     this.pagesError.set('');
-    this.api.getMetaPages(code).subscribe({
+    this.api.getMetaPages(code, this.menuType).subscribe({
       next: (res: ApiResponse<MetaPage[]>) => {
         this.pagesLoading.set(false);
         if (!res.success) {
@@ -262,7 +263,7 @@ export class IntegrationsComponent implements OnInit {
     if (!code || !pageId) return;
 
     this.savingPage.set(true);
-    this.api.selectMetaPage(code, pageId).subscribe({
+    this.api.selectMetaPage(code, pageId, this.menuType).subscribe({
       next: (res) => {
         this.savingPage.set(false);
         if (!res.success) {
@@ -293,7 +294,7 @@ export class IntegrationsComponent implements OnInit {
     const dialog = this.detailsDialog()?.nativeElement;
     if (dialog && !dialog.open) dialog.showModal();
 
-    this.api.getConnectionDetails(card.code).subscribe({
+    this.api.getConnectionDetails(card.code, this.menuType).subscribe({
       next: (res: ApiResponse<ConnectionDetails>) => {
         this.detailsLoading.set(false);
         if (!res.success) {
@@ -358,7 +359,7 @@ export class IntegrationsComponent implements OnInit {
   }
 
   disconnect(card: PlatformCard): void {
-    this.api.disconnect(card.code).subscribe({
+    this.api.disconnect(card.code, this.menuType).subscribe({
       next: () => {
         this.message.set(`${card.displayName} disconnected.`);
         this.reload();

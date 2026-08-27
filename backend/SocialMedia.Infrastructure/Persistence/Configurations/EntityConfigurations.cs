@@ -39,6 +39,8 @@ public class PlatformConfiguration : IEntityTypeConfiguration<Platform>
         builder.Property(x => x.Code).IsRequired().HasMaxLength(50);
         builder.HasIndex(x => x.Code).IsUnique();
         builder.Property(x => x.Icon).HasMaxLength(500);
+        builder.Property(x => x.MenuType).IsRequired().HasMaxLength(50).HasDefaultValue("integration");
+        builder.HasIndex(x => x.MenuType);
     }
 }
 
@@ -52,7 +54,8 @@ public class SocialAccountConfiguration : IEntityTypeConfiguration<SocialAccount
         builder.Property(x => x.DisplayName).IsRequired().HasMaxLength(200);
         builder.Property(x => x.Username).HasMaxLength(200);
         builder.Property(x => x.Email).HasMaxLength(256);
-        builder.HasIndex(x => new { x.UserId, x.PlatformId }).IsUnique();
+        builder.Property(x => x.MenuType).IsRequired().HasMaxLength(50).HasDefaultValue("integration");
+        builder.HasIndex(x => new { x.UserId, x.PlatformId, x.MenuType }).IsUnique();
 
         builder.HasOne(x => x.User).WithMany(x => x.SocialAccounts).HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
         builder.HasOne(x => x.Platform).WithMany(x => x.SocialAccounts).HasForeignKey(x => x.PlatformId).OnDelete(DeleteBehavior.Restrict);

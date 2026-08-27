@@ -79,10 +79,13 @@ public class SocialAccountRepository : Repository<SocialAccount>, ISocialAccount
             .Where(a => a.UserId == userId)
             .ToListAsync(cancellationToken);
 
-    public Task<SocialAccount?> GetByUserAndPlatformAsync(Guid userId, Guid platformId, CancellationToken cancellationToken = default)
+    public Task<SocialAccount?> GetByUserAndPlatformAsync(
+        Guid userId,
+        Guid platformId,
+        string menuType,
+        CancellationToken cancellationToken = default)
         => DbSet.Include(a => a.Auth).Include(a => a.Profiles)
-            .Where(a => a.UserId == userId && a.PlatformId == platformId)
-            // Prefer a connected row that actually has a token (legacy duplicate rows may be tokenless).
+            .Where(a => a.UserId == userId && a.PlatformId == platformId && a.MenuType == menuType)
             .OrderByDescending(a => a.Status == Domain.Enums.SocialAccountStatus.Connected ? 1 : 0)
             .ThenByDescending(a => a.Auth != null && a.Auth.AccessToken != null && a.Auth.AccessToken != "" ? 1 : 0)
             .ThenByDescending(a => a.Auth != null && a.Auth.RefreshToken != null && a.Auth.RefreshToken != "" ? 1 : 0)

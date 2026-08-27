@@ -22,7 +22,7 @@ public interface IPlatformRepository : IRepository<Platform>
 public interface ISocialAccountRepository : IRepository<SocialAccount>
 {
     Task<IReadOnlyList<SocialAccount>> GetByUserAsync(Guid userId, CancellationToken cancellationToken = default);
-    Task<SocialAccount?> GetByUserAndPlatformAsync(Guid userId, Guid platformId, CancellationToken cancellationToken = default);
+    Task<SocialAccount?> GetByUserAndPlatformAsync(Guid userId, Guid platformId, string menuType, CancellationToken cancellationToken = default);
     Task<SocialAccount?> GetByExternalAccountIdAsync(string externalAccountId, CancellationToken cancellationToken = default);
     Task<SocialAccount?> GetWithAuthAndProfilesAsync(Guid id, CancellationToken cancellationToken = default);
 }

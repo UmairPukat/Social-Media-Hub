@@ -11,6 +11,9 @@ public class SocialAccount : BaseEntity
     public Guid UserId { get; set; }
     public Guid PlatformId { get; set; }
 
+    /// <summary>integration, app_connection, … — scopes this row to a UI menu.</summary>
+    public string MenuType { get; set; } = "integration";
+
     /// <summary>External user / business id from the platform.</summary>
     public string ExternalAccountId { get; set; } = string.Empty;
 
