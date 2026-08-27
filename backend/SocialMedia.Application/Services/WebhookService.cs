@@ -37,40 +37,25 @@ public class WebhookService : IWebhookService
         _meta = metaOptions.Value;
     }
 
-    public string? VerifyConnection(string? platformCode, string mode, string challenge, string verifyToken)
+    public async Task<string?> VerifyConnectionAsync(
+        string? platformCode,
+        string mode,
+        string challenge,
+        string verifyToken,
+        CancellationToken cancellationToken = default)
     {
         if (mode != "subscribe" || string.IsNullOrWhiteSpace(verifyToken) || string.IsNullOrWhiteSpace(challenge))
             return null;
 
-        var code = platformCode?.Trim().ToLowerInvariant();
-        if (string.IsNullOrWhiteSpace(code) || code is "meta" or "all")
-        {
-            // Shared callback: accept whichever product Meta is verifying.
-            var tokens = new[]
-            {
-                _meta.Facebook.WebhookVerifyToken,
-                _meta.Instagram.WebhookVerifyToken,
-                _meta.InstagramLogin.WebhookVerifyToken,
-                _meta.WhatsApp.WebhookVerifyToken
-            };
-            return tokens.Any(t => !string.IsNullOrWhiteSpace(t) && t == verifyToken)
-                ? challenge
-                : null;
-        }
-
-        var expected = code switch
-        {
-            "facebook" => _meta.Facebook.WebhookVerifyToken,
-            "instagram" => _meta.Instagram.WebhookVerifyToken,
-            "instagram_login" => _meta.InstagramLogin.WebhookVerifyToken,
-            "whatsapp" => _meta.WhatsApp.WebhookVerifyToken,
-            _ => null
-        };
-
-        return expected is not null && verifyToken == expected ? challenge : null;
+        var tokens = await LoadVerifyTokensAsync(platformCode, cancellationToken);
+        return tokens.Any(t => t == verifyToken) ? challenge : null;
     }
 
-    public bool IsSignatureValid(string? platformCode, string payloadJson, string? signature)
+    public async Task<bool> IsSignatureValidAsync(
+        string? platformCode,
+        string payloadJson,
+        string? signature,
+        CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(signature) ||
             !signature.StartsWith("sha256=", StringComparison.OrdinalIgnoreCase))
@@ -86,7 +71,7 @@ public class WebhookService : IWebhookService
             return false;
         }
 
-        foreach (var appSecret in ResolveAppSecrets(platformCode, payloadJson))
+        foreach (var appSecret in await ResolveAppSecretsAsync(platformCode, payloadJson, cancellationToken))
         {
             using var hmac = new HMACSHA256(Encoding.UTF8.GetBytes(appSecret));
             var expected = hmac.ComputeHash(Encoding.UTF8.GetBytes(payloadJson));
@@ -120,7 +105,51 @@ public class WebhookService : IWebhookService
         }
     }
 
-    private IEnumerable<string> ResolveAppSecrets(string? platformCode, string payloadJson)
+    private async Task<IReadOnlyList<string>> LoadVerifyTokensAsync(
+        string? platformCode,
+        CancellationToken cancellationToken)
+    {
+        var tokens = new List<string>();
+        void Add(string? token)
+        {
+            if (!string.IsNullOrWhiteSpace(token) && !tokens.Contains(token))
+                tokens.Add(token);
+        }
+
+        var code = platformCode?.Trim().ToLowerInvariant();
+        if (string.IsNullOrWhiteSpace(code) || code is "meta" or "all")
+        {
+            Add(_meta.Facebook.WebhookVerifyToken);
+            Add(_meta.Instagram.WebhookVerifyToken);
+            Add(_meta.InstagramLogin.WebhookVerifyToken);
+            Add(_meta.WhatsApp.WebhookVerifyToken);
+        }
+        else
+        {
+            var expected = code switch
+            {
+                "facebook" => _meta.Facebook.WebhookVerifyToken,
+                "instagram" => _meta.Instagram.WebhookVerifyToken,
+                "instagram_login" => _meta.InstagramLogin.WebhookVerifyToken,
+                "whatsapp" => _meta.WhatsApp.WebhookVerifyToken,
+                _ => null
+            };
+            Add(expected);
+        }
+
+        var appConfigs = await _unitOfWork.AppConnectionConfigs.FindAsync(
+            c => c.WebhookVerifyToken != null && c.WebhookVerifyToken != string.Empty,
+            cancellationToken);
+        foreach (var config in appConfigs)
+            Add(config.WebhookVerifyToken);
+
+        return tokens;
+    }
+
+    private async Task<IReadOnlyList<string>> ResolveAppSecretsAsync(
+        string? platformCode,
+        string payloadJson,
+        CancellationToken cancellationToken)
     {
         var code = platformCode?.Trim().ToLowerInvariant();
         if (string.IsNullOrWhiteSpace(code) || code is "meta" or "all")
@@ -140,8 +169,6 @@ public class WebhookService : IWebhookService
                 break;
             case "instagram":
             case "instagram_login":
-                // Both Instagram connection types deliver object="instagram" on the shared callback,
-                // but each is signed by its own app, so every Instagram-capable secret is a candidate.
                 Add(!string.IsNullOrWhiteSpace(_meta.Instagram.AppSecret)
                     ? _meta.Instagram.AppSecret
                     : _meta.Facebook.AppSecret);
@@ -159,6 +186,13 @@ public class WebhookService : IWebhookService
                 Add(_meta.WhatsApp.AppSecret);
                 break;
         }
+
+        // App Connections may use a different Meta app than MetaSettings — include every stored secret.
+        var appConfigs = await _unitOfWork.AppConnectionConfigs.FindAsync(
+            c => c.ClientSecret != null && c.ClientSecret != string.Empty,
+            cancellationToken);
+        foreach (var config in appConfigs)
+            Add(config.ClientSecret);
 
         return secrets;
     }
@@ -216,7 +250,6 @@ public class WebhookService : IWebhookService
         {
             var platform = await _unitOfWork.Platforms.GetByCodeAsync(platformCode, cancellationToken: cancellationToken);
 
-            // 1) Always persist the full raw payload to WebhookLogs first.
             var log = new WebhookLog
             {
                 PlatformId = platform?.Id,
@@ -229,8 +262,6 @@ public class WebhookService : IWebhookService
             await _unitOfWork.WebhookLogs.AddAsync(log, cancellationToken);
             await _unitOfWork.SaveChangesAsync(cancellationToken);
 
-            // 2) Track processing status on WebhookEvents. Meta names the source in "object", which is
-            // trusted over the endpoint that was hit so a mis-mapped callback URL still routes correctly.
             var descriptor = Describe(payloadJson);
             var targetCode = descriptor.PlatformCode ?? platformCode;
             var targetPlatform = string.Equals(targetCode, platformCode, StringComparison.OrdinalIgnoreCase)
@@ -252,11 +283,11 @@ public class WebhookService : IWebhookService
             await _unitOfWork.WebhookEvents.AddAsync(webhookEvent, cancellationToken);
             await _unitOfWork.SaveChangesAsync(cancellationToken);
 
-            // 3) A rejected signature is recorded rather than dropped, so a delivery is never invisible.
             if (!signatureValid)
             {
                 webhookEvent.Status = WebhookEventStatus.Failed;
-                webhookEvent.Error = "Rejected: X-Hub-Signature-256 missing or does not match the configured app secret.";
+                webhookEvent.Error =
+                    "Rejected: X-Hub-Signature-256 missing or does not match any configured app secret (Integrations or App Connections).";
                 webhookEvent.ProcessedAt = DateTime.UtcNow;
                 _unitOfWork.WebhookEvents.Update(webhookEvent);
                 await _unitOfWork.SaveChangesAsync(cancellationToken);
@@ -264,40 +295,7 @@ public class WebhookService : IWebhookService
                 return ApiResponse<object>.Fail("Invalid webhook signature.");
             }
 
-            webhookEvent.Status = WebhookEventStatus.Processing;
-            _unitOfWork.WebhookEvents.Update(webhookEvent);
-            await _unitOfWork.SaveChangesAsync(cancellationToken);
-
-            try
-            {
-                var result = targetCode.ToLowerInvariant() switch
-                {
-                    "facebook" => await _facebookService.ProcessWebhookPayloadAsync(webhookEvent, cancellationToken),
-                    "instagram" => await _instagramService.ProcessWebhookPayloadAsync(webhookEvent, cancellationToken),
-                    "whatsapp" => await _whatsAppService.ProcessWebhookPayloadAsync(webhookEvent, cancellationToken),
-                    _ => null
-                };
-
-                webhookEvent.Status = WebhookEventStatus.Processed;
-                webhookEvent.ProcessedAt = DateTime.UtcNow;
-
-                // Nothing stored is the common silent failure, so the reason is written to the event.
-                if (result is null)
-                    webhookEvent.Error = $"No processor is registered for platform '{targetCode}'.";
-                else if (result.Handled == 0)
-                    webhookEvent.Error = result.Notes.Count > 0
-                        ? "Nothing stored. " + string.Join(" | ", result.Notes)
-                        : "Nothing stored. Payload contained no recognised items.";
-            }
-            catch (Exception ex)
-            {
-                webhookEvent.Status = WebhookEventStatus.Failed;
-                webhookEvent.Error = ex.Message;
-                webhookEvent.RetryCount += 1;
-            }
-
-            _unitOfWork.WebhookEvents.Update(webhookEvent);
-            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            await ProcessWebhookEventAsync(webhookEvent, targetCode, cancellationToken);
 
             return ApiResponse<object>.Ok(new
             {
@@ -313,10 +311,116 @@ public class WebhookService : IWebhookService
         }
     }
 
-    /// <summary>
-    /// Pulls the source platform, entry id and subscribed field names out of a delivery so a
-    /// WebhookEvent row can be identified at a glance instead of only by its raw payload.
-    /// </summary>
+    public async Task<ApiResponse<object>> ReprocessEventAsync(Guid eventId, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var webhookEvent = await _unitOfWork.WebhookEvents.GetByIdAsync(eventId, cancellationToken);
+            if (webhookEvent is null)
+                return ApiResponse<object>.Fail("Webhook event not found.");
+
+            var targetCode = webhookEvent.ObjectType
+                ?? DetectPlatformFromPayload(webhookEvent.PayloadJson)
+                ?? "meta";
+
+            if (!string.IsNullOrWhiteSpace(webhookEvent.Signature))
+            {
+                var signatureValid = await IsSignatureValidAsync(targetCode, webhookEvent.PayloadJson, webhookEvent.Signature, cancellationToken);
+                if (!signatureValid)
+                {
+                    return ApiResponse<object>.Fail(
+                        "Signature still invalid. Ensure the App Secret in Meta Developer Console matches Integrations settings or your App Connections config.");
+                }
+            }
+
+            webhookEvent.Error = null;
+            webhookEvent.RetryCount += 1;
+            await ProcessWebhookEventAsync(webhookEvent, targetCode, cancellationToken);
+
+            return ApiResponse<object>.Ok(new
+            {
+                webhookEvent.Id,
+                webhookEvent.Status,
+                note = webhookEvent.Error
+            }, "Webhook reprocessed.");
+        }
+        catch (Exception ex)
+        {
+            return ApiResponse<object>.Fail(ex.Message);
+        }
+    }
+
+    public async Task<ApiResponse<IReadOnlyList<object>>> GetRecentEventsAsync(
+        int take = 25,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var events = await _unitOfWork.WebhookEvents.GetRecentAsync(Math.Clamp(take, 1, 100), cancellationToken);
+            var rows = events.Select(e => (object)new
+            {
+                e.Id,
+                e.EventType,
+                e.ObjectType,
+                e.ExternalObjectId,
+                status = e.Status.ToString(),
+                e.Error,
+                e.ReceivedAt,
+                e.ProcessedAt,
+                e.RetryCount
+            }).ToList();
+
+            return ApiResponse<IReadOnlyList<object>>.Ok(rows);
+        }
+        catch (Exception ex)
+        {
+            return ApiResponse<IReadOnlyList<object>>.Fail(ex.Message);
+        }
+    }
+
+    private async Task ProcessWebhookEventAsync(
+        WebhookEvent webhookEvent,
+        string targetCode,
+        CancellationToken cancellationToken)
+    {
+        webhookEvent.Status = WebhookEventStatus.Processing;
+        webhookEvent.ProcessedAt = null;
+        _unitOfWork.WebhookEvents.Update(webhookEvent);
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        try
+        {
+            var result = targetCode.ToLowerInvariant() switch
+            {
+                "facebook" => await _facebookService.ProcessWebhookPayloadAsync(webhookEvent, cancellationToken),
+                "instagram" => await _instagramService.ProcessWebhookPayloadAsync(webhookEvent, cancellationToken),
+                "whatsapp" => await _whatsAppService.ProcessWebhookPayloadAsync(webhookEvent, cancellationToken),
+                _ => null
+            };
+
+            webhookEvent.Status = WebhookEventStatus.Processed;
+            webhookEvent.ProcessedAt = DateTime.UtcNow;
+
+            if (result is null)
+                webhookEvent.Error = $"No processor is registered for platform '{targetCode}'.";
+            else if (result.Handled == 0)
+                webhookEvent.Error = result.Notes.Count > 0
+                    ? "Nothing stored. " + string.Join(" | ", result.Notes)
+                    : "Nothing stored. Payload contained no recognised items.";
+            else
+                webhookEvent.Error = null;
+        }
+        catch (Exception ex)
+        {
+            webhookEvent.Status = WebhookEventStatus.Failed;
+            webhookEvent.Error = ex.Message;
+            webhookEvent.ProcessedAt = DateTime.UtcNow;
+        }
+
+        _unitOfWork.WebhookEvents.Update(webhookEvent);
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+    }
+
     private static (string EventType, string? EntryId, string? PlatformCode) Describe(string payloadJson)
     {
         try

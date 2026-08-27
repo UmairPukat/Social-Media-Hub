@@ -683,10 +683,16 @@ public class InstagramService : IInstagramService
         WebhookProcessResult result,
         CancellationToken cancellationToken)
     {
-        var profile = await _unitOfWork.SocialProfiles.GetByExternalProfileIdAsync(entryId, cancellationToken)
-            ?? await FindProfileByPageIdAsync(entryId, cancellationToken)
-            ?? await FindProfileByAlternateIdAsync(entryId, cancellationToken);
-        if (profile is not null)
+        var profile = await _unitOfWork.SocialProfiles.GetByExternalProfileIdAsync(entryId, cancellationToken);
+        if (profile is not null && await IsConnectedProfileAsync(profile, cancellationToken))
+            return profile;
+
+        profile = await FindProfileByPageIdAsync(entryId, cancellationToken);
+        if (profile is not null && await IsConnectedProfileAsync(profile, cancellationToken))
+            return profile;
+
+        profile = await FindProfileByAlternateIdAsync(entryId, cancellationToken);
+        if (profile is not null && await IsConnectedProfileAsync(profile, cancellationToken))
             return profile;
 
         if (string.IsNullOrWhiteSpace(entryId) || entryId == "0")
@@ -695,12 +701,13 @@ public class InstagramService : IInstagramService
                 p => p.ProfileType == ProfileType.InstagramBusiness
                      || p.ProfileType == ProfileType.InstagramLogin,
                 cancellationToken);
-            profile = profiles.OrderByDescending(p => p.CreatedAt).FirstOrDefault();
-
-            if (profile is not null)
+            foreach (var candidate in profiles.OrderByDescending(p => p.CreatedAt))
             {
-                result.Skip($"Test delivery (entry id '{entryId}') applied to connected profile '{profile.Name}'.");
-                return profile;
+                if (!await IsConnectedProfileAsync(candidate, cancellationToken))
+                    continue;
+
+                result.Skip($"Test delivery (entry id '{entryId}') applied to connected profile '{candidate.Name}'.");
+                return candidate;
             }
         }
 
@@ -709,7 +716,8 @@ public class InstagramService : IInstagramService
         // unambiguous, so adopt it and remember the id instead of dropping the delivery.
         var instagramLoginProfiles = await _unitOfWork.SocialProfiles.FindAsync(
             p => p.ProfileType == ProfileType.InstagramLogin, cancellationToken);
-        if (instagramLoginProfiles.Count == 1)
+        if (instagramLoginProfiles.Count == 1 &&
+            await IsConnectedProfileAsync(instagramLoginProfiles[0], cancellationToken))
         {
             profile = instagramLoginProfiles[0];
             await RememberAlternateProfileIdAsync(profile, entryId, cancellationToken);
@@ -722,8 +730,16 @@ public class InstagramService : IInstagramService
         }
 
         _logger.LogInformation("Instagram webhook ignored — no profile matches entry {EntryId}.", entryId);
-        result.Skip($"No connected Instagram profile matches entry id '{entryId}'.");
+        result.Skip(
+            $"No connected Instagram profile matches entry id '{entryId}'. " +
+            "Connect Instagram in Integrations or App Connections and select the page/account that receives this webhook.");
         return null;
+    }
+
+    private async Task<bool> IsConnectedProfileAsync(SocialProfile profile, CancellationToken cancellationToken)
+    {
+        var account = await _unitOfWork.SocialAccounts.GetByIdAsync(profile.SocialAccountId, cancellationToken);
+        return account is not null && account.Status == SocialAccountStatus.Connected;
     }
 
     /// <summary>Matches an id previously recorded in <c>MetadataJson.alternateIds</c>.</summary>
