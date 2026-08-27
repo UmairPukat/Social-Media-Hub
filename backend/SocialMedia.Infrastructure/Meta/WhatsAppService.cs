@@ -170,6 +170,9 @@ public class WhatsAppService : IWhatsAppService
                     var account = await _unitOfWork.SocialAccounts.GetByIdAsync(profile.SocialAccountId, cancellationToken);
                     if (account is null) continue;
 
+                    if (!WebhookProfileGuard.CanProcess(profile, account, webhookEvent, result))
+                        continue;
+
                     foreach (var message in messages.EnumerateArray())
                     {
                         var id = message.TryGetProperty("id", out var mid) ? mid.GetString() : null;

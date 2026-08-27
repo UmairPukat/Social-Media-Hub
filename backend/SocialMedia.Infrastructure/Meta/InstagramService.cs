@@ -656,6 +656,30 @@ public class InstagramService : IInstagramService
                 if (profile is null)
                     continue;
 
+                var account = await _unitOfWork.SocialAccounts.GetByIdAsync(profile.SocialAccountId, cancellationToken);
+                if (account is null)
+                {
+                    result.Skip($"Entry '{igUserId}' has no owning account.");
+                    continue;
+                }
+
+                if (!WebhookProfileGuard.CanProcess(profile, account, webhookEvent, result))
+                    continue;
+
+                // Business Login for Instagram can attach field/value on the entry itself.
+                if (entry.TryGetProperty("field", out var directFieldElement)
+                    && entry.TryGetProperty("value", out var directValueElement))
+                {
+                    var fieldName = directFieldElement.GetString();
+                    if (!string.IsNullOrWhiteSpace(fieldName))
+                    {
+                        var wrappedJson =
+                            $"[{{\"field\":{JsonSerializer.Serialize(fieldName)},\"value\":{directValueElement.GetRawText()}}}]";
+                        using var wrappedDoc = JsonDocument.Parse(wrappedJson);
+                        await ProcessChangesAsync(profile, entry, wrappedDoc.RootElement, result, cancellationToken);
+                    }
+                }
+
                 if (entry.TryGetProperty("changes", out var changes))
                     await ProcessChangesAsync(profile, entry, changes, result, cancellationToken);
 
@@ -690,39 +714,10 @@ public class InstagramService : IInstagramService
         if (profile is not null)
             return profile;
 
-        if (string.IsNullOrWhiteSpace(entryId) || entryId == "0")
+        if (WebhookProfileGuard.IsTestDeliveryId(entryId))
         {
-            var profiles = await _unitOfWork.SocialProfiles.FindAsync(
-                p => (p.ProfileType == ProfileType.InstagramBusiness
-                      || p.ProfileType == ProfileType.InstagramLogin)
-                     && (menuType == null || p.MenuType == menuType),
-                cancellationToken);
-            profile = profiles.OrderByDescending(p => p.CreatedAt).FirstOrDefault();
-
-            if (profile is not null)
-            {
-                result.Skip($"Test delivery (entry id '{entryId}') applied to connected profile '{profile.Name}'.");
-                return profile;
-            }
-        }
-
-        // Instagram Login exposes two ids for the same account and the webhook may use the one we
-        // did not store at connect time. With a single Instagram Login profile the owner is
-        // unambiguous, so adopt it and remember the id instead of dropping the delivery.
-        var instagramLoginProfiles = await _unitOfWork.SocialProfiles.FindAsync(
-            p => p.ProfileType == ProfileType.InstagramLogin
-                 && (menuType == null || p.MenuType == menuType),
-            cancellationToken);
-        if (instagramLoginProfiles.Count == 1)
-        {
-            profile = instagramLoginProfiles[0];
-            await RememberAlternateProfileIdAsync(profile, entryId, cancellationToken);
-            _logger.LogInformation(
-                "Instagram Login webhook entry {EntryId} linked to profile {ProfileId} ({ProfileName}).",
-                entryId,
-                profile.ExternalProfileId,
-                profile.Name);
-            return profile;
+            result.Skip($"Test delivery (entry id '{entryId}') ignored — connect a real Instagram account to store messages.");
+            return null;
         }
 
         _logger.LogInformation("Instagram webhook ignored — no profile matches entry {EntryId}.", entryId);
@@ -741,31 +736,6 @@ public class InstagramService : IInstagramService
                  && (menuType == null || p.MenuType == menuType),
             cancellationToken);
         return profiles.FirstOrDefault(p => ReadAlternateIds(p.MetadataJson).Contains(externalId));
-    }
-
-    private async Task RememberAlternateProfileIdAsync(
-        SocialProfile profile,
-        string externalId,
-        CancellationToken cancellationToken)
-    {
-        if (string.IsNullOrWhiteSpace(externalId) ||
-            externalId == profile.ExternalProfileId ||
-            ReadAlternateIds(profile.MetadataJson).Contains(externalId))
-            return;
-
-        var metadata = new Dictionary<string, object>();
-        var pageId = TryReadPageId(profile.MetadataJson);
-        if (!string.IsNullOrWhiteSpace(pageId))
-            metadata["pageId"] = pageId!;
-
-        var alternates = ReadAlternateIds(profile.MetadataJson).ToList();
-        alternates.Add(externalId);
-        metadata["alternateIds"] = alternates;
-
-        profile.MetadataJson = JsonSerializer.Serialize(metadata);
-        profile.UpdatedAt = DateTime.UtcNow;
-        _unitOfWork.SocialProfiles.Update(profile);
-        await _unitOfWork.SaveChangesAsync(cancellationToken);
     }
 
     private static IReadOnlyList<string> ReadAlternateIds(string? metadataJson)
@@ -894,9 +864,9 @@ public class InstagramService : IInstagramService
                 continue;
             }
 
-            var commentId = value.TryGetProperty("id", out var commentIdElement)
-                ? commentIdElement.ToString()
-                : null;
+            var commentId = FirstNonEmpty(
+                value.TryGetProperty("id", out var commentIdElement) ? commentIdElement.ToString() : null,
+                value.TryGetProperty("comment_id", out var legacyCommentIdElement) ? legacyCommentIdElement.ToString() : null);
             if (string.IsNullOrWhiteSpace(commentId))
             {
                 result.Skip("Comment change is missing id.");

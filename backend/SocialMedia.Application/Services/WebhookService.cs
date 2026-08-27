@@ -14,7 +14,7 @@ namespace SocialMedia.Application.Services;
 
 /// <summary>
 /// Webhook connection (verify), subscribe, and receive.
-/// Flow: save full payload to WebhookLogs → save WebhookEvent → process → SignalR.
+/// Flow: process delivery → persist WebhookLog/WebhookEvent only when inbox rows are stored.
 /// </summary>
 public class WebhookService : IWebhookService
 {
@@ -233,24 +233,13 @@ public class WebhookService : IWebhookService
     {
         try
         {
+            if (!signatureValid)
+                return ApiResponse<object>.Fail("Invalid webhook signature.");
+
             var normalizedMenu = string.IsNullOrWhiteSpace(menuType) ? null : MenuTypes.Normalize(menuType);
             var platform = await _unitOfWork.Platforms.GetByCodeAsync(platformCode, normalizedMenu, cancellationToken: cancellationToken);
 
-            // 1) Always persist the full raw payload to WebhookLogs first.
-            var log = new WebhookLog
-            {
-                PlatformId = platform?.Id,
-                PlatformCode = platformCode,
-                Signature = signature,
-                HeadersJson = headersJson,
-                PayloadJson = payloadJson,
-                ReceivedAt = DateTime.UtcNow
-            };
-            await _unitOfWork.WebhookLogs.AddAsync(log, cancellationToken);
-            await _unitOfWork.SaveChangesAsync(cancellationToken);
-
-            // 2) Track processing status on WebhookEvents. Meta names the source in "object", which is
-            // trusted over the endpoint that was hit so a mis-mapped callback URL still routes correctly.
+            // Meta names the source in "object", which is trusted over the endpoint that was hit.
             var descriptor = Describe(payloadJson);
             var targetCode = descriptor.PlatformCode ?? platformCode;
             var targetPlatform = string.Equals(targetCode, platformCode, StringComparison.OrdinalIgnoreCase)
@@ -267,31 +256,14 @@ public class WebhookService : IWebhookService
                 Signature = signature,
                 HeadersJson = headersJson,
                 MenuType = normalizedMenu,
-                Status = WebhookEventStatus.Received,
+                Status = WebhookEventStatus.Processing,
                 ReceivedAt = DateTime.UtcNow
             };
-            await _unitOfWork.WebhookEvents.AddAsync(webhookEvent, cancellationToken);
-            await _unitOfWork.SaveChangesAsync(cancellationToken);
 
-            // 3) A rejected signature is recorded rather than dropped, so a delivery is never invisible.
-            if (!signatureValid)
-            {
-                webhookEvent.Status = WebhookEventStatus.Failed;
-                webhookEvent.Error = "Rejected: X-Hub-Signature-256 missing or does not match the configured app secret.";
-                webhookEvent.ProcessedAt = DateTime.UtcNow;
-                _unitOfWork.WebhookEvents.Update(webhookEvent);
-                await _unitOfWork.SaveChangesAsync(cancellationToken);
-
-                return ApiResponse<object>.Fail("Invalid webhook signature.");
-            }
-
-            webhookEvent.Status = WebhookEventStatus.Processing;
-            _unitOfWork.WebhookEvents.Update(webhookEvent);
-            await _unitOfWork.SaveChangesAsync(cancellationToken);
-
+            WebhookProcessResult? result;
             try
             {
-                var result = targetCode.ToLowerInvariant() switch
+                result = targetCode.ToLowerInvariant() switch
                 {
                     "facebook" => await _facebookService.ProcessWebhookPayloadAsync(webhookEvent, cancellationToken),
                     "instagram" => await _instagramService.ProcessWebhookPayloadAsync(webhookEvent, cancellationToken),
@@ -302,30 +274,52 @@ public class WebhookService : IWebhookService
                 webhookEvent.Status = WebhookEventStatus.Processed;
                 webhookEvent.ProcessedAt = DateTime.UtcNow;
 
-                // Nothing stored is the common silent failure, so the reason is written to the event.
                 if (result is null)
                     webhookEvent.Error = $"No processor is registered for platform '{targetCode}'.";
-                else if (result.Handled == 0)
-                    webhookEvent.Error = result.Notes.Count > 0
-                        ? "Nothing stored. " + string.Join(" | ", result.Notes)
-                        : "Nothing stored. Payload contained no recognised items.";
             }
             catch (Exception ex)
             {
                 webhookEvent.Status = WebhookEventStatus.Failed;
                 webhookEvent.Error = ex.Message;
+                webhookEvent.ProcessedAt = DateTime.UtcNow;
                 webhookEvent.RetryCount += 1;
+                result = null;
             }
 
-            _unitOfWork.WebhookEvents.Update(webhookEvent);
+            // Ignore deliveries that did not create inbox rows (unconnected accounts, test tools,
+            // read/delivery receipts, module mismatches, duplicates, etc.).
+            if (result is null || result.Handled == 0)
+            {
+                return ApiResponse<object>.Ok(new
+                {
+                    stored = false,
+                    handled = result?.Handled ?? 0,
+                    note = result?.Notes.Count > 0
+                        ? string.Join(" | ", result.Notes)
+                        : webhookEvent.Error
+                }, "Webhook ignored — nothing stored.");
+            }
+
+            var log = new WebhookLog
+            {
+                PlatformId = webhookEvent.PlatformId,
+                PlatformCode = platformCode,
+                Signature = signature,
+                HeadersJson = headersJson,
+                PayloadJson = payloadJson,
+                ReceivedAt = webhookEvent.ReceivedAt
+            };
+            await _unitOfWork.WebhookLogs.AddAsync(log, cancellationToken);
+            await _unitOfWork.WebhookEvents.AddAsync(webhookEvent, cancellationToken);
             await _unitOfWork.SaveChangesAsync(cancellationToken);
 
             return ApiResponse<object>.Ok(new
             {
+                stored = true,
                 logId = log.Id,
-                webhookEvent.Id,
+                webhookEventId = webhookEvent.Id,
                 webhookEvent.Status,
-                note = webhookEvent.Error
+                handled = result.Handled
             }, "Webhook received.");
         }
         catch (Exception ex)

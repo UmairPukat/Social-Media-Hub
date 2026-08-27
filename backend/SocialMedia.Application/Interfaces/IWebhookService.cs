@@ -27,8 +27,8 @@ public interface IWebhookService
     Task<ApiResponse<object>> SubscribeAsync(string platformCode, string? callbackUrl, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Always saves the raw payload and a WebhookEvent, then processes. Pass
-    /// <paramref name="signatureValid"/> as false to record a rejected delivery without processing it.
+    /// Processes a delivery and persists WebhookLog/WebhookEvent only when inbox rows are stored.
+    /// Pass <paramref name="signatureValid"/> as false to reject without processing or persisting.
     /// </summary>
     Task<ApiResponse<object>> ReceiveAsync(string platformCode, string payloadJson, string? signature, string? headersJson, bool signatureValid = true, string? menuType = null, CancellationToken cancellationToken = default);
 

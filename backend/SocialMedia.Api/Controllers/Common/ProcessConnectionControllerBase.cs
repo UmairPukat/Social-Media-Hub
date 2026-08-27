@@ -63,6 +63,23 @@ public abstract class ProcessConnectionControllerBase : ControllerBase
         return OAuthPopupHtmlBuilder.AsHtml(result);
     }
 
+    /// <summary>
+    /// Meta webhooks must POST to <c>/webhooks</c>, not <c>/callback</c> (OAuth only).
+    /// </summary>
+    [AllowAnonymous]
+    [HttpPost("callback")]
+    public IActionResult WebhookMisconfigured()
+    {
+        var webhooksUrl = Request.Scheme + "://" + Request.Host + Request.Path.Value!.Replace("/callback", "/webhooks", StringComparison.OrdinalIgnoreCase);
+        return BadRequest(new
+        {
+            error = "Wrong URL: Meta webhooks must use the /webhooks endpoint, not /callback.",
+            oauthCallback = Request.Path.Value,
+            webhookUrl = webhooksUrl,
+            hint = "In Meta Developer Console → Webhooks, set Callback URL to the webhookUrl above."
+        });
+    }
+
     [HttpGet("pages")]
     public async Task<IActionResult> GetPages([FromQuery] string platformCode)
     {

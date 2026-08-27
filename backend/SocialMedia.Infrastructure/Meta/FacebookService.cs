@@ -306,6 +306,9 @@ public class FacebookService : IFacebookService
                     continue;
                 }
 
+                if (!WebhookProfileGuard.CanProcess(profile, account, webhookEvent, result))
+                    continue;
+
                 if (entry.TryGetProperty("changes", out var changes))
                     await ProcessChangesAsync(profile, account, entry, changes, result, cancellationToken);
 
@@ -337,19 +340,17 @@ public class FacebookService : IFacebookService
         if (profile is not null)
             return profile;
 
-        if (IsTestDeliveryId(pageId))
+        profile = await FindInstagramProfileByPageIdAsync(pageId, menuType, cancellationToken);
+        if (profile is not null)
         {
-            var pages = await _unitOfWork.SocialProfiles.FindAsync(
-                p => p.ProfileType == ProfileType.FacebookPage
-                     && (menuType == null || p.MenuType == menuType),
-                cancellationToken);
-            profile = pages.OrderByDescending(p => p.CreatedAt).FirstOrDefault();
+            result.Skip($"Page webhook entry '{pageId}' matched Instagram profile '{profile.Name}' via linked page id.");
+            return profile;
+        }
 
-            if (profile is not null)
-            {
-                result.Skip($"Test delivery (entry id '{pageId}') applied to connected page '{profile.Name}'.");
-                return profile;
-            }
+        if (WebhookProfileGuard.IsTestDeliveryId(pageId))
+        {
+            result.Skip($"Test delivery (entry id '{pageId}') ignored — connect a real page id to store messages.");
+            return null;
         }
 
         _logger.LogInformation("Facebook webhook ignored — page {PageId} is not connected.", pageId);
@@ -357,9 +358,39 @@ public class FacebookService : IFacebookService
         return null;
     }
 
-    /// <summary>Meta's webhook test tool sends placeholder ids rather than a real page id.</summary>
     private static bool IsTestDeliveryId(string? id)
-        => string.IsNullOrWhiteSpace(id) || id == "0";
+        => WebhookProfileGuard.IsTestDeliveryId(id);
+
+    /// <summary>
+    /// Instagram connected via Facebook Login stores the IG user id on the profile; Messenger
+    /// webhooks on object=page send the linked Facebook Page id as entry.id.
+    /// </summary>
+    private async Task<SocialProfile?> FindInstagramProfileByPageIdAsync(
+        string pageId,
+        string? menuType,
+        CancellationToken cancellationToken)
+    {
+        var profiles = await _unitOfWork.SocialProfiles.FindAsync(
+            p => p.ProfileType == ProfileType.InstagramBusiness
+                 && p.MetadataJson != null
+                 && p.MetadataJson.Contains(pageId)
+                 && (menuType == null || p.MenuType == menuType),
+            cancellationToken);
+
+        return profiles.FirstOrDefault(p =>
+        {
+            try
+            {
+                using var meta = JsonDocument.Parse(p.MetadataJson!);
+                return meta.RootElement.TryGetProperty("pageId", out var id)
+                       && string.Equals(id.GetString(), pageId, StringComparison.Ordinal);
+            }
+            catch
+            {
+                return false;
+            }
+        });
+    }
 
     private async Task ProcessChangesAsync(
         SocialProfile profile,
