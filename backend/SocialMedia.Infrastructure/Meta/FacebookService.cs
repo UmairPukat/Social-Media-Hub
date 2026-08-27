@@ -484,6 +484,12 @@ public class FacebookService : IFacebookService
                 ? fromName.GetString()
                 : null) ?? "Facebook user";
 
+        if (MetaMessagingHelper.ProfileOwnsSenderId(profile, authorId))
+        {
+            result.Skip($"Comment '{commentId}' is from the connected page — not stored.");
+            return;
+        }
+
         // parent_id equals post_id for a top-level comment; only a real reply has a parent comment.
         Comment? parentComment = null;
         var parentExternalId = FirstNonEmpty(
@@ -677,7 +683,7 @@ public class FacebookService : IFacebookService
             return;
         }
 
-        var messageId = message.TryGetProperty("mid", out var mid) ? mid.ToString() : null;
+        var messageId = MetaMessagingHelper.ReadMessageId(message);
         if (string.IsNullOrWhiteSpace(messageId))
         {
             result.Skip("Message has no mid.");
@@ -698,11 +704,18 @@ public class FacebookService : IFacebookService
 
         // Echoes are the page's own replies coming back through the webhook.
         var isEcho = message.TryGetProperty("is_echo", out var echo) && echo.ValueKind == JsonValueKind.True;
-        var outbound = isEcho || senderId == profile.ExternalProfileId;
+        var outbound = isEcho || MetaMessagingHelper.ProfileOwnsSenderId(profile, senderId);
         var customerId = outbound ? receiverId : senderId;
         if (string.IsNullOrWhiteSpace(customerId))
         {
             result.Skip($"Message '{messageId}' has no sender/recipient id.");
+            return;
+        }
+
+        // Echoes and business-side sends are recorded via the send API, not webhooks.
+        if (outbound)
+        {
+            result.Skip($"Message '{messageId}' is outbound/echo — not stored from webhook.");
             return;
         }
 

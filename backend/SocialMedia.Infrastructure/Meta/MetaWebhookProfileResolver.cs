@@ -20,21 +20,15 @@ internal static class MetaWebhookProfileResolver
         WebhookProcessResult result,
         CancellationToken cancellationToken)
     {
-        var profile = await unitOfWork.SocialProfiles.GetByExternalProfileIdAsync(entryId, menuType, cancellationToken);
+        var normalizedMenu = string.IsNullOrWhiteSpace(menuType) ? null : MenuTypes.Normalize(menuType);
+
+        var profile = await unitOfWork.SocialProfiles.GetByExternalProfileIdAsync(entryId, normalizedMenu, cancellationToken);
         if (profile is not null)
             return profile;
 
-        profile = await FindByProfilePageIdAsync(unitOfWork, entryId, menuType, cancellationToken);
+        profile = await ScanConnectedProfilesAsync(unitOfWork, entryId, normalizedMenu, cancellationToken);
         if (profile is not null)
-            return await ReloadProfileAsync(unitOfWork, profile, menuType, cancellationToken);
-
-        profile = await FindByAccountSelectedPageIdAsync(unitOfWork, entryId, menuType, cancellationToken);
-        if (profile is not null)
-            return await ReloadProfileAsync(unitOfWork, profile, menuType, cancellationToken);
-
-        profile = await FindByAlternateIdAsync(unitOfWork, entryId, menuType, cancellationToken);
-        if (profile is not null)
-            return await ReloadProfileAsync(unitOfWork, profile, menuType, cancellationToken);
+            return profile;
 
         if (WebhookProfileGuard.IsTestDeliveryId(entryId))
         {
@@ -42,8 +36,64 @@ internal static class MetaWebhookProfileResolver
             return null;
         }
 
-        result.Skip($"No connected profile matches entry id '{entryId}'.");
+        result.Skip(
+            $"No connected profile matches entry id '{entryId}'. Reconnect under this module and select the correct page/Instagram account.");
         return null;
+    }
+
+    private static async Task<SocialProfile?> ScanConnectedProfilesAsync(
+        IUnitOfWork unitOfWork,
+        string entryId,
+        string? normalizedMenu,
+        CancellationToken cancellationToken)
+    {
+        var accounts = await unitOfWork.SocialAccounts.FindAsync(
+            a => a.Status == SocialAccountStatus.Connected
+                 && (normalizedMenu == null || a.MenuType == normalizedMenu),
+            cancellationToken);
+
+        foreach (var accountSnapshot in accounts.OrderByDescending(a => a.ConnectedAt ?? a.UpdatedAt))
+        {
+            if (!SelectedPageIdMatches(accountSnapshot.MetadataJson, entryId))
+                continue;
+
+            var profile = await PickProfileForAccountAsync(unitOfWork, accountSnapshot.Id, normalizedMenu, cancellationToken);
+            if (profile is not null)
+                return profile;
+        }
+
+        foreach (var accountSnapshot in accounts)
+        {
+            var profiles = await unitOfWork.SocialProfiles.GetBySocialAccountAsync(accountSnapshot.Id, cancellationToken);
+            foreach (var snapshot in profiles)
+            {
+                if (PageIdMatches(snapshot.MetadataJson, entryId) ||
+                    ReadAlternateIds(snapshot.MetadataJson).Contains(entryId))
+                {
+                    return await ReloadProfileAsync(unitOfWork, snapshot, normalizedMenu, cancellationToken);
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private static async Task<SocialProfile?> PickProfileForAccountAsync(
+        IUnitOfWork unitOfWork,
+        Guid accountId,
+        string? normalizedMenu,
+        CancellationToken cancellationToken)
+    {
+        var profiles = await unitOfWork.SocialProfiles.GetBySocialAccountAsync(accountId, cancellationToken);
+        var snapshot = profiles
+            .OrderByDescending(p => p.ProfileType == ProfileType.InstagramBusiness ? 1 : 0)
+            .ThenByDescending(p => p.ProfileType == ProfileType.InstagramLogin ? 1 : 0)
+            .ThenByDescending(p => p.ProfileType == ProfileType.FacebookPage ? 1 : 0)
+            .FirstOrDefault();
+
+        return snapshot is null
+            ? null
+            : await ReloadProfileAsync(unitOfWork, snapshot, normalizedMenu, cancellationToken);
     }
 
     private static async Task<SocialProfile?> ReloadProfileAsync(
@@ -53,72 +103,6 @@ internal static class MetaWebhookProfileResolver
         CancellationToken cancellationToken)
         => await unitOfWork.SocialProfiles.GetByExternalProfileIdAsync(snapshot.ExternalProfileId, menuType, cancellationToken)
            ?? await unitOfWork.SocialProfiles.GetByIdAsync(snapshot.Id, cancellationToken);
-
-    private static async Task<SocialProfile?> FindByProfilePageIdAsync(
-        IUnitOfWork unitOfWork,
-        string pageId,
-        string? menuType,
-        CancellationToken cancellationToken)
-    {
-        var profiles = await unitOfWork.SocialProfiles.FindAsync(
-            p => p.MetadataJson != null
-                 && p.MetadataJson.Contains(pageId)
-                 && (menuType == null || p.MenuType == menuType),
-            cancellationToken);
-
-        return profiles.FirstOrDefault(p => PageIdMatches(p.MetadataJson, pageId));
-    }
-
-    private static async Task<SocialProfile?> FindByAccountSelectedPageIdAsync(
-        IUnitOfWork unitOfWork,
-        string pageId,
-        string? menuType,
-        CancellationToken cancellationToken)
-    {
-        var normalizedMenu = string.IsNullOrWhiteSpace(menuType) ? null : MenuTypes.Normalize(menuType);
-        var accounts = await unitOfWork.SocialAccounts.FindAsync(
-            a => a.Status == SocialAccountStatus.Connected
-                 && a.MetadataJson != null
-                 && a.MetadataJson.Contains(pageId)
-                 && (normalizedMenu == null || a.MenuType == normalizedMenu),
-            cancellationToken);
-
-        foreach (var account in accounts.OrderByDescending(a => a.ConnectedAt ?? a.UpdatedAt))
-        {
-            if (!SelectedPageIdMatches(account.MetadataJson, pageId))
-                continue;
-
-            var profiles = await unitOfWork.SocialProfiles.GetBySocialAccountAsync(account.Id, cancellationToken);
-            var match = profiles
-                .OrderByDescending(p => p.ProfileType == ProfileType.InstagramBusiness ? 1 : 0)
-                .ThenByDescending(p => p.ProfileType == ProfileType.FacebookPage ? 1 : 0)
-                .ThenByDescending(p => p.ProfileType == ProfileType.InstagramLogin ? 1 : 0)
-                .FirstOrDefault();
-
-            if (match is not null)
-                return match;
-        }
-
-        return null;
-    }
-
-    private static async Task<SocialProfile?> FindByAlternateIdAsync(
-        IUnitOfWork unitOfWork,
-        string externalId,
-        string? menuType,
-        CancellationToken cancellationToken)
-    {
-        if (string.IsNullOrWhiteSpace(externalId))
-            return null;
-
-        var profiles = await unitOfWork.SocialProfiles.FindAsync(
-            p => p.MetadataJson != null
-                 && p.MetadataJson.Contains(externalId)
-                 && (menuType == null || p.MenuType == menuType),
-            cancellationToken);
-
-        return profiles.FirstOrDefault(p => ReadAlternateIds(p.MetadataJson).Contains(externalId));
-    }
 
     private static bool PageIdMatches(string? metadataJson, string pageId)
     {

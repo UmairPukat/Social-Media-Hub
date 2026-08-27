@@ -40,6 +40,9 @@ public abstract class ProcessWebhooksControllerBase : ControllerBase
 
         var resolved = _webhookService.DetectPlatformFromPayload(rawBody) ?? "meta";
         var signatureValid = await _webhookService.IsSignatureValidForProcessAsync(MenuType, resolved, rawBody, signature);
+        if (!signatureValid)
+            _logger.LogWarning("{MenuType} webhook POST rejected — invalid signature.", MenuType);
+
         await _webhookService.ReceiveForProcessAsync(MenuType, resolved, rawBody, signature, headersJson, signatureValid);
 
         return Ok("EVENT_RECEIVED");

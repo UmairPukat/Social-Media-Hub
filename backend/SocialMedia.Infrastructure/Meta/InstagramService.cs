@@ -790,7 +790,7 @@ public class InstagramService : IInstagramService
             }
 
             // Instagram messaging can arrive as a change with field=messages rather than entry.messaging.
-            if (field is "messages" or "messaging_postbacks" or "message_reactions")
+            if (field is "messages" or "messaging" or "messaging_postbacks" or "message_reactions")
             {
                 await ProcessMessageAsync(profile, account, value, result, cancellationToken);
                 continue;
@@ -887,6 +887,12 @@ public class InstagramService : IInstagramService
                 value.TryGetProperty("from", out var fromUser) && fromUser.TryGetProperty("username", out var username)
                     ? username.GetString()
                     : null) ?? "Instagram user";
+
+            if (MetaMessagingHelper.ProfileOwnsSenderId(profile, authorId))
+            {
+                result.Skip($"Comment '{commentId}' is from the connected account — not stored.");
+                continue;
+            }
 
             Comment? parentComment = null;
             var parentExternalId = FirstNonEmpty(
@@ -987,7 +993,7 @@ public class InstagramService : IInstagramService
             return;
         }
 
-        var messageId = message.TryGetProperty("mid", out var mid) ? mid.ToString() : null;
+        var messageId = MetaMessagingHelper.ReadMessageId(message);
         if (string.IsNullOrWhiteSpace(messageId))
         {
             result.Skip("Message has no mid.");
@@ -1008,11 +1014,17 @@ public class InstagramService : IInstagramService
             ? recipientValue.ToString()
             : string.Empty;
         var isEcho = message.TryGetProperty("is_echo", out var echo) && echo.ValueKind == JsonValueKind.True;
-        var outbound = isEcho || ProfileOwnsId(profile, senderId);
+        var outbound = isEcho || MetaMessagingHelper.ProfileOwnsSenderId(profile, senderId);
         var customerId = outbound ? receiverId : senderId;
         if (string.IsNullOrWhiteSpace(customerId))
         {
             result.Skip($"Message '{messageId}' has no sender/recipient id.");
+            return;
+        }
+
+        if (outbound)
+        {
+            result.Skip($"Message '{messageId}' is outbound/echo — not stored from webhook.");
             return;
         }
 

@@ -6,6 +6,7 @@ using Microsoft.Extensions.Options;
 using SocialMedia.Application.Catalog;
 using SocialMedia.Application.DTOs.Common;
 using SocialMedia.Application.Interfaces;
+using SocialMedia.Application.Meta;
 using SocialMedia.Application.Settings;
 using SocialMedia.Domain.Entities;
 using SocialMedia.Domain.Enums;
@@ -15,7 +16,7 @@ namespace SocialMedia.Application.Services;
 
 /// <summary>
 /// Webhook connection (verify), subscribe, and receive.
-/// Flow: process delivery → persist WebhookLog/WebhookEvent only when inbox rows are stored.
+/// Flow: classify inbound user content → save WebhookEvent → process → update WebhookEvent.
 /// </summary>
 public class WebhookService : IWebhookService
 {
@@ -267,9 +268,29 @@ public class WebhookService : IWebhookService
                 Signature = signature,
                 HeadersJson = headersJson,
                 MenuType = normalizedMenu,
-                Status = WebhookEventStatus.Processing,
+                Status = WebhookEventStatus.Received,
                 ReceivedAt = DateTime.UtcNow
             };
+
+            if (!MetaWebhookContentClassifier.ContainsRealUserInboundContent(payloadJson))
+            {
+                _logger.LogInformation(
+                    "Webhook ignored for module {MenuType} — not a real user message or comment (marketing/social/echo/receipt).",
+                    normalizedMenu);
+                return ApiResponse<object>.Ok(new
+                {
+                    stored = false,
+                    handled = 0,
+                    note = "Ignored — not an inbound user message or comment."
+                }, "Webhook ignored — not from a real user.");
+            }
+
+            await _unitOfWork.WebhookEvents.AddAsync(webhookEvent, cancellationToken);
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+            webhookEvent.Status = WebhookEventStatus.Processing;
+            _unitOfWork.WebhookEvents.Update(webhookEvent);
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
 
             WebhookProcessResult? result;
             try
@@ -291,22 +312,11 @@ public class WebhookService : IWebhookService
                 result = null;
             }
 
-            // Ignore deliveries that did not create inbox rows (unconnected accounts, test tools,
-            // read/delivery receipts, module mismatches, duplicates, etc.).
-            if (result is null || result.Handled == 0)
+            if (result?.Handled == 0)
             {
-                _logger.LogInformation(
-                    "Webhook ignored for module {MenuType} — nothing stored. Notes: {Notes}",
-                    normalizedMenu,
-                    result?.Notes.Count > 0 ? string.Join(" | ", result.Notes) : webhookEvent.Error ?? "none");
-                return ApiResponse<object>.Ok(new
-                {
-                    stored = false,
-                    handled = result?.Handled ?? 0,
-                    note = result?.Notes.Count > 0
-                        ? string.Join(" | ", result.Notes)
-                        : webhookEvent.Error
-                }, "Webhook ignored — nothing stored.");
+                webhookEvent.Error = result?.Notes.Count > 0
+                    ? "Nothing stored. " + string.Join(" | ", result.Notes)
+                    : webhookEvent.Error ?? "Nothing stored.";
             }
 
             var log = new WebhookLog
@@ -319,7 +329,7 @@ public class WebhookService : IWebhookService
                 ReceivedAt = webhookEvent.ReceivedAt
             };
             await _unitOfWork.WebhookLogs.AddAsync(log, cancellationToken);
-            await _unitOfWork.WebhookEvents.AddAsync(webhookEvent, cancellationToken);
+            _unitOfWork.WebhookEvents.Update(webhookEvent);
             await _unitOfWork.SaveChangesAsync(cancellationToken);
 
             return ApiResponse<object>.Ok(new
@@ -328,7 +338,7 @@ public class WebhookService : IWebhookService
                 logId = log.Id,
                 webhookEventId = webhookEvent.Id,
                 webhookEvent.Status,
-                handled = result.Handled
+                handled = result?.Handled ?? 0
             }, "Webhook received.");
         }
         catch (Exception ex)
@@ -347,7 +357,7 @@ public class WebhookService : IWebhookService
             "facebook" => new[] { "facebook", "instagram" },
             "instagram" => new[] { "instagram", "facebook" },
             "whatsapp" => new[] { "whatsapp" },
-            _ => Array.Empty<string>()
+            _ => new[] { "instagram", "facebook", "whatsapp" }
         };
 
         WebhookProcessResult? last = null;
