@@ -216,6 +216,11 @@ export class AppConnectionsComponent implements OnInit {
     return value === 'instagram' || value === 'instagram_login';
   }
 
+  readonly isInstagramLoginDetails = computed(() =>
+    this.isInstagramLoginPlatform(this.details()?.platformCode) ||
+    this.isInstagramLoginPlatform(this.detailsPlatformCode())
+  );
+
   isWhatsAppPlatform(code: string | null | undefined): boolean {
     return (code || '').toLowerCase() === 'whatsapp';
   }
