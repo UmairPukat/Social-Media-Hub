@@ -652,7 +652,8 @@ public class InstagramService : IInstagramService
                     continue;
                 }
 
-                var profile = await ResolveProfileAsync(igUserId!, webhookEvent.MenuType, result, cancellationToken);
+                var profile = await MetaWebhookProfileResolver.ResolveAsync(
+                    _unitOfWork, igUserId!, webhookEvent.MenuType, result, cancellationToken);
                 if (profile is null)
                     continue;
 
@@ -695,47 +696,6 @@ public class InstagramService : IInstagramService
             _logger.LogError(ex, "Instagram webhook processing failed for {Id}", webhookEvent.Id);
             throw;
         }
-    }
-
-    /// <summary>
-    /// Webhooks key <c>entry.id</c> to the IG user id (both connection types) or the linked
-    /// Facebook Page (Facebook Login only). Meta's "Send to My Server" test tool sends <c>"0"</c>,
-    /// so those fall back to a connected Instagram profile of either type.
-    /// </summary>
-    private async Task<SocialProfile?> ResolveProfileAsync(
-        string entryId,
-        string? menuType,
-        WebhookProcessResult result,
-        CancellationToken cancellationToken)
-    {
-        var profile = await _unitOfWork.SocialProfiles.GetByExternalProfileIdAsync(entryId, menuType, cancellationToken)
-            ?? await FindProfileByPageIdAsync(entryId, menuType, cancellationToken)
-            ?? await FindProfileByAlternateIdAsync(entryId, menuType, cancellationToken);
-        if (profile is not null)
-            return profile;
-
-        if (WebhookProfileGuard.IsTestDeliveryId(entryId))
-        {
-            result.Skip($"Test delivery (entry id '{entryId}') ignored — connect a real Instagram account to store messages.");
-            return null;
-        }
-
-        _logger.LogInformation("Instagram webhook ignored — no profile matches entry {EntryId}.", entryId);
-        result.Skip($"No connected Instagram profile matches entry id '{entryId}'.");
-        return null;
-    }
-
-    /// <summary>Matches an id previously recorded in <c>MetadataJson.alternateIds</c>.</summary>
-    private async Task<SocialProfile?> FindProfileByAlternateIdAsync(string externalId, string? menuType, CancellationToken cancellationToken)
-    {
-        if (string.IsNullOrWhiteSpace(externalId))
-            return null;
-
-        var profiles = await _unitOfWork.SocialProfiles.FindAsync(
-            p => p.MetadataJson != null && p.MetadataJson.Contains(externalId)
-                 && (menuType == null || p.MenuType == menuType),
-            cancellationToken);
-        return profiles.FirstOrDefault(p => ReadAlternateIds(p.MetadataJson).Contains(externalId));
     }
 
     private static IReadOnlyList<string> ReadAlternateIds(string? metadataJson)
@@ -797,28 +757,6 @@ public class InstagramService : IInstagramService
             Add(auth?.RefreshToken);
 
         return tokens;
-    }
-
-    private async Task<SocialProfile?> FindProfileByPageIdAsync(string pageId, string? menuType, CancellationToken cancellationToken)
-    {
-        var profiles = await _unitOfWork.SocialProfiles.FindAsync(
-            p => p.ProfileType == ProfileType.InstagramBusiness
-                 && p.MetadataJson != null
-                 && p.MetadataJson.Contains(pageId)
-                 && (menuType == null || p.MenuType == menuType),
-            cancellationToken);
-        return profiles.FirstOrDefault(p =>
-        {
-            try
-            {
-                using var meta = JsonDocument.Parse(p.MetadataJson!);
-                return meta.RootElement.TryGetProperty("pageId", out var id) && id.GetString() == pageId;
-            }
-            catch
-            {
-                return false;
-            }
-        });
     }
 
     private async Task ProcessChangesAsync(

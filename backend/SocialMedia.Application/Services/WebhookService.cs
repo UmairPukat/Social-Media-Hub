@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using SocialMedia.Application.Catalog;
 using SocialMedia.Application.DTOs.Common;
@@ -23,19 +24,22 @@ public class WebhookService : IWebhookService
     private readonly IInstagramService _instagramService;
     private readonly IWhatsAppService _whatsAppService;
     private readonly MetaSettings _meta;
+    private readonly ILogger<WebhookService> _logger;
 
     public WebhookService(
         IUnitOfWork unitOfWork,
         IFacebookService facebookService,
         IInstagramService instagramService,
         IWhatsAppService whatsAppService,
-        IOptions<MetaSettings> metaOptions)
+        IOptions<MetaSettings> metaOptions,
+        ILogger<WebhookService> logger)
     {
         _unitOfWork = unitOfWork;
         _facebookService = facebookService;
         _instagramService = instagramService;
         _whatsAppService = whatsAppService;
         _meta = metaOptions.Value;
+        _logger = logger;
     }
 
     public string? VerifyConnection(string? platformCode, string mode, string challenge, string verifyToken)
@@ -233,10 +237,17 @@ public class WebhookService : IWebhookService
     {
         try
         {
-            if (!signatureValid)
-                return ApiResponse<object>.Fail("Invalid webhook signature.");
-
             var normalizedMenu = string.IsNullOrWhiteSpace(menuType) ? null : MenuTypes.Normalize(menuType);
+
+            if (!signatureValid)
+            {
+                _logger.LogWarning(
+                    "Webhook rejected — invalid X-Hub-Signature-256 for module {MenuType}, platform {PlatformCode}.",
+                    normalizedMenu,
+                    platformCode);
+                return ApiResponse<object>.Fail("Invalid webhook signature.");
+            }
+
             var platform = await _unitOfWork.Platforms.GetByCodeAsync(platformCode, normalizedMenu, cancellationToken: cancellationToken);
 
             // Meta names the source in "object", which is trusted over the endpoint that was hit.
@@ -263,13 +274,7 @@ public class WebhookService : IWebhookService
             WebhookProcessResult? result;
             try
             {
-                result = targetCode.ToLowerInvariant() switch
-                {
-                    "facebook" => await _facebookService.ProcessWebhookPayloadAsync(webhookEvent, cancellationToken),
-                    "instagram" => await _instagramService.ProcessWebhookPayloadAsync(webhookEvent, cancellationToken),
-                    "whatsapp" => await _whatsAppService.ProcessWebhookPayloadAsync(webhookEvent, cancellationToken),
-                    _ => null
-                };
+                result = await ProcessMetaPayloadAsync(webhookEvent, targetCode, cancellationToken);
 
                 webhookEvent.Status = WebhookEventStatus.Processed;
                 webhookEvent.ProcessedAt = DateTime.UtcNow;
@@ -290,6 +295,10 @@ public class WebhookService : IWebhookService
             // read/delivery receipts, module mismatches, duplicates, etc.).
             if (result is null || result.Handled == 0)
             {
+                _logger.LogInformation(
+                    "Webhook ignored for module {MenuType} — nothing stored. Notes: {Notes}",
+                    normalizedMenu,
+                    result?.Notes.Count > 0 ? string.Join(" | ", result.Notes) : webhookEvent.Error ?? "none");
                 return ApiResponse<object>.Ok(new
                 {
                     stored = false,
@@ -326,6 +335,46 @@ public class WebhookService : IWebhookService
         {
             return ApiResponse<object>.Fail(ex.Message);
         }
+    }
+
+    private async Task<WebhookProcessResult?> ProcessMetaPayloadAsync(
+        WebhookEvent webhookEvent,
+        string targetCode,
+        CancellationToken cancellationToken)
+    {
+        var processors = targetCode.ToLowerInvariant() switch
+        {
+            "facebook" => new[] { "facebook", "instagram" },
+            "instagram" => new[] { "instagram", "facebook" },
+            "whatsapp" => new[] { "whatsapp" },
+            _ => Array.Empty<string>()
+        };
+
+        WebhookProcessResult? last = null;
+        foreach (var code in processors)
+        {
+            var attempt = code switch
+            {
+                "facebook" => await _facebookService.ProcessWebhookPayloadAsync(webhookEvent, cancellationToken),
+                "instagram" => await _instagramService.ProcessWebhookPayloadAsync(webhookEvent, cancellationToken),
+                "whatsapp" => await _whatsAppService.ProcessWebhookPayloadAsync(webhookEvent, cancellationToken),
+                _ => null
+            };
+
+            if (attempt?.Handled > 0)
+                return attempt;
+
+            if (attempt is not null)
+            {
+                if (last is null)
+                    last = attempt;
+                else
+                    foreach (var note in attempt.Notes)
+                        last.Skip(note);
+            }
+        }
+
+        return last;
     }
 
     /// <summary>
@@ -477,10 +526,23 @@ public class WebhookService : IWebhookService
         if (normalized == MenuTypes.Integration)
             return ResolveAppSecrets(platformCode, payloadJson).ToList();
 
-        var secrets = normalized == MenuTypes.AppConnection
+        var secrets = new List<string>();
+        void Add(string? secret)
+        {
+            if (!string.IsNullOrWhiteSpace(secret) && !secrets.Contains(secret))
+                secrets.Add(secret);
+        }
+
+        var dbSecrets = normalized == MenuTypes.AppConnection
             ? await _unitOfWork.AppConnectionConfigs.GetClientSecretsAsync(normalized, cancellationToken)
             : await _unitOfWork.DeveloperAppConfigs.GetClientSecretsAsync(normalized, cancellationToken);
 
-        return secrets.Count > 0 ? secrets : ResolveAppSecrets(platformCode, payloadJson).ToList();
+        foreach (var secret in dbSecrets)
+            Add(secret);
+
+        foreach (var secret in ResolveAppSecrets(platformCode, payloadJson))
+            Add(secret);
+
+        return secrets;
     }
 }
