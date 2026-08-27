@@ -4,6 +4,7 @@ import { Observable } from 'rxjs';
 import { environment } from '../../../environments/environment';
 import {
   ApiResponse,
+  AppConnectionConfig,
   ConnectionDetails,
   DashboardSummary,
   InboxItem,
@@ -12,6 +13,7 @@ import {
   MetaPage,
   PlatformCard,
   PublishPostResponse,
+  SaveAppConnectionConfigRequest,
   SocialAccount,
   SocialPost
 } from '../models/api.models';
@@ -125,5 +127,30 @@ export class ApiService {
       `${this.base}/Webhooks/Subscribe?platformCode=${platformCode}${q ? '&' + q.slice(1) : ''}`,
       {}
     );
+  }
+
+  getAppConnectionConfig(
+    platformCode: string,
+    menuType: MenuType = MENU_TYPES.appConnection,
+    revealSecret = false
+  ): Observable<ApiResponse<AppConnectionConfig>> {
+    const params = this.withMenuType(new URLSearchParams({ platformCode }), menuType);
+    if (revealSecret) params.set('revealSecret', 'true');
+    return this.http.get<ApiResponse<AppConnectionConfig>>(`${this.base}/AppConnections/GetConfig?${params}`);
+  }
+
+  saveAppConnectionConfig(body: SaveAppConnectionConfigRequest): Observable<ApiResponse<AppConnectionConfig>> {
+    return this.http.post<ApiResponse<AppConnectionConfig>>(`${this.base}/AppConnections/SaveConfig`, {
+      ...body,
+      menuType: body.menuType ?? MENU_TYPES.appConnection
+    });
+  }
+
+  deleteAppConnectionConfig(
+    platformCode: string,
+    menuType: MenuType = MENU_TYPES.appConnection
+  ): Observable<ApiResponse<object>> {
+    const params = this.withMenuType(new URLSearchParams({ platformCode }), menuType);
+    return this.http.delete<ApiResponse<object>>(`${this.base}/AppConnections/DeleteConfig?${params}`);
   }
 }

@@ -65,6 +65,7 @@ public static class DbSeeder
         await EnsureWebhookLogsTableAsync(db);
         await EnsureMessageReplyColumnsAsync(db);
         await EnsureMenuTypeColumnsAsync(db);
+        await EnsureAppConnectionConfigsTableAsync(db);
 
         var catalogCodes = new HashSet<string>(
             PlatformCatalog.All.Select(p => p.Code),
@@ -72,25 +73,31 @@ public static class DbSeeder
 
         foreach (var def in PlatformCatalog.All)
         {
-            var existing = db.Platforms.FirstOrDefault(p => p.Code == def.Code);
-            if (existing is null)
+            foreach (var menuType in new[] { MenuTypes.Integration, MenuTypes.AppConnection })
             {
-                db.Platforms.Add(new Platform
+                var platformId = PlatformCatalog.IdForMenu(def.Id, menuType);
+                var existing = db.Platforms.FirstOrDefault(p => p.Id == platformId)
+                    ?? db.Platforms.FirstOrDefault(p => p.Code == def.Code && p.MenuType == menuType);
+
+                if (existing is null)
                 {
-                    Id = def.Id,
-                    Name = def.Name,
-                    Code = def.Code,
-                    Icon = def.Icon,
-                    MenuType = MenuTypes.Integration,
-                    IsActive = true
-                });
-            }
-            else
-            {
-                existing.Name = def.Name;
-                existing.Icon = def.Icon;
-                existing.MenuType = MenuTypes.Integration;
-                existing.IsActive = true;
+                    db.Platforms.Add(new Platform
+                    {
+                        Id = platformId,
+                        Name = def.Name,
+                        Code = def.Code,
+                        Icon = def.Icon,
+                        MenuType = menuType,
+                        IsActive = true
+                    });
+                }
+                else
+                {
+                    existing.Name = def.Name;
+                    existing.Icon = def.Icon;
+                    existing.MenuType = menuType;
+                    existing.IsActive = true;
+                }
             }
         }
 
@@ -188,6 +195,47 @@ public static class DbSeeder
         await db.Database.ExecuteSqlRawAsync("""
             CREATE UNIQUE INDEX IF NOT EXISTS "IX_SocialAccounts_UserId_PlatformId_MenuType"
             ON "SocialAccounts" ("UserId", "PlatformId", "MenuType");
+            """);
+
+        await db.Database.ExecuteSqlRawAsync("""
+            DROP INDEX IF EXISTS "IX_Platforms_Code";
+            """);
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE UNIQUE INDEX IF NOT EXISTS "IX_Platforms_Code_MenuType"
+            ON "Platforms" ("Code", "MenuType");
+            """);
+    }
+
+    private static async Task EnsureAppConnectionConfigsTableAsync(AppDbContext db)
+    {
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE IF NOT EXISTS "AppConnectionConfigs" (
+                "Id" uuid NOT NULL,
+                "UserId" uuid NOT NULL,
+                "PlatformId" uuid NOT NULL,
+                "PlatformCode" character varying(50) NOT NULL,
+                "MenuType" character varying(50) NOT NULL DEFAULT 'app_connection',
+                "Label" character varying(200) NULL,
+                "ClientId" character varying(200) NOT NULL,
+                "ClientSecret" text NOT NULL,
+                "RedirectUri" character varying(2000) NULL,
+                "AuthUrl" character varying(2000) NULL,
+                "BaseUrl" character varying(500) NULL,
+                "Scopes" character varying(2000) NULL,
+                "GraphApiVersion" character varying(20) NOT NULL DEFAULT 'v21.0',
+                "WebhookVerifyToken" character varying(500) NULL,
+                "PhoneNumberId" character varying(100) NULL,
+                "WabaId" character varying(100) NULL,
+                "CreatedAt" timestamp with time zone NOT NULL,
+                "UpdatedAt" timestamp with time zone NULL,
+                CONSTRAINT "PK_AppConnectionConfigs" PRIMARY KEY ("Id"),
+                CONSTRAINT "FK_AppConnectionConfigs_Users_UserId" FOREIGN KEY ("UserId") REFERENCES "Users" ("Id") ON DELETE CASCADE,
+                CONSTRAINT "FK_AppConnectionConfigs_Platforms_PlatformId" FOREIGN KEY ("PlatformId") REFERENCES "Platforms" ("Id") ON DELETE CASCADE
+            );
+            """);
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE UNIQUE INDEX IF NOT EXISTS "IX_AppConnectionConfigs_UserId_PlatformId_MenuType"
+            ON "AppConnectionConfigs" ("UserId", "PlatformId", "MenuType");
             """);
     }
 }

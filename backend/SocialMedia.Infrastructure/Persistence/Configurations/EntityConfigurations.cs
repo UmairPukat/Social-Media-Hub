@@ -37,7 +37,7 @@ public class PlatformConfiguration : IEntityTypeConfiguration<Platform>
         builder.HasKey(x => x.Id);
         builder.Property(x => x.Name).IsRequired().HasMaxLength(100);
         builder.Property(x => x.Code).IsRequired().HasMaxLength(50);
-        builder.HasIndex(x => x.Code).IsUnique();
+        builder.HasIndex(x => new { x.Code, x.MenuType }).IsUnique();
         builder.Property(x => x.Icon).HasMaxLength(500);
         builder.Property(x => x.MenuType).IsRequired().HasMaxLength(50).HasDefaultValue("integration");
         builder.HasIndex(x => x.MenuType);
@@ -195,5 +195,31 @@ public class SyncJobConfiguration : IEntityTypeConfiguration<SyncJob>
         builder.ToTable("SyncJobs");
         builder.HasKey(x => x.Id);
         builder.HasOne(x => x.SocialAccount).WithMany(x => x.SyncJobs).HasForeignKey(x => x.SocialAccountId).OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
+public class AppConnectionConfigConfiguration : IEntityTypeConfiguration<AppConnectionConfig>
+{
+    public void Configure(EntityTypeBuilder<AppConnectionConfig> builder)
+    {
+        builder.ToTable("AppConnectionConfigs");
+        builder.HasKey(x => x.Id);
+        builder.Property(x => x.PlatformCode).IsRequired().HasMaxLength(50);
+        builder.Property(x => x.MenuType).IsRequired().HasMaxLength(50).HasDefaultValue("app_connection");
+        builder.Property(x => x.Label).HasMaxLength(200);
+        builder.Property(x => x.ClientId).IsRequired().HasMaxLength(200);
+        builder.Property(x => x.ClientSecret).IsRequired();
+        builder.Property(x => x.RedirectUri).HasMaxLength(2000);
+        builder.Property(x => x.AuthUrl).HasMaxLength(2000);
+        builder.Property(x => x.BaseUrl).HasMaxLength(500);
+        builder.Property(x => x.Scopes).HasMaxLength(2000);
+        builder.Property(x => x.GraphApiVersion).IsRequired().HasMaxLength(20).HasDefaultValue("v21.0");
+        builder.Property(x => x.WebhookVerifyToken).HasMaxLength(500);
+        builder.Property(x => x.PhoneNumberId).HasMaxLength(100);
+        builder.Property(x => x.WabaId).HasMaxLength(100);
+        builder.HasIndex(x => new { x.UserId, x.PlatformId, x.MenuType }).IsUnique();
+
+        builder.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+        builder.HasOne(x => x.Platform).WithMany().HasForeignKey(x => x.PlatformId).OnDelete(DeleteBehavior.Cascade);
     }
 }

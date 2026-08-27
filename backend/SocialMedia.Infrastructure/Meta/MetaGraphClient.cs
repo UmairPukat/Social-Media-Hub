@@ -329,6 +329,39 @@ public class MetaGraphClient
         return JsonDocument.Parse(body);
     }
 
+    public async Task<JsonDocument> ExchangeOAuthCodeAsync(
+        string host,
+        string version,
+        string clientId,
+        string clientSecret,
+        string redirectUri,
+        string code,
+        CancellationToken cancellationToken)
+    {
+        var url = BuildUrl(host, version, "oauth/access_token", string.Empty,
+            ("client_id", clientId),
+            ("client_secret", clientSecret),
+            ("redirect_uri", redirectUri),
+            ("code", code));
+        return await GetUrlAsync(url, cancellationToken);
+    }
+
+    public async Task<JsonDocument> ExchangeLongLivedTokenAsync(
+        string host,
+        string version,
+        string clientId,
+        string clientSecret,
+        string shortLivedToken,
+        CancellationToken cancellationToken)
+    {
+        var url = BuildUrl(host, version, "oauth/access_token", string.Empty,
+            ("grant_type", "fb_exchange_token"),
+            ("client_id", clientId),
+            ("client_secret", clientSecret),
+            ("fb_exchange_token", shortLivedToken));
+        return await GetUrlAsync(url, cancellationToken);
+    }
+
     private static string BuildUrl(
         string host,
         string version,

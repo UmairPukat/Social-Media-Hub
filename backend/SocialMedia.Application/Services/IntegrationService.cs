@@ -30,6 +30,7 @@ public class IntegrationService : IIntegrationService
     private readonly IFacebookService _facebookService;
     private readonly IInstagramService _instagramService;
     private readonly IWhatsAppService _whatsAppService;
+    private readonly IMetaOAuthExchange _metaOAuthExchange;
     private readonly MetaSettings _meta;
     private readonly JwtSettings _jwt;
     private readonly IConfiguration _configuration;
@@ -39,6 +40,7 @@ public class IntegrationService : IIntegrationService
         IFacebookService facebookService,
         IInstagramService instagramService,
         IWhatsAppService whatsAppService,
+        IMetaOAuthExchange metaOAuthExchange,
         IOptions<MetaSettings> metaOptions,
         IOptions<JwtSettings> jwtOptions,
         IConfiguration configuration)
@@ -47,6 +49,7 @@ public class IntegrationService : IIntegrationService
         _facebookService = facebookService;
         _instagramService = instagramService;
         _whatsAppService = whatsAppService;
+        _metaOAuthExchange = metaOAuthExchange;
         _meta = metaOptions.Value;
         _jwt = jwtOptions.Value;
         _configuration = configuration;
@@ -75,11 +78,17 @@ public class IntegrationService : IIntegrationService
                         .ThenByDescending(a => a.ConnectedAt ?? a.UpdatedAt ?? a.CreatedAt)
                         .First());
 
+            var configByPlatform = normalizedMenu == MenuTypes.AppConnection
+                ? (await _unitOfWork.AppConnectionConfigs.GetByUserAsync(userId, normalizedMenu, cancellationToken))
+                    .ToDictionary(c => c.PlatformId)
+                : new Dictionary<Guid, AppConnectionConfig>();
+
             var cards = platforms
                 .Select(p =>
                 {
                     var def = PlatformCatalog.Find(p.Code);
                     byPlatform.TryGetValue(p.Id, out var account);
+                    configByPlatform.TryGetValue(p.Id, out var appConfig);
                     return new PlatformCardDto
                     {
                         PlatformId = p.Id,
@@ -97,7 +106,9 @@ public class IntegrationService : IIntegrationService
                         ConnectedAt = account?.ConnectedAt,
                         SupportsComments = def?.SupportsComments ?? false,
                         SupportsMessages = def?.SupportsMessages ?? false,
-                        SupportsPosts = def?.SupportsPosts ?? false
+                        SupportsPosts = def?.SupportsPosts ?? false,
+                        HasAppConfig = appConfig is not null,
+                        AppConfigId = appConfig?.Id
                     };
                 })
                 .OrderBy(c => c.SortOrder)
@@ -112,7 +123,7 @@ public class IntegrationService : IIntegrationService
         }
     }
 
-    public Task<ApiResponse<BeginOAuthResponse>> BeginOAuthAsync(
+    public async Task<ApiResponse<BeginOAuthResponse>> BeginOAuthAsync(
         Guid userId,
         BeginOAuthRequest request,
         CancellationToken cancellationToken = default)
@@ -120,41 +131,65 @@ public class IntegrationService : IIntegrationService
         var platformCode = (request.PlatformCode ?? string.Empty).Trim().ToLowerInvariant();
         var menuType = MenuTypes.Normalize(request.MenuType);
         if (platformCode is not ("facebook" or "instagram" or "instagram_login" or "whatsapp"))
-            return Task.FromResult(ApiResponse<BeginOAuthResponse>.Fail($"Unsupported platform '{request.PlatformCode}'."));
+            return ApiResponse<BeginOAuthResponse>.Fail($"Unsupported platform '{request.PlatformCode}'.");
 
-        var appId = ResolveAppId(platformCode);
+        string appId;
+        string redirectUri;
+        string version;
+        string scopes;
+        string authBase;
+
+        if (menuType == MenuTypes.AppConnection)
+        {
+            var config = await _unitOfWork.AppConnectionConfigs.GetByUserAndPlatformCodeAsync(
+                userId, platformCode, menuType, cancellationToken);
+            if (config is null)
+                return ApiResponse<BeginOAuthResponse>.Fail("Save this platform's app configuration before connecting.");
+
+            appId = config.ClientId;
+            redirectUri = config.RedirectUri ?? ResolveRedirectUri(platformCode, null);
+            version = config.GraphApiVersion;
+            scopes = config.Scopes ?? PlatformScopes[platformCode];
+            authBase = config.AuthUrl ?? PlatformCatalog.DefaultAuthUrl(platformCode, version);
+        }
+        else
+        {
+            appId = ResolveAppId(platformCode);
+            redirectUri = ResolveRedirectUri(platformCode, null);
+            version = ResolveGraphVersion(platformCode);
+            scopes = PlatformScopes[platformCode];
+            authBase = PlatformCatalog.DefaultAuthUrl(platformCode, version);
+        }
+
         if (string.IsNullOrWhiteSpace(appId) || appId.StartsWith("YOUR_", StringComparison.OrdinalIgnoreCase))
-            return Task.FromResult(ApiResponse<BeginOAuthResponse>.Fail($"Meta App Id is not configured for {platformCode}."));
+            return ApiResponse<BeginOAuthResponse>.Fail($"Meta App Id is not configured for {platformCode}.");
 
-        var redirectUri = ResolveRedirectUri(platformCode, null);
         if (string.IsNullOrWhiteSpace(redirectUri))
-            return Task.FromResult(ApiResponse<BeginOAuthResponse>.Fail("Redirect URI is not configured. Set metaRedirectUri to the backend Callback URL."));
+            return ApiResponse<BeginOAuthResponse>.Fail("Redirect URI is not configured. Set metaRedirectUri to the backend Callback URL.");
 
-        var version = ResolveGraphVersion(platformCode);
-        var scopes = PlatformScopes[platformCode];
         var state = MetaOAuthState.Create(userId, platformCode, menuType, _jwt.SecretKey);
 
         var authUrl = platformCode == "instagram_login"
-            ? "https://www.instagram.com/oauth/authorize"
+            ? authBase
               + $"?client_id={Uri.EscapeDataString(appId)}"
               + $"&redirect_uri={Uri.EscapeDataString(redirectUri)}"
               + $"&state={Uri.EscapeDataString(state)}"
               + $"&scope={Uri.EscapeDataString(scopes)}"
               + "&response_type=code"
-            : $"https://www.facebook.com/{version}/dialog/oauth"
+            : authBase
               + $"?client_id={Uri.EscapeDataString(appId)}"
               + $"&redirect_uri={Uri.EscapeDataString(redirectUri)}"
               + $"&state={Uri.EscapeDataString(state)}"
               + $"&scope={Uri.EscapeDataString(scopes)}"
               + "&response_type=code";
 
-        return Task.FromResult(ApiResponse<BeginOAuthResponse>.Ok(new BeginOAuthResponse
+        return ApiResponse<BeginOAuthResponse>.Ok(new BeginOAuthResponse
         {
             AuthUrl = authUrl,
             RedirectUri = redirectUri,
             PlatformCode = platformCode,
             MenuType = menuType
-        }));
+        });
     }
 
     public async Task<MetaRedirectResult> CompleteMetaRedirectAsync(
@@ -277,35 +312,67 @@ public class IntegrationService : IIntegrationService
             if (string.IsNullOrWhiteSpace(redirectUri))
                 return ApiResponse<SocialAccountDto>.Fail("Redirect URI is not configured.");
 
+            var normalizedMenu = MenuTypes.Normalize(request.MenuType);
             OAuthTokenResult token;
             (string Id, string Name) me;
 
-            switch (platformCode)
+            if (normalizedMenu == MenuTypes.AppConnection)
             {
-                case "facebook":
-                    token = await _facebookService.ExchangeCodeAsync(request.Code, redirectUri, cancellationToken);
-                    me = await _facebookService.GetMeAsync(token.AccessToken, cancellationToken);
-                    break;
-                case "instagram":
-                    token = await _instagramService.ExchangeCodeAsync(request.Code, redirectUri, cancellationToken);
-                    me = await _instagramService.GetMeAsync(token.AccessToken, cancellationToken);
-                    break;
-                case "instagram_login":
-                    token = await _instagramService.ExchangeInstagramLoginCodeAsync(request.Code, redirectUri, cancellationToken);
-                    me = await _instagramService.GetInstagramLoginMeAsync(token.AccessToken, cancellationToken);
-                    break;
-                case "whatsapp":
-                    token = await _whatsAppService.ExchangeCodeAsync(request.Code, redirectUri, cancellationToken);
-                    me = await _whatsAppService.GetMeAsync(token.AccessToken, cancellationToken);
-                    break;
-                default:
-                    return ApiResponse<SocialAccountDto>.Fail($"Unsupported platform '{platformCode}'.");
+                var config = await _unitOfWork.AppConnectionConfigs.GetByUserAndPlatformCodeAsync(
+                    userId, platformCode, normalizedMenu, cancellationToken);
+                if (config is null)
+                    return ApiResponse<SocialAccountDto>.Fail("Save this platform's app configuration before connecting.");
+
+                var effectiveRedirect = config.RedirectUri ?? redirectUri;
+                token = await _metaOAuthExchange.ExchangeAuthorizationCodeAsync(
+                    new MetaOAuthCredentials(
+                        platformCode,
+                        request.Code,
+                        effectiveRedirect,
+                        config.ClientId,
+                        config.ClientSecret,
+                        config.GraphApiVersion,
+                        config.BaseUrl),
+                    cancellationToken);
+
+                me = platformCode switch
+                {
+                    "facebook" => await _facebookService.GetMeAsync(token.AccessToken, cancellationToken),
+                    "instagram" => await _instagramService.GetMeAsync(token.AccessToken, cancellationToken),
+                    "instagram_login" => await _instagramService.GetInstagramLoginMeAsync(token.AccessToken, cancellationToken),
+                    "whatsapp" => await _whatsAppService.GetMeAsync(token.AccessToken, cancellationToken),
+                    _ => throw new InvalidOperationException($"Unsupported platform '{platformCode}'.")
+                };
+            }
+            else
+            {
+                switch (platformCode)
+                {
+                    case "facebook":
+                        token = await _facebookService.ExchangeCodeAsync(request.Code, redirectUri, cancellationToken);
+                        me = await _facebookService.GetMeAsync(token.AccessToken, cancellationToken);
+                        break;
+                    case "instagram":
+                        token = await _instagramService.ExchangeCodeAsync(request.Code, redirectUri, cancellationToken);
+                        me = await _instagramService.GetMeAsync(token.AccessToken, cancellationToken);
+                        break;
+                    case "instagram_login":
+                        token = await _instagramService.ExchangeInstagramLoginCodeAsync(request.Code, redirectUri, cancellationToken);
+                        me = await _instagramService.GetInstagramLoginMeAsync(token.AccessToken, cancellationToken);
+                        break;
+                    case "whatsapp":
+                        token = await _whatsAppService.ExchangeCodeAsync(request.Code, redirectUri, cancellationToken);
+                        me = await _whatsAppService.GetMeAsync(token.AccessToken, cancellationToken);
+                        break;
+                    default:
+                        return ApiResponse<SocialAccountDto>.Fail($"Unsupported platform '{platformCode}'.");
+                }
             }
 
             return await PersistConnectedAccountAsync(
                 userId,
                 platformCode,
-                MenuTypes.Normalize(request.MenuType),
+                normalizedMenu,
                 token.AccessToken,
                 token.ExpiresAt,
                 me.Id,
@@ -357,7 +424,7 @@ public class IntegrationService : IIntegrationService
             return ApiResponse<SocialAccountDto>.Fail("Meta did not return an access token. Try connecting again.");
 
         var normalizedMenu = MenuTypes.Normalize(menuType);
-        var platform = await _unitOfWork.Platforms.GetByCodeAsync(platformCode, cancellationToken);
+        var platform = await _unitOfWork.Platforms.GetByCodeAsync(platformCode, normalizedMenu, cancellationToken);
         if (platform is null)
             return ApiResponse<SocialAccountDto>.Fail($"Unknown platform '{platformCode}'.");
 
@@ -452,7 +519,7 @@ public class IntegrationService : IIntegrationService
             if (!SupportsPageSelection(code))
                 return ApiResponse<IReadOnlyList<MetaPageDto>>.Fail($"Page selection is not available for '{platformCode}'.");
 
-            var platform = await _unitOfWork.Platforms.GetByCodeAsync(code, cancellationToken);
+            var platform = await _unitOfWork.Platforms.GetByCodeAsync(code, normalizedMenu, cancellationToken);
             if (platform is null)
                 return ApiResponse<IReadOnlyList<MetaPageDto>>.Fail("Unknown platform.");
 
@@ -492,7 +559,7 @@ public class IntegrationService : IIntegrationService
             if (string.IsNullOrWhiteSpace(request.PageId))
                 return ApiResponse<SocialAccountDto>.Fail("Select a page first.");
 
-            var platform = await _unitOfWork.Platforms.GetByCodeAsync(code, cancellationToken);
+            var platform = await _unitOfWork.Platforms.GetByCodeAsync(code, normalizedMenu, cancellationToken);
             if (platform is null)
                 return ApiResponse<SocialAccountDto>.Fail("Unknown platform.");
 
@@ -577,7 +644,7 @@ public class IntegrationService : IIntegrationService
         {
             var code = (platformCode ?? string.Empty).Trim().ToLowerInvariant();
             var normalizedMenu = MenuTypes.Normalize(menuType);
-            var platform = await _unitOfWork.Platforms.GetByCodeAsync(code, cancellationToken);
+            var platform = await _unitOfWork.Platforms.GetByCodeAsync(code, normalizedMenu, cancellationToken);
             if (platform is null)
                 return ApiResponse<ConnectionDetailsDto>.Fail("Unknown platform.");
 
@@ -997,11 +1064,11 @@ public class IntegrationService : IIntegrationService
     {
         try
         {
-            var platform = await _unitOfWork.Platforms.GetByCodeAsync(platformCode, cancellationToken);
+            var normalizedMenu = MenuTypes.Normalize(menuType);
+            var platform = await _unitOfWork.Platforms.GetByCodeAsync(platformCode, normalizedMenu, cancellationToken);
             if (platform is null)
                 return ApiResponse<object>.Fail("Unknown platform.");
 
-            var normalizedMenu = MenuTypes.Normalize(menuType);
             var account = await _unitOfWork.SocialAccounts.GetByUserAndPlatformAsync(userId, platform.Id, normalizedMenu, cancellationToken);
             if (account is null)
                 return ApiResponse<object>.Fail("Account not connected.");

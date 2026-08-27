@@ -12,6 +12,43 @@ export const MENU_TYPES = {
 
 export type MenuType = (typeof MENU_TYPES)[keyof typeof MENU_TYPES];
 
+export interface AppConnectionConfig {
+  id: string;
+  platformId: string;
+  platformCode: string;
+  menuType: string;
+  label?: string;
+  clientId: string;
+  clientSecret?: string;
+  hasClientSecret: boolean;
+  redirectUri?: string;
+  authUrl?: string;
+  baseUrl?: string;
+  scopes?: string;
+  graphApiVersion: string;
+  webhookVerifyToken?: string;
+  phoneNumberId?: string;
+  wabaId?: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface SaveAppConnectionConfigRequest {
+  platformCode: string;
+  menuType?: MenuType;
+  label?: string;
+  clientId: string;
+  clientSecret?: string;
+  redirectUri?: string;
+  authUrl?: string;
+  baseUrl?: string;
+  scopes?: string;
+  graphApiVersion?: string;
+  webhookVerifyToken?: string;
+  phoneNumberId?: string;
+  wabaId?: string;
+}
+
 export interface AuthResponse {
   token: string;
   email: string;
@@ -48,6 +85,8 @@ export interface PlatformCard {
   supportsMessages: boolean;
   supportsPosts: boolean;
   menuType?: string;
+  hasAppConfig?: boolean;
+  appConfigId?: string;
 }
 
 export interface SocialProfile {

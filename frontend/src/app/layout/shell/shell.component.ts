@@ -26,6 +26,7 @@ export class ShellComponent {
   readonly menu = [
     { path: '/app/dashboard', icon: 'dashboard', label: 'Dashboard' },
     { path: '/app/integrations', icon: 'hub', label: 'Integrations' },
+    { path: '/app/app-connections', icon: 'apps', label: 'App Connections' },
     { path: '/app/create-post', icon: 'post_add', label: 'Create Post' },
     { path: '/app/posts', icon: 'dynamic_feed', label: 'Posts' },
     { path: '/app/inbox', icon: 'inbox', label: 'Inbox' },

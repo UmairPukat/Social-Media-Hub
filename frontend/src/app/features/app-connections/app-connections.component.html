@@ -1,0 +1,345 @@
+<section class="page integrations app-connections">
+  <header class="int-hero">
+    <div>
+      <p class="eyebrow">Workspace</p>
+      <h1>App Connections</h1>
+      <p class="lede">
+        Configure your own Meta app credentials per platform, then connect accounts using those apps.
+        Edit Client Id, secret, scopes, redirect URI, and Graph URLs before connecting.
+      </p>
+    </div>
+    <div class="hero-actions">
+      <button mat-stroked-button type="button" (click)="setCategory('social')">
+        <mat-icon>share</mat-icon>
+        Social
+      </button>
+      <button mat-flat-button color="primary" type="button" (click)="setCategory('all')">
+        <mat-icon>apps</mat-icon>
+        All platforms
+      </button>
+    </div>
+  </header>
+
+  @if (message()) {
+    <p class="banner">{{ message() }}</p>
+  }
+
+  <div class="filters">
+    <button type="button" class="chip" [class.active]="activeCategory() === 'all'" (click)="setCategory('all')">All</button>
+    @for (cat of categories(); track cat.id) {
+      <button
+        type="button"
+        class="chip"
+        [class.active]="activeCategory() === cat.id"
+        [style.--accent]="cat.accent"
+        (click)="setCategory(cat.id)">
+        <mat-icon>{{ cat.icon }}</mat-icon>
+        {{ cat.label }}
+        <span>{{ cat.items.length }}</span>
+      </button>
+    }
+  </div>
+
+  <div class="catalog">
+    @for (cat of visibleCategories(); track cat.id) {
+      <section class="category">
+        <div class="category-head">
+          <div>
+            <h2>{{ cat.label }}</h2>
+            <p>{{ cat.items.length }} platforms in this category</p>
+          </div>
+        </div>
+
+        <div class="stats">
+          @for (card of cat.items; track card.platformId) {
+            <article class="stat" [attr.data-tone]="tone(card.code)" [class.live]="card.isConnected">
+              <div class="stat-top">
+                <span class="stat-ico">
+                  <mat-icon>{{ platformIcon(card.code) }}</mat-icon>
+                </span>
+                <div class="stat-top-end">
+                  <span class="stat-label">
+                    @if (card.isConnected) {
+                      Connected
+                    } @else if (card.hasAppConfig) {
+                      Configured
+                    } @else if (card.canConnect) {
+                      Needs config
+                    } @else {
+                      Soon
+                    }
+                  </span>
+                  <div class="card-actions">
+                    @if (card.canConnect) {
+                      <button
+                        type="button"
+                        class="icon-btn"
+                        matTooltip="Edit app configuration"
+                        (click)="openConfig(card)">
+                        <mat-icon>edit</mat-icon>
+                      </button>
+                      @if (card.hasAppConfig) {
+                        <button
+                          type="button"
+                          class="icon-btn danger"
+                          matTooltip="Delete app configuration"
+                          (click)="deleteConfig(card)">
+                          <mat-icon>delete</mat-icon>
+                        </button>
+                      }
+                    }
+                    @if (card.isConnected && supportsConnectionDetails(card.code)) {
+                      <button
+                        type="button"
+                        class="icon-btn"
+                        matTooltip="View account information"
+                        (click)="openDetails(card)">
+                        <mat-icon>visibility</mat-icon>
+                      </button>
+                    }
+                  </div>
+                </div>
+              </div>
+
+              <strong class="stat-value">{{ card.displayName }}</strong>
+
+              <p class="stat-hint">
+                @if (card.accountName) {
+                  Linked as {{ card.accountName }}
+                } @else if (card.hasAppConfig) {
+                  App configured — ready to connect
+                } @else {
+                  {{ shortDesc(card.description) }}
+                }
+              </p>
+
+              <div class="stat-action">
+                @if (card.isConnected) {
+                  @if (supportsPageSelection(card.code)) {
+                    <button mat-stroked-button type="button" (click)="openPagePicker(card)">Change page</button>
+                  }
+                  <button mat-stroked-button type="button" class="danger" (click)="disconnect(card)">Disconnect</button>
+                } @else if (canConnectCard(card)) {
+                  <button
+                    mat-flat-button
+                    color="primary"
+                    type="button"
+                    [disabled]="connecting() === card.code.toLowerCase()"
+                    (click)="connect(card)">
+                    {{ connecting() === card.code.toLowerCase() ? 'Connecting…' : 'Connect' }}
+                  </button>
+                } @else if (card.canConnect) {
+                  <button mat-flat-button color="primary" type="button" (click)="openConfig(card)">
+                    Configure app
+                  </button>
+                } @else {
+                  <button mat-flat-button type="button" class="soon" disabled>Coming soon</button>
+                }
+              </div>
+            </article>
+          }
+        </div>
+      </section>
+    }
+  </div>
+
+  <dialog #configDialog class="picker config" aria-labelledby="config-title" (close)="onConfigClosed()">
+    @if (configOpen()) {
+      <header class="picker-head">
+        <div>
+          <p class="eyebrow">{{ configTitle() }}</p>
+          <h2 id="config-title">App configuration</h2>
+          <p class="picker-lede">Meta app credentials used when connecting from App Connections.</p>
+        </div>
+        <button type="button" class="picker-close" aria-label="Close" (click)="closeConfig()">
+          <mat-icon>close</mat-icon>
+        </button>
+      </header>
+
+      @if (configError()) {
+        <p class="picker-error">{{ configError() }}</p>
+      }
+
+      @if (configLoading()) {
+        <p class="picker-empty">Loading configuration…</p>
+      } @else {
+        <form class="config-form" (ngSubmit)="saveConfig()">
+          <mat-form-field appearance="outline">
+            <mat-label>Label (optional)</mat-label>
+            <input matInput [ngModel]="configForm().label" name="label" (ngModelChange)="updateConfigField('label', $event)" />
+          </mat-form-field>
+
+          <mat-form-field appearance="outline">
+            <mat-label>Client Id (App Id)</mat-label>
+            <input matInput required [ngModel]="configForm().clientId" name="clientId" (ngModelChange)="updateConfigField('clientId', $event)" />
+          </mat-form-field>
+
+          <mat-form-field appearance="outline">
+            <mat-label>Client Secret (App Secret)</mat-label>
+            <input
+              matInput
+              [type]="secretRevealed() ? 'text' : 'password'"
+              [ngModel]="configForm().clientSecret"
+              name="clientSecret"
+              (ngModelChange)="updateConfigField('clientSecret', $event)" />
+            <button matSuffix type="button" class="token-btn" (click)="toggleSecretReveal()">
+              <mat-icon>{{ secretRevealed() ? 'visibility_off' : 'visibility' }}</mat-icon>
+            </button>
+          </mat-form-field>
+
+          <mat-form-field appearance="outline">
+            <mat-label>Redirect URI</mat-label>
+            <input matInput [ngModel]="configForm().redirectUri" name="redirectUri" (ngModelChange)="updateConfigField('redirectUri', $event)" />
+          </mat-form-field>
+
+          <mat-form-field appearance="outline">
+            <mat-label>Auth URL</mat-label>
+            <input matInput [ngModel]="configForm().authUrl" name="authUrl" (ngModelChange)="updateConfigField('authUrl', $event)" />
+          </mat-form-field>
+
+          <mat-form-field appearance="outline">
+            <mat-label>Base URL (Graph API)</mat-label>
+            <input matInput [ngModel]="configForm().baseUrl" name="baseUrl" (ngModelChange)="updateConfigField('baseUrl', $event)" />
+          </mat-form-field>
+
+          <mat-form-field appearance="outline">
+            <mat-label>Graph API version</mat-label>
+            <input matInput [ngModel]="configForm().graphApiVersion" name="graphApiVersion" (ngModelChange)="updateConfigField('graphApiVersion', $event)" />
+          </mat-form-field>
+
+          <mat-form-field appearance="outline" class="full">
+            <mat-label>Scopes (comma-separated)</mat-label>
+            <textarea matInput rows="3" [ngModel]="configForm().scopes" name="scopes" (ngModelChange)="updateConfigField('scopes', $event)"></textarea>
+          </mat-form-field>
+
+          <mat-form-field appearance="outline">
+            <mat-label>Webhook verify token</mat-label>
+            <input matInput [ngModel]="configForm().webhookVerifyToken" name="webhookVerifyToken" (ngModelChange)="updateConfigField('webhookVerifyToken', $event)" />
+          </mat-form-field>
+
+          @if (isWhatsAppPlatform(configPlatformCode())) {
+            <mat-form-field appearance="outline">
+              <mat-label>Phone number Id</mat-label>
+              <input matInput [ngModel]="configForm().phoneNumberId" name="phoneNumberId" (ngModelChange)="updateConfigField('phoneNumberId', $event)" />
+            </mat-form-field>
+            <mat-form-field appearance="outline">
+              <mat-label>WABA Id</mat-label>
+              <input matInput [ngModel]="configForm().wabaId" name="wabaId" (ngModelChange)="updateConfigField('wabaId', $event)" />
+            </mat-form-field>
+          }
+
+          <footer class="picker-foot">
+            <span class="picker-count">Secrets are stored on the server only.</span>
+            <div class="picker-actions">
+              <button mat-stroked-button type="button" (click)="closeConfig()">Cancel</button>
+              <button mat-flat-button color="primary" type="submit" [disabled]="configSaving()">
+                {{ configSaving() ? 'Saving…' : 'Save configuration' }}
+              </button>
+            </div>
+          </footer>
+        </form>
+      }
+    }
+  </dialog>
+
+  <dialog #pickerDialog class="picker" aria-labelledby="page-picker-title" (close)="onPickerClosed()">
+    @if (pickerPlatform()) {
+      <header class="picker-head">
+        <div>
+          <p class="eyebrow">{{ pickerTitle() }}</p>
+          <h2 id="page-picker-title">Select a page</h2>
+        </div>
+        <button type="button" class="picker-close" aria-label="Close" (click)="closePagePicker()">
+          <mat-icon>close</mat-icon>
+        </button>
+      </header>
+
+      @if (pagesError()) { <p class="picker-error">{{ pagesError() }}</p> }
+      @if (pagesLoading()) {
+        <p class="picker-empty">Loading your pages…</p>
+      } @else if (!pages().length) {
+        <p class="picker-empty">No pages returned. Reconnect and grant page access in Meta.</p>
+      } @else {
+        <div class="picker-table-wrap">
+          <table class="picker-table">
+            <thead>
+              <tr>
+                <th scope="col" class="pick-col">Select</th>
+                <th scope="col">Facebook page</th>
+                <th scope="col">Page ID</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (page of pages(); track page.pageId) {
+                <tr [class.picked]="isPageChecked(page)" [class.blocked]="!page.isEligible" (click)="togglePage(page)">
+                  <td class="pick-col">
+                    <input type="checkbox" [checked]="isPageChecked(page)" [disabled]="!page.isEligible" (click)="$event.stopPropagation()" (change)="togglePage(page)" />
+                  </td>
+                  <td><strong>{{ page.pageName }}</strong></td>
+                  <td><code>{{ page.pageId }}</code></td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      }
+
+      <footer class="picker-foot">
+        <div class="picker-actions">
+          <button mat-stroked-button type="button" (click)="closePagePicker()">Cancel</button>
+          <button mat-flat-button color="primary" type="button" [disabled]="!selectedPageId() || savingPage()" (click)="confirmPage()">
+            {{ savingPage() ? 'Connecting…' : 'Continue' }}
+          </button>
+        </div>
+      </footer>
+    }
+  </dialog>
+
+  <dialog #detailsDialog class="picker details" aria-labelledby="page-details-title" (close)="onDetailsClosed()">
+    @if (detailsOpen()) {
+      <header class="picker-head">
+        <div>
+          <p class="eyebrow">{{ detailsTitle() }}</p>
+          <h2 id="page-details-title">Account information</h2>
+        </div>
+        <button type="button" class="picker-close" aria-label="Close" (click)="closeDetails()">
+          <mat-icon>close</mat-icon>
+        </button>
+      </header>
+
+      <div class="details-body">
+        @if (detailsLoading()) {
+          <p class="picker-empty">Loading account information…</p>
+        } @else if (detailsError()) {
+          <p class="picker-error">{{ detailsError() }}</p>
+        }
+
+        @if (details(); as info) {
+          <dl class="detail-grid">
+            <div>
+              <dt>Account</dt>
+              <dd>{{ info.accountName || '—' }}</dd>
+            </div>
+            <div>
+              <dt>Connected</dt>
+              <dd>{{ info.connectedAt ? (info.connectedAt | date: 'medium') : '—' }}</dd>
+            </div>
+            <div class="token-row">
+              <dt>{{ tokenLabel(info.platformCode) }}</dt>
+              <dd>
+                @if (info.accessToken) {
+                  <code [class.revealed]="tokenRevealed()">{{ tokenRevealed() ? info.accessToken : maskedToken(info.accessToken) }}</code>
+                  <button type="button" class="token-btn" (click)="toggleTokenReveal()">
+                    <mat-icon>{{ tokenRevealed() ? 'visibility_off' : 'visibility' }}</mat-icon>
+                  </button>
+                } @else {
+                  <span class="muted">No token stored</span>
+                }
+              </dd>
+            </div>
+          </dl>
+        }
+      </div>
+    }
+  </dialog>
+</section>

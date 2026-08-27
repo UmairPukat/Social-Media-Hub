@@ -60,8 +60,20 @@ public class PlatformRepository : Repository<Platform>, IPlatformRepository
 {
     public PlatformRepository(AppDbContext context) : base(context) { }
 
-    public Task<Platform?> GetByCodeAsync(string code, CancellationToken cancellationToken = default)
-        => DbSet.AsNoTracking().FirstOrDefaultAsync(p => p.Code == code, cancellationToken);
+    public Task<Platform?> GetByCodeAsync(string code, string? menuType = null, CancellationToken cancellationToken = default)
+    {
+        if (!string.IsNullOrWhiteSpace(menuType))
+        {
+            var normalized = menuType.Trim().ToLowerInvariant();
+            return DbSet.AsNoTracking()
+                .FirstOrDefaultAsync(p => p.Code == code && p.MenuType == normalized, cancellationToken);
+        }
+
+        return DbSet.AsNoTracking()
+            .Where(p => p.Code == code)
+            .OrderBy(p => p.MenuType == "integration" ? 0 : 1)
+            .FirstOrDefaultAsync(cancellationToken);
+    }
 
     public async Task<IReadOnlyList<Platform>> GetActiveAsync(CancellationToken cancellationToken = default)
         => await DbSet.AsNoTracking().Where(p => p.IsActive).OrderBy(p => p.Name).ToListAsync(cancellationToken);
@@ -234,6 +246,39 @@ public class SyncJobRepository : Repository<SyncJob>, ISyncJobRepository
     public SyncJobRepository(AppDbContext context) : base(context) { }
 }
 
+public class AppConnectionConfigRepository : Repository<AppConnectionConfig>, IAppConnectionConfigRepository
+{
+    public AppConnectionConfigRepository(AppDbContext context) : base(context) { }
+
+    public Task<AppConnectionConfig?> GetByUserAndPlatformAsync(
+        Guid userId,
+        Guid platformId,
+        string menuType,
+        CancellationToken cancellationToken = default)
+        => DbSet.FirstOrDefaultAsync(
+            c => c.UserId == userId && c.PlatformId == platformId && c.MenuType == menuType,
+            cancellationToken);
+
+    public async Task<IReadOnlyList<AppConnectionConfig>> GetByUserAsync(
+        Guid userId,
+        string menuType,
+        CancellationToken cancellationToken = default)
+        => await DbSet.AsNoTracking()
+            .Where(c => c.UserId == userId && c.MenuType == menuType)
+            .ToListAsync(cancellationToken);
+
+    public Task<AppConnectionConfig?> GetByUserAndPlatformCodeAsync(
+        Guid userId,
+        string platformCode,
+        string menuType,
+        CancellationToken cancellationToken = default)
+        => DbSet.FirstOrDefaultAsync(
+            c => c.UserId == userId
+                 && c.PlatformCode == platformCode
+                 && c.MenuType == menuType,
+            cancellationToken);
+}
+
 public class UnitOfWork : IUnitOfWork
 {
     private readonly AppDbContext _context;
@@ -252,7 +297,8 @@ public class UnitOfWork : IUnitOfWork
         IMessageRepository messages,
         IWebhookEventRepository webhookEvents,
         IWebhookLogRepository webhookLogs,
-        ISyncJobRepository syncJobs)
+        ISyncJobRepository syncJobs,
+        IAppConnectionConfigRepository appConnectionConfigs)
     {
         _context = context;
         Users = users;
@@ -268,6 +314,7 @@ public class UnitOfWork : IUnitOfWork
         WebhookEvents = webhookEvents;
         WebhookLogs = webhookLogs;
         SyncJobs = syncJobs;
+        AppConnectionConfigs = appConnectionConfigs;
     }
 
     public IUserRepository Users { get; }
@@ -283,6 +330,7 @@ public class UnitOfWork : IUnitOfWork
     public IWebhookEventRepository WebhookEvents { get; }
     public IWebhookLogRepository WebhookLogs { get; }
     public ISyncJobRepository SyncJobs { get; }
+    public IAppConnectionConfigRepository AppConnectionConfigs { get; }
 
     public Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
         => _context.SaveChangesAsync(cancellationToken);

@@ -21,6 +21,8 @@ public class PlatformCardDto
     public bool SupportsComments { get; set; }
     public bool SupportsMessages { get; set; }
     public bool SupportsPosts { get; set; }
+    public bool HasAppConfig { get; set; }
+    public Guid? AppConfigId { get; set; }
 }
 
 /// <summary>

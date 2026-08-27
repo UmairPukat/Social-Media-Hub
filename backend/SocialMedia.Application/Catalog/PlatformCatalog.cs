@@ -190,6 +190,34 @@ public static class PlatformCatalog
         return list;
     }
 
+    /// <summary>Stable platform row id for a catalog entry in a given menu.</summary>
+    public static Guid IdForMenu(Guid integrationId, string menuType)
+    {
+        if (!string.Equals(MenuTypes.Normalize(menuType), MenuTypes.AppConnection, StringComparison.OrdinalIgnoreCase))
+            return integrationId;
+
+        var bytes = integrationId.ToByteArray();
+        bytes[0] ^= 0xAC;
+        bytes[1] ^= 0x01;
+        return new Guid(bytes);
+    }
+
+    public static string DefaultAuthUrl(string platformCode, string graphVersion)
+    {
+        var code = platformCode.ToLowerInvariant();
+        return code == "instagram_login"
+            ? "https://www.instagram.com/oauth/authorize"
+            : $"https://www.facebook.com/{graphVersion}/dialog/oauth";
+    }
+
+    public static string DefaultBaseUrl(string platformCode)
+    {
+        var code = platformCode.ToLowerInvariant();
+        return code == "instagram_login"
+            ? "https://graph.instagram.com"
+            : "https://graph.facebook.com";
+    }
+
     private static Guid NewId(int n) =>
         Guid.Parse($"aaaaaaaa-bbbb-cccc-dddd-{n:D12}");
 }

@@ -15,7 +15,7 @@ public interface IAccessTokenRepository : IRepository<AccessToken>
 
 public interface IPlatformRepository : IRepository<Platform>
 {
-    Task<Platform?> GetByCodeAsync(string code, CancellationToken cancellationToken = default);
+    Task<Platform?> GetByCodeAsync(string code, string? menuType = null, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<Platform>> GetActiveAsync(CancellationToken cancellationToken = default);
 }
 
@@ -75,6 +75,26 @@ public interface ISyncJobRepository : IRepository<SyncJob>
 {
 }
 
+public interface IAppConnectionConfigRepository : IRepository<AppConnectionConfig>
+{
+    Task<AppConnectionConfig?> GetByUserAndPlatformAsync(
+        Guid userId,
+        Guid platformId,
+        string menuType,
+        CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<AppConnectionConfig>> GetByUserAsync(
+        Guid userId,
+        string menuType,
+        CancellationToken cancellationToken = default);
+
+    Task<AppConnectionConfig?> GetByUserAndPlatformCodeAsync(
+        Guid userId,
+        string platformCode,
+        string menuType,
+        CancellationToken cancellationToken = default);
+}
+
 public interface IUnitOfWork : IDisposable
 {
     IUserRepository Users { get; }
@@ -90,6 +110,7 @@ public interface IUnitOfWork : IDisposable
     IWebhookEventRepository WebhookEvents { get; }
     IWebhookLogRepository WebhookLogs { get; }
     ISyncJobRepository SyncJobs { get; }
+    IAppConnectionConfigRepository AppConnectionConfigs { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 }
