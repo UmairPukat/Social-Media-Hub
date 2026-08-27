@@ -1,4 +1,3 @@
-import { DatePipe } from '@angular/common';
 import { Component, ElementRef, OnInit, computed, inject, signal, viewChild } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
@@ -40,7 +39,7 @@ const CATEGORY_ORDER = [
 @Component({
   selector: 'app-integrations',
   standalone: true,
-  imports: [DatePipe, MatButtonModule, MatIconModule, MatTooltipModule],
+  imports: [MatButtonModule, MatIconModule, MatTooltipModule],
   templateUrl: './integrations.component.html',
   styleUrl: './integrations.component.scss'
 })
@@ -68,8 +67,6 @@ export class IntegrationsComponent implements OnInit {
   readonly details = signal<ConnectionDetails | null>(null);
   readonly detailsLoading = signal(false);
   readonly detailsError = signal('');
-  readonly tokenRevealed = signal(false);
-  readonly tokenCopied = signal(false);
 
   /** Page picker state — shown after Meta login so one page is connected at a time. */
   readonly pickerPlatform = signal<MetaPlatform | null>(null);
@@ -187,10 +184,37 @@ export class IntegrationsComponent implements OnInit {
     return value === 'instagram' || value === 'instagram_login';
   }
 
-  readonly isInstagramLoginDetails = computed(() =>
-    this.isInstagramLoginPlatform(this.details()?.platformCode) ||
-    this.isInstagramLoginPlatform(this.detailsPlatformCode())
-  );
+  connectionDisplayName(info: ConnectionDetails): string {
+    if (this.isInstagramLoginPlatform(info.platformCode)) {
+      const profile = info.profiles[0];
+      return profile?.name || profile?.username || info.accountName || 'Not connected';
+    }
+
+    if (info.platformCode.toLowerCase() === 'instagram') {
+      if (info.instagramUsername) return `@${info.instagramUsername}`;
+      return info.pageName || info.profiles[0]?.name || 'No page selected';
+    }
+
+    return info.pageName || info.profiles[0]?.name || 'No page selected';
+  }
+
+  connectionDisplayId(info: ConnectionDetails): string {
+    if (this.isInstagramLoginPlatform(info.platformCode)) {
+      return info.profiles[0]?.externalProfileId || '—';
+    }
+
+    if (info.platformCode.toLowerCase() === 'instagram') {
+      return info.instagramId || '—';
+    }
+
+    return info.pageId || info.profiles[0]?.externalProfileId || '—';
+  }
+
+  connectionIdLabel(info: ConnectionDetails): string {
+    if (this.isInstagramLoginPlatform(info.platformCode)) return 'Account ID';
+    if (info.platformCode.toLowerCase() === 'instagram') return 'Instagram ID';
+    return 'Page ID';
+  }
 
   openPagePicker(card: PlatformCard): void {
     const code = card.code.toLowerCase() as MetaPlatform;
@@ -286,8 +310,6 @@ export class IntegrationsComponent implements OnInit {
     this.detailsPlatformCode.set(card.code.toLowerCase());
     this.details.set(null);
     this.detailsError.set('');
-    this.tokenRevealed.set(false);
-    this.tokenCopied.set(false);
     this.detailsLoading.set(true);
     this.detailsOpen.set(true);
 
@@ -328,34 +350,6 @@ export class IntegrationsComponent implements OnInit {
     this.detailsPlatformCode.set(null);
     this.details.set(null);
     this.detailsError.set('');
-    this.tokenRevealed.set(false);
-    this.tokenCopied.set(false);
-  }
-
-  tokenLabel(platformCode: string): string {
-    const code = (platformCode || '').toLowerCase();
-    if (code === 'facebook' || code === 'instagram') return 'Page access token';
-    if (code === 'instagram_login') return 'Instagram access token';
-    return 'Access token';
-  }
-
-  maskedToken(token: string): string {
-    if (token.length <= 12) return '••••••••';
-    return `${token.slice(0, 6)}…${token.slice(-4)}`;
-  }
-
-  toggleTokenReveal(): void {
-    this.tokenRevealed.update((v) => !v);
-  }
-
-  async copyToken(token: string): Promise<void> {
-    try {
-      await navigator.clipboard.writeText(token);
-      this.tokenCopied.set(true);
-      window.setTimeout(() => this.tokenCopied.set(false), 1600);
-    } catch {
-      this.tokenCopied.set(false);
-    }
   }
 
   disconnect(card: PlatformCard): void {
