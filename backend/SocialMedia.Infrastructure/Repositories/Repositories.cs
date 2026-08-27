@@ -1,6 +1,9 @@
 using System.Linq.Expressions;
 using Microsoft.EntityFrameworkCore;
 using SocialMedia.Domain.Entities;
+using SocialMedia.Domain.Modules.AppConnections.Entities;
+using SocialMedia.Domain.Modules.DeveloperApps.Entities;
+using SocialMedia.Domain.Modules.Integrations.Entities;
 using SocialMedia.Domain.Enums;
 using SocialMedia.Domain.Interfaces;
 using SocialMedia.Infrastructure.Persistence;
@@ -151,7 +154,11 @@ public class PostRepository : Repository<Post>, IPostRepository
 {
     public PostRepository(AppDbContext context) : base(context) { }
 
-    public async Task<IReadOnlyList<Post>> GetByUserProfilesAsync(Guid userId, Guid? platformId = null, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<Post>> GetByUserProfilesAsync(
+        Guid userId,
+        Guid? platformId = null,
+        string? menuType = null,
+        CancellationToken cancellationToken = default)
     {
         var query = DbSet.AsNoTracking()
             .Include(p => p.SocialProfile!).ThenInclude(sp => sp.SocialAccount)
@@ -161,6 +168,9 @@ public class PostRepository : Repository<Post>, IPostRepository
 
         if (platformId.HasValue)
             query = query.Where(p => p.PlatformId == platformId.Value);
+
+        if (!string.IsNullOrWhiteSpace(menuType))
+            query = query.Where(p => p.SocialProfile!.SocialAccount!.MenuType == menuType);
 
         return await query.OrderByDescending(p => p.CreatedAt).ToListAsync(cancellationToken);
     }
@@ -291,6 +301,86 @@ public class AppConnectionConfigRepository : Repository<AppConnectionConfig>, IA
                  && c.PlatformCode == platformCode
                  && c.MenuType == menuType,
             cancellationToken);
+
+    public async Task<IReadOnlyList<string>> GetWebhookVerifyTokensAsync(string menuType, CancellationToken cancellationToken = default)
+        => await DbSet.AsNoTracking()
+            .Where(c => c.MenuType == menuType && c.WebhookVerifyToken != null && c.WebhookVerifyToken != "")
+            .Select(c => c.WebhookVerifyToken!)
+            .Distinct()
+            .ToListAsync(cancellationToken);
+
+    public async Task<IReadOnlyList<string>> GetClientSecretsAsync(string menuType, CancellationToken cancellationToken = default)
+        => await DbSet.AsNoTracking()
+            .Where(c => c.MenuType == menuType && c.ClientSecret != "")
+            .Select(c => c.ClientSecret)
+            .Distinct()
+            .ToListAsync(cancellationToken);
+}
+
+public class IntegrationAppConfigRepository : Repository<IntegrationAppConfig>, IIntegrationAppConfigRepository
+{
+    public IntegrationAppConfigRepository(AppDbContext context) : base(context) { }
+
+    public Task<IntegrationAppConfig?> GetByUserAndPlatformAsync(
+        Guid userId, Guid platformId, string menuType, CancellationToken cancellationToken = default)
+        => DbSet.FirstOrDefaultAsync(c => c.UserId == userId && c.PlatformId == platformId && c.MenuType == menuType, cancellationToken);
+
+    public Task<IntegrationAppConfig?> GetByUserAndPlatformCodeAsync(
+        Guid userId, string platformCode, string menuType, CancellationToken cancellationToken = default)
+        => DbSet.FirstOrDefaultAsync(
+            c => c.UserId == userId && c.PlatformCode == platformCode && c.MenuType == menuType,
+            cancellationToken);
+
+    public async Task<IReadOnlyList<IntegrationAppConfig>> GetByUserAsync(
+        Guid userId, string menuType, CancellationToken cancellationToken = default)
+        => await DbSet.AsNoTracking().Where(c => c.UserId == userId && c.MenuType == menuType).ToListAsync(cancellationToken);
+
+    public async Task<IReadOnlyList<string>> GetWebhookVerifyTokensAsync(string menuType, CancellationToken cancellationToken = default)
+        => await DbSet.AsNoTracking()
+            .Where(c => c.MenuType == menuType && c.WebhookVerifyToken != null && c.WebhookVerifyToken != "")
+            .Select(c => c.WebhookVerifyToken!)
+            .Distinct()
+            .ToListAsync(cancellationToken);
+
+    public async Task<IReadOnlyList<string>> GetClientSecretsAsync(string menuType, CancellationToken cancellationToken = default)
+        => await DbSet.AsNoTracking()
+            .Where(c => c.MenuType == menuType && c.ClientSecret != "")
+            .Select(c => c.ClientSecret)
+            .Distinct()
+            .ToListAsync(cancellationToken);
+}
+
+public class DeveloperAppConfigRepository : Repository<DeveloperAppConfig>, IDeveloperAppConfigRepository
+{
+    public DeveloperAppConfigRepository(AppDbContext context) : base(context) { }
+
+    public Task<DeveloperAppConfig?> GetByUserAndPlatformAsync(
+        Guid userId, Guid platformId, string menuType, CancellationToken cancellationToken = default)
+        => DbSet.FirstOrDefaultAsync(c => c.UserId == userId && c.PlatformId == platformId && c.MenuType == menuType, cancellationToken);
+
+    public Task<DeveloperAppConfig?> GetByUserAndPlatformCodeAsync(
+        Guid userId, string platformCode, string menuType, CancellationToken cancellationToken = default)
+        => DbSet.FirstOrDefaultAsync(
+            c => c.UserId == userId && c.PlatformCode == platformCode && c.MenuType == menuType,
+            cancellationToken);
+
+    public async Task<IReadOnlyList<DeveloperAppConfig>> GetByUserAsync(
+        Guid userId, string menuType, CancellationToken cancellationToken = default)
+        => await DbSet.AsNoTracking().Where(c => c.UserId == userId && c.MenuType == menuType).ToListAsync(cancellationToken);
+
+    public async Task<IReadOnlyList<string>> GetWebhookVerifyTokensAsync(string menuType, CancellationToken cancellationToken = default)
+        => await DbSet.AsNoTracking()
+            .Where(c => c.MenuType == menuType && c.WebhookVerifyToken != null && c.WebhookVerifyToken != "")
+            .Select(c => c.WebhookVerifyToken!)
+            .Distinct()
+            .ToListAsync(cancellationToken);
+
+    public async Task<IReadOnlyList<string>> GetClientSecretsAsync(string menuType, CancellationToken cancellationToken = default)
+        => await DbSet.AsNoTracking()
+            .Where(c => c.MenuType == menuType && c.ClientSecret != "")
+            .Select(c => c.ClientSecret)
+            .Distinct()
+            .ToListAsync(cancellationToken);
 }
 
 public class UnitOfWork : IUnitOfWork
@@ -312,7 +402,9 @@ public class UnitOfWork : IUnitOfWork
         IWebhookEventRepository webhookEvents,
         IWebhookLogRepository webhookLogs,
         ISyncJobRepository syncJobs,
-        IAppConnectionConfigRepository appConnectionConfigs)
+        IAppConnectionConfigRepository appConnectionConfigs,
+        IIntegrationAppConfigRepository integrationAppConfigs,
+        IDeveloperAppConfigRepository developerAppConfigs)
     {
         _context = context;
         Users = users;
@@ -329,6 +421,8 @@ public class UnitOfWork : IUnitOfWork
         WebhookLogs = webhookLogs;
         SyncJobs = syncJobs;
         AppConnectionConfigs = appConnectionConfigs;
+        IntegrationAppConfigs = integrationAppConfigs;
+        DeveloperAppConfigs = developerAppConfigs;
     }
 
     public IUserRepository Users { get; }
@@ -345,6 +439,8 @@ public class UnitOfWork : IUnitOfWork
     public IWebhookLogRepository WebhookLogs { get; }
     public ISyncJobRepository SyncJobs { get; }
     public IAppConnectionConfigRepository AppConnectionConfigs { get; }
+    public IIntegrationAppConfigRepository IntegrationAppConfigs { get; }
+    public IDeveloperAppConfigRepository DeveloperAppConfigs { get; }
 
     public Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
         => _context.SaveChangesAsync(cancellationToken);

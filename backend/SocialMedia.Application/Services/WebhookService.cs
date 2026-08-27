@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Options;
+using SocialMedia.Application.Catalog;
 using SocialMedia.Application.DTOs.Common;
 using SocialMedia.Application.Interfaces;
 using SocialMedia.Application.Settings;
@@ -367,5 +368,115 @@ public class WebhookService : IWebhookService
         {
             return ("received", null, null);
         }
+    }
+
+    public async Task<string?> VerifyConnectionForProcessAsync(
+        string menuType,
+        string mode,
+        string challenge,
+        string verifyToken,
+        CancellationToken cancellationToken = default)
+    {
+        if (mode != "subscribe" || string.IsNullOrWhiteSpace(verifyToken) || string.IsNullOrWhiteSpace(challenge))
+            return null;
+
+        var tokens = await LoadVerifyTokensForProcessAsync(menuType, cancellationToken);
+        return tokens.Any(t => !string.IsNullOrWhiteSpace(t) && t == verifyToken) ? challenge : null;
+    }
+
+    public async Task<bool> IsSignatureValidForProcessAsync(
+        string menuType,
+        string? platformCode,
+        string payloadJson,
+        string? signature,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(signature) ||
+            !signature.StartsWith("sha256=", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        byte[] supplied;
+        try
+        {
+            supplied = Convert.FromHexString(signature["sha256=".Length..]);
+        }
+        catch (FormatException)
+        {
+            return false;
+        }
+
+        var secrets = await LoadSecretsForProcessAsync(menuType, platformCode, payloadJson, cancellationToken);
+        foreach (var appSecret in secrets)
+        {
+            using var hmac = new HMACSHA256(Encoding.UTF8.GetBytes(appSecret));
+            var expected = hmac.ComputeHash(Encoding.UTF8.GetBytes(payloadJson));
+            if (supplied.Length == expected.Length &&
+                CryptographicOperations.FixedTimeEquals(supplied, expected))
+                return true;
+        }
+
+        return false;
+    }
+
+    public Task<ApiResponse<object>> ReceiveForProcessAsync(
+        string menuType,
+        string platformCode,
+        string payloadJson,
+        string? signature,
+        string? headersJson,
+        bool signatureValid = true,
+        CancellationToken cancellationToken = default)
+        => ReceiveAsync(platformCode, payloadJson, signature, headersJson, signatureValid, cancellationToken);
+
+    private async Task<IReadOnlyList<string>> LoadVerifyTokensForProcessAsync(
+        string menuType,
+        CancellationToken cancellationToken)
+    {
+        var normalized = MenuTypes.Normalize(menuType);
+        var tokens = new List<string>();
+        void Add(string? token)
+        {
+            if (!string.IsNullOrWhiteSpace(token) && !tokens.Contains(token))
+                tokens.Add(token!);
+        }
+
+        if (normalized == MenuTypes.Integration)
+        {
+            Add(_meta.Facebook.WebhookVerifyToken);
+            Add(_meta.Instagram.WebhookVerifyToken);
+            Add(_meta.InstagramLogin.WebhookVerifyToken);
+            Add(_meta.WhatsApp.WebhookVerifyToken);
+            foreach (var token in await _unitOfWork.IntegrationAppConfigs.GetWebhookVerifyTokensAsync(normalized, cancellationToken))
+                Add(token);
+        }
+        else if (normalized == MenuTypes.AppConnection)
+        {
+            foreach (var token in await _unitOfWork.AppConnectionConfigs.GetWebhookVerifyTokensAsync(normalized, cancellationToken))
+                Add(token);
+        }
+        else
+        {
+            foreach (var token in await _unitOfWork.DeveloperAppConfigs.GetWebhookVerifyTokensAsync(normalized, cancellationToken))
+                Add(token);
+        }
+
+        return tokens;
+    }
+
+    private async Task<IReadOnlyList<string>> LoadSecretsForProcessAsync(
+        string menuType,
+        string? platformCode,
+        string payloadJson,
+        CancellationToken cancellationToken)
+    {
+        var normalized = MenuTypes.Normalize(menuType);
+        if (normalized == MenuTypes.Integration)
+            return ResolveAppSecrets(platformCode, payloadJson).ToList();
+
+        var secrets = normalized == MenuTypes.AppConnection
+            ? await _unitOfWork.AppConnectionConfigs.GetClientSecretsAsync(normalized, cancellationToken)
+            : await _unitOfWork.DeveloperAppConfigs.GetClientSecretsAsync(normalized, cancellationToken);
+
+        return secrets.Count > 0 ? secrets : ResolveAppSecrets(platformCode, payloadJson).ToList();
     }
 }

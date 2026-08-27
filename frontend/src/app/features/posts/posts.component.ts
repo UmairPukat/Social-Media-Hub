@@ -6,7 +6,8 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { forkJoin } from 'rxjs';
 import { finalize } from 'rxjs/operators';
-import { ApiService } from '../../core/services/api.service';
+import { ProcessApiService } from '../../core/services/process-api.service';
+import { ProcessRouteService } from '../../core/services/process-route.service';
 import {
   ApiResponse,
   PLATFORM_COLORS,
@@ -58,7 +59,8 @@ const FALLBACK_COLORS = ['#2563eb', '#7c3aed', '#0891b2', '#0f766e', '#ea580c', 
   styleUrl: './posts.component.scss'
 })
 export class PostsComponent implements OnInit {
-  private readonly api = inject(ApiService);
+  private readonly processApi = inject(ProcessApiService);
+  private readonly processRoute = inject(ProcessRouteService);
 
   readonly posts = signal<SocialPost[]>([]);
   readonly platforms = signal<PlatformCard[]>([]);
@@ -121,6 +123,7 @@ export class PostsComponent implements OnInit {
   readonly scheduledCount = computed(() => this.posts().filter((post) => post.status === 3).length);
   readonly attentionCount = computed(() => this.posts().filter((post) => post.status === 2).length);
   readonly demoMode = computed(() => this.posts().some((post) => post.id.startsWith('demo-')));
+  readonly createPostLink = computed(() => `${this.processRoute.currentRouteBase()}/create-post`);
 
   ngOnInit(): void {
     this.reload();
@@ -130,8 +133,8 @@ export class PostsComponent implements OnInit {
     this.loading.set(true);
     this.loadError.set('');
     forkJoin({
-      posts: this.api.getPosts(),
-      platforms: this.api.getPlatforms()
+      posts: this.processApi.getPosts(this.processRoute.currentMenuType()),
+      platforms: this.processApi.getPlatforms(this.processRoute.currentMenuType())
     })
       .pipe(finalize(() => this.loading.set(false)))
       .subscribe({
@@ -238,8 +241,8 @@ export class PostsComponent implements OnInit {
     }
 
     this.deleting.set(id);
-    this.api
-      .deletePost(id)
+    this.processApi
+      .deletePost(this.processRoute.currentMenuType(), id)
       .pipe(finalize(() => this.deleting.set(null)))
       .subscribe({
         next: () => {

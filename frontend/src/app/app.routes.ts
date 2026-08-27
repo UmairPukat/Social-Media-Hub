@@ -1,6 +1,31 @@
 import { Routes } from '@angular/router';
 import { authGuard } from './core/guards/auth.guard';
 
+const processChildren = (connectComponent: () => Promise<{ default?: never } & import('@angular/core').Type<unknown>>) => [
+  { path: '', pathMatch: 'full' as const, redirectTo: 'connect' },
+  { path: 'connect', loadComponent: connectComponent },
+  {
+    path: 'create-post',
+    loadComponent: () => import('./features/create-post/create-post.component').then(m => m.CreatePostComponent)
+  },
+  {
+    path: 'posts',
+    loadComponent: () => import('./features/posts/posts.component').then(m => m.PostsComponent)
+  },
+  {
+    path: 'inbox',
+    loadComponent: () => import('./features/inbox/inbox.component').then(m => m.InboxComponent)
+  },
+  {
+    path: 'analytics',
+    loadComponent: () => import('./features/analytics/analytics.component').then(m => m.AnalyticsComponent)
+  },
+  {
+    path: 'accounts',
+    loadComponent: () => import('./features/accounts/accounts.component').then(m => m.AccountsComponent)
+  }
+] satisfies Routes;
+
 export const routes: Routes = [
   {
     path: 'login',
@@ -18,32 +43,29 @@ export const routes: Routes = [
       },
       {
         path: 'integrations',
-        loadComponent: () => import('./features/integrations/integrations.component').then(m => m.IntegrationsComponent)
+        children: processChildren(() =>
+          import('./features/integrations/integrations.component').then(m => m.IntegrationsComponent)
+        )
       },
       {
         path: 'app-connections',
-        loadComponent: () => import('./features/app-connections/app-connections.component').then(m => m.AppConnectionsComponent)
+        children: processChildren(() =>
+          import('./features/app-connections/app-connections.component').then(m => m.AppConnectionsComponent)
+        )
       },
       {
-        path: 'create-post',
-        loadComponent: () => import('./features/create-post/create-post.component').then(m => m.CreatePostComponent)
+        path: 'developer-apps',
+        children: processChildren(() =>
+          import('./features/developer-apps/developer-apps.component').then(m => m.DeveloperAppsComponent)
+        )
       },
-      {
-        path: 'posts',
-        loadComponent: () => import('./features/posts/posts.component').then(m => m.PostsComponent)
-      },
-      {
-        path: 'inbox',
-        loadComponent: () => import('./features/inbox/inbox.component').then(m => m.InboxComponent)
-      },
-      {
-        path: 'analytics',
-        loadComponent: () => import('./features/analytics/analytics.component').then(m => m.AnalyticsComponent)
-      },
-      {
-        path: 'accounts',
-        loadComponent: () => import('./features/accounts/accounts.component').then(m => m.AccountsComponent)
-      },
+      // Legacy redirects
+      { path: 'integrations-legacy', redirectTo: 'integrations/connect', pathMatch: 'full' },
+      { path: 'create-post', redirectTo: 'integrations/create-post', pathMatch: 'full' },
+      { path: 'posts', redirectTo: 'integrations/posts', pathMatch: 'full' },
+      { path: 'inbox', redirectTo: 'integrations/inbox', pathMatch: 'full' },
+      { path: 'analytics', redirectTo: 'integrations/analytics', pathMatch: 'full' },
+      { path: 'accounts', redirectTo: 'integrations/accounts', pathMatch: 'full' },
       {
         path: 'signup',
         loadComponent: () => import('./features/auth/signup/signup.component').then(m => m.SignupComponent)

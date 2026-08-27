@@ -16,7 +16,7 @@
           <div class="brand-name">SocialHub</div>
           <div class="brand-sub">
             <span class="live-dot"></span>
-            Integration Studio
+            Multi-Process Studio
           </div>
         </div>
       </div>
@@ -31,21 +31,6 @@
     </div>
 
     <div class="top-nav-right">
-      <div class="action-group">
-        <button class="icon-btn" type="button" aria-label="Quick create" title="Create post">
-          <mat-icon>add_circle_outline</mat-icon>
-        </button>
-        <button class="icon-btn" type="button" aria-label="Notifications">
-          <mat-icon>notifications_none</mat-icon>
-          <span class="notif-dot"></span>
-        </button>
-        <button class="icon-btn" type="button" aria-label="Help">
-          <mat-icon>help_outline</mat-icon>
-        </button>
-      </div>
-
-      <div class="divider" aria-hidden="true"></div>
-
       <div class="user-chip">
         <span class="user-av">{{ auth.currentUser()?.fullName?.[0] || 'U' }}</span>
         <div class="user-meta">
@@ -68,13 +53,13 @@
           <span class="side-mark">SH</span>
           <div>
             <strong>Workspace</strong>
-            <small>Social channels</small>
+            <small>3 isolated processes</small>
           </div>
         </div>
 
-        <p class="nav-label">Menu</p>
+        <p class="nav-label">Global</p>
         <nav class="nav-list">
-          @for (item of menu; track item.path) {
+          @for (item of globalMenu; track item.path) {
             <a [routerLink]="item.path" routerLinkActive="active">
               <span class="nav-ico"><mat-icon>{{ item.icon }}</mat-icon></span>
               <span class="nav-text">{{ item.label }}</span>
@@ -82,15 +67,25 @@
           }
         </nav>
 
-        <div class="nav-footer">
-          <div class="pulse-card">
-            <span class="pulse"></span>
-            <div>
-              <strong>Live sync</strong>
-              <small>Webhooks & inbox ready</small>
-            </div>
+        @for (module of processModules; track module.id) {
+          <div class="process-group">
+            <button type="button" class="process-heading" (click)="toggleGroup(module.id)">
+              <mat-icon>{{ module.icon }}</mat-icon>
+              <span>{{ module.label }}</span>
+              <mat-icon class="chev">{{ isExpanded(module.id) ? 'expand_less' : 'expand_more' }}</mat-icon>
+            </button>
+            @if (isExpanded(module.id)) {
+              <nav class="nav-list nested">
+                @for (sub of processSubItems; track sub.suffix) {
+                  <a [routerLink]="module.routeBase + '/' + sub.suffix" routerLinkActive="active">
+                    <span class="nav-ico"><mat-icon>{{ sub.icon }}</mat-icon></span>
+                    <span class="nav-text">{{ sub.label }}</span>
+                  </a>
+                }
+              </nav>
+            }
           </div>
-        </div>
+        }
       </aside>
     }
 

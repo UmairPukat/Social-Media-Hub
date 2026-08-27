@@ -1,38 +1,36 @@
-using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using SocialMedia.Api.Extensions;
 using SocialMedia.Application.DTOs.Posts;
 using SocialMedia.Application.Interfaces;
 
-namespace SocialMedia.Api.Controllers;
+namespace SocialMedia.Api.Controllers.Common;
 
-[Authorize]
-[Route("api/[controller]/[action]")]
-[ApiController]
-public class PostsController : ControllerBase
+public abstract class ProcessPostsControllerBase : ControllerBase
 {
     private readonly IPostService _postService;
 
-    public PostsController(IPostService postService)
+    protected ProcessPostsControllerBase(IPostService postService)
     {
         _postService = postService;
     }
 
-    [HttpGet]
+    protected abstract string MenuType { get; }
+
+    [HttpGet("posts")]
     public async Task<IActionResult> GetPosts(Guid? platformId = null)
     {
-        var response = await _postService.GetPostsAsync(User.GetUserId(), platformId);
+        var response = await _postService.GetPostsAsync(User.GetUserId(), platformId, MenuType);
         return Ok(response);
     }
 
-    [HttpPost]
+    [HttpPost("posts")]
     public async Task<IActionResult> CreateAndPublish([FromBody] CreatePostRequest model)
     {
         var response = await _postService.CreateAndPublishAsync(User.GetUserId(), model);
         return Ok(response);
     }
 
-    [HttpDelete]
+    [HttpDelete("posts/{id:guid}")]
     public async Task<IActionResult> DeletePost(Guid id)
     {
         var response = await _postService.DeletePostAsync(User.GetUserId(), id);

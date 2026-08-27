@@ -5,7 +5,8 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { Subscription } from 'rxjs';
-import { ApiService } from '../../core/services/api.service';
+import { ProcessApiService } from '../../core/services/process-api.service';
+import { ProcessRouteService } from '../../core/services/process-route.service';
 import {
   CREATE_PLATFORMS,
   CreatePlatform,
@@ -23,7 +24,8 @@ import { ApiResponse, PublishPostResponse, SocialAccount } from '../../core/mode
 })
 export class CreatePostComponent implements OnInit, OnDestroy {
   private readonly fb = inject(FormBuilder);
-  private readonly api = inject(ApiService);
+  private readonly processApi = inject(ProcessApiService);
+  private readonly processRoute = inject(ProcessRouteService);
   private formSub?: Subscription;
   private objectUrl: string | null = null;
 
@@ -117,7 +119,7 @@ export class CreatePostComponent implements OnInit, OnDestroy {
       this.formTick.update((n) => n + 1);
     });
 
-    this.api.getAccounts().subscribe({
+    this.processApi.getAccounts(this.processRoute.currentMenuType()).subscribe({
       next: (res: ApiResponse<SocialAccount[]>) => {
         const live: ComposerProfile[] = (res.data || []).flatMap((account) =>
           (account.profiles || []).map((p) => ({
@@ -283,8 +285,8 @@ export class CreatePostComponent implements OnInit, OnDestroy {
     const payloadContent =
       this.platform() === 'youtube' && title ? `${title}\n\n${content}` : content;
 
-    this.api
-      .createPost({
+    this.processApi
+      .createPost(this.processRoute.currentMenuType(), {
         socialProfileId: profile.id,
         content: payloadContent,
         mediaUrl

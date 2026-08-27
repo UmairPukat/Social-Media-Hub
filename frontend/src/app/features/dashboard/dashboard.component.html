@@ -6,11 +6,11 @@
       <p class="lede">Monitor connected channels, publishing performance, and inbox volume in one place.</p>
     </div>
     <div class="hero-actions">
-      <a mat-stroked-button routerLink="/app/create-post">
+      <a mat-stroked-button routerLink="/app/integrations/create-post">
         <mat-icon>post_add</mat-icon>
         Create post
       </a>
-      <a mat-flat-button color="primary" routerLink="/app/integrations">
+      <a mat-flat-button color="primary" routerLink="/app/integrations/connect">
         <mat-icon>hub</mat-icon>
         Manage integrations
       </a>
@@ -81,28 +81,28 @@
           </div>
         </div>
         <div class="shortcut-grid">
-          <a routerLink="/app/inbox" class="shortcut">
+          <a routerLink="/app/integrations/inbox" class="shortcut">
             <mat-icon>inbox</mat-icon>
             <div>
               <strong>Open inbox</strong>
               <small>{{ s.unreadInboxCount }} unread</small>
             </div>
           </a>
-          <a routerLink="/app/posts" class="shortcut">
+          <a routerLink="/app/integrations/posts" class="shortcut">
             <mat-icon>dynamic_feed</mat-icon>
             <div>
               <strong>View posts</strong>
               <small>{{ s.totalPostsCount }} total</small>
             </div>
           </a>
-          <a routerLink="/app/accounts" class="shortcut">
+          <a routerLink="/app/integrations/accounts" class="shortcut">
             <mat-icon>manage_accounts</mat-icon>
             <div>
               <strong>Accounts</strong>
               <small>{{ s.connectedAccountsCount }} connected</small>
             </div>
           </a>
-          <a routerLink="/app/analytics" class="shortcut">
+          <a routerLink="/app/integrations/analytics" class="shortcut">
             <mat-icon>insights</mat-icon>
             <div>
               <strong>Analytics</strong>

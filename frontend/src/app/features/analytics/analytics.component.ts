@@ -3,7 +3,9 @@ import { DecimalPipe } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
-import { ApiService } from '../../core/services/api.service';
+import { ProcessApiService } from '../../core/services/process-api.service';
+import { ProcessRouteService } from '../../core/services/process-route.service';
+import { PROCESS_MODULE_LIST } from '../../core/config/process.config';
 import { DashboardSummary } from '../../core/models/api.models';
 
 type AnalyticsRange = 7 | 30 | 90;
@@ -59,7 +61,11 @@ const PLATFORM_PERFORMANCE: PlatformPerformance[] = [
   styleUrl: './analytics.component.scss'
 })
 export class AnalyticsComponent implements OnInit {
-  private readonly api = inject(ApiService);
+  private readonly processApi = inject(ProcessApiService);
+  private readonly processRoute = inject(ProcessRouteService);
+
+  readonly processLabel = () =>
+    PROCESS_MODULE_LIST.find(m => m.id === this.processRoute.currentMenuType())?.label ?? 'Process';
 
   readonly summary = signal<DashboardSummary>(DEFAULT_SUMMARY);
   readonly range = signal<AnalyticsRange>(30);
@@ -114,7 +120,7 @@ export class AnalyticsComponent implements OnInit {
   ];
 
   ngOnInit(): void {
-    this.api.getDashboard().subscribe({
+    this.processApi.getDashboardSummary(this.processRoute.currentMenuType()).subscribe({
       next: (res) => {
         this.summary.set(res.data || DEFAULT_SUMMARY);
         this.loading.set(false);

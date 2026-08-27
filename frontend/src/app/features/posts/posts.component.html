@@ -13,7 +13,7 @@
         <mat-icon>refresh</mat-icon>
         Refresh
       </button>
-      <a mat-flat-button routerLink="/app/create-post">
+      <a mat-flat-button [routerLink]="createPostLink()">
         <mat-icon>add</mat-icon>
         Create post
       </a>
@@ -258,7 +258,7 @@
         @if (totalCount()) {
           <button mat-stroked-button type="button" (click)="clearFilters()">Clear filters</button>
         } @else {
-          <a mat-flat-button routerLink="/app/create-post"><mat-icon>add</mat-icon>Create first post</a>
+          <a mat-flat-button [routerLink]="createPostLink()"><mat-icon>add</mat-icon>Create first post</a>
         }
       </div>
     }

@@ -66,6 +66,8 @@ public static class DbSeeder
         await EnsureMessageReplyColumnsAsync(db);
         await EnsureMenuTypeColumnsAsync(db);
         await EnsureAppConnectionConfigsTableAsync(db);
+        await EnsureIntegrationAppConfigsTableAsync(db);
+        await EnsureDeveloperAppConfigsTableAsync(db);
 
         var catalogCodes = new HashSet<string>(
             PlatformCatalog.All.Select(p => p.Code),
@@ -73,7 +75,7 @@ public static class DbSeeder
 
         foreach (var def in PlatformCatalog.All)
         {
-            foreach (var menuType in new[] { MenuTypes.Integration, MenuTypes.AppConnection })
+            foreach (var menuType in ProcessModules.AllMenuTypes)
             {
                 var platformId = PlatformCatalog.IdForMenu(def.Id, menuType);
                 var existing = db.Platforms.FirstOrDefault(p => p.Id == platformId)
@@ -236,6 +238,68 @@ public static class DbSeeder
         await db.Database.ExecuteSqlRawAsync("""
             CREATE UNIQUE INDEX IF NOT EXISTS "IX_AppConnectionConfigs_UserId_PlatformId_MenuType"
             ON "AppConnectionConfigs" ("UserId", "PlatformId", "MenuType");
+            """);
+    }
+
+    private static async Task EnsureIntegrationAppConfigsTableAsync(AppDbContext db)
+    {
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE IF NOT EXISTS "IntegrationAppConfigs" (
+                "Id" uuid NOT NULL,
+                "UserId" uuid NOT NULL,
+                "PlatformId" uuid NOT NULL,
+                "PlatformCode" character varying(50) NOT NULL,
+                "MenuType" character varying(50) NOT NULL DEFAULT 'integration',
+                "Label" character varying(200) NULL,
+                "ClientId" character varying(200) NOT NULL,
+                "ClientSecret" text NOT NULL,
+                "RedirectUri" character varying(2000) NULL,
+                "AuthUrl" character varying(2000) NULL,
+                "BaseUrl" character varying(500) NULL,
+                "Scopes" character varying(2000) NULL,
+                "GraphApiVersion" character varying(20) NOT NULL DEFAULT 'v21.0',
+                "WebhookVerifyToken" character varying(500) NULL,
+                "PhoneNumberId" character varying(100) NULL,
+                "WabaId" character varying(100) NULL,
+                "CreatedAt" timestamp with time zone NOT NULL,
+                "UpdatedAt" timestamp with time zone NULL,
+                CONSTRAINT "PK_IntegrationAppConfigs" PRIMARY KEY ("Id")
+            );
+            """);
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE UNIQUE INDEX IF NOT EXISTS "IX_IntegrationAppConfigs_UserId_PlatformId_MenuType"
+            ON "IntegrationAppConfigs" ("UserId", "PlatformId", "MenuType");
+            """);
+    }
+
+    private static async Task EnsureDeveloperAppConfigsTableAsync(AppDbContext db)
+    {
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE IF NOT EXISTS "DeveloperAppConfigs" (
+                "Id" uuid NOT NULL,
+                "UserId" uuid NOT NULL,
+                "PlatformId" uuid NOT NULL,
+                "PlatformCode" character varying(50) NOT NULL,
+                "MenuType" character varying(50) NOT NULL DEFAULT 'developer_app',
+                "Label" character varying(200) NULL,
+                "ClientId" character varying(200) NOT NULL,
+                "ClientSecret" text NOT NULL,
+                "RedirectUri" character varying(2000) NULL,
+                "AuthUrl" character varying(2000) NULL,
+                "BaseUrl" character varying(500) NULL,
+                "Scopes" character varying(2000) NULL,
+                "GraphApiVersion" character varying(20) NOT NULL DEFAULT 'v21.0',
+                "WebhookVerifyToken" character varying(500) NULL,
+                "PhoneNumberId" character varying(100) NULL,
+                "WabaId" character varying(100) NULL,
+                "CreatedAt" timestamp with time zone NOT NULL,
+                "UpdatedAt" timestamp with time zone NULL,
+                CONSTRAINT "PK_DeveloperAppConfigs" PRIMARY KEY ("Id")
+            );
+            """);
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE UNIQUE INDEX IF NOT EXISTS "IX_DeveloperAppConfigs_UserId_PlatformId_MenuType"
+            ON "DeveloperAppConfigs" ("UserId", "PlatformId", "MenuType");
             """);
     }
 }

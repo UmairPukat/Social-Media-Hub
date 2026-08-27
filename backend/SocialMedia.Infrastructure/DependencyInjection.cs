@@ -40,6 +40,8 @@ public static class DependencyInjection
         services.AddScoped<IWebhookLogRepository, WebhookLogRepository>();
         services.AddScoped<ISyncJobRepository, SyncJobRepository>();
         services.AddScoped<IAppConnectionConfigRepository, AppConnectionConfigRepository>();
+        services.AddScoped<IIntegrationAppConfigRepository, IntegrationAppConfigRepository>();
+        services.AddScoped<IDeveloperAppConfigRepository, DeveloperAppConfigRepository>();
         services.AddScoped<IUnitOfWork, UnitOfWork>();
 
         services.AddScoped<IPasswordHasher, PasswordHasher>();

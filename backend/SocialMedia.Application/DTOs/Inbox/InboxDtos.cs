@@ -52,6 +52,7 @@ public class InboxFilterRequest
 {
     public string? PlatformCode { get; set; }
     public string? ItemKind { get; set; } // comment | message
+    public string? MenuType { get; set; }
 }
 
 public class ReplyCommentRequest

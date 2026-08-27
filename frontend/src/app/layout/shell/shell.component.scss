@@ -424,6 +424,60 @@
   box-shadow: 0 6px 14px color-mix(in srgb, var(--chrome-accent) 28%, transparent);
 }
 
+.process-group {
+  margin: 0 10px 8px;
+}
+
+.process-heading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 14px;
+  background: var(--chrome-side-brand-bg);
+  color: var(--chrome-side-text);
+  font: inherit;
+  font-size: 0.88rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 160ms ease, color 160ms ease;
+}
+
+.process-heading:hover {
+  background: var(--chrome-side-link-hover-bg);
+}
+
+.process-heading mat-icon {
+  font-size: 18px;
+  width: 18px;
+  height: 18px;
+  color: var(--chrome-accent);
+}
+
+.process-heading .chev {
+  margin-left: auto;
+  color: var(--chrome-side-muted);
+}
+
+.nav-list.nested {
+  padding: 4px 0 8px 8px;
+  margin-left: 8px;
+  border-left: 2px solid var(--chrome-side-brand-border);
+}
+
+.nav-list.nested a {
+  font-size: 0.84rem;
+  padding: 8px 10px;
+}
+
+.nav-list.nested .nav-ico {
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+}
+
 .nav-footer {
   margin-top: auto;
   padding: 14px;

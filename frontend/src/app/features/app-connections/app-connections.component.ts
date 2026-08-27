@@ -6,7 +6,7 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { ApiService } from '../../core/services/api.service';
+import { ProcessApiService } from '../../core/services/process-api.service';
 import { MetaAuthUrlService, MetaPlatform } from '../../core/services/meta-auth-url.service';
 import {
   ApiResponse,
@@ -71,7 +71,7 @@ const DEFAULT_BASE_URLS: Record<string, string> = {
   styleUrl: './app-connections.component.scss'
 })
 export class AppConnectionsComponent implements OnInit {
-  private readonly api = inject(ApiService);
+  private readonly processApi = inject(ProcessApiService);
   private readonly metaAuth = inject(MetaAuthUrlService);
   private readonly menuType = MENU_TYPES.appConnection;
 
@@ -147,7 +147,7 @@ export class AppConnectionsComponent implements OnInit {
   }
 
   reload(): void {
-    this.api.getPlatforms(this.menuType).subscribe({
+    this.processApi.getPlatforms(this.menuType).subscribe({
       next: (res: ApiResponse<PlatformCard[]>) => this.cards.set(res.data || []),
       error: () => this.message.set('Failed to load app connections')
     });
@@ -238,7 +238,7 @@ export class AppConnectionsComponent implements OnInit {
     if (dialog && !dialog.open) dialog.showModal();
 
     if (card.hasAppConfig) {
-      this.api.getAppConnectionConfig(code, this.menuType, true).subscribe({
+      this.processApi.getConfig(this.menuType, code, true).subscribe({
         next: (res) => {
           this.configLoading.set(false);
           if (!res.success || !res.data) {
@@ -246,7 +246,7 @@ export class AppConnectionsComponent implements OnInit {
             this.configError.set(res.message || 'Could not load configuration.');
             return;
           }
-          this.configForm.set(this.mapConfigToForm(res.data));
+          this.configForm.set(this.mapConfigToForm(res.data as AppConnectionConfig));
         },
         error: () => {
           this.configLoading.set(false);
@@ -293,7 +293,7 @@ export class AppConnectionsComponent implements OnInit {
     this.configSaving.set(true);
     this.configError.set('');
 
-    this.api.saveAppConnectionConfig({ ...form, platformCode: code, menuType: this.menuType }).subscribe({
+    this.processApi.saveConfig(this.menuType, { ...form, platformCode: code, menuType: this.menuType }).subscribe({
       next: (res) => {
         this.configSaving.set(false);
         if (!res.success) {
@@ -315,7 +315,7 @@ export class AppConnectionsComponent implements OnInit {
     if (!card.hasAppConfig) return;
     if (!confirm(`Delete app configuration for ${card.displayName}?`)) return;
 
-    this.api.deleteAppConnectionConfig(card.code, this.menuType).subscribe({
+    this.processApi.deleteConfig(this.menuType, card.code).subscribe({
       next: (res) => {
         this.message.set(res.message || 'App configuration deleted.');
         this.reload();
@@ -361,7 +361,7 @@ export class AppConnectionsComponent implements OnInit {
 
     this.pagesLoading.set(true);
     this.pagesError.set('');
-    this.api.getMetaPages(code, this.menuType).subscribe({
+    this.processApi.getMetaPages(this.menuType, code).subscribe({
       next: (res: ApiResponse<MetaPage[]>) => {
         this.pagesLoading.set(false);
         if (!res.success) {
@@ -394,7 +394,7 @@ export class AppConnectionsComponent implements OnInit {
     if (!code || !pageId) return;
 
     this.savingPage.set(true);
-    this.api.selectMetaPage(code, pageId, this.menuType).subscribe({
+    this.processApi.selectMetaPage(this.menuType, code, pageId).subscribe({
       next: (res) => {
         this.savingPage.set(false);
         if (!res.success) {
@@ -425,7 +425,7 @@ export class AppConnectionsComponent implements OnInit {
     const dialog = this.detailsDialog()?.nativeElement;
     if (dialog && !dialog.open) dialog.showModal();
 
-    this.api.getConnectionDetails(card.code, this.menuType).subscribe({
+    this.processApi.getConnectionDetails(this.menuType, card.code).subscribe({
       next: (res: ApiResponse<ConnectionDetails>) => {
         this.detailsLoading.set(false);
         if (!res.success) {
@@ -501,7 +501,7 @@ export class AppConnectionsComponent implements OnInit {
   }
 
   disconnect(card: PlatformCard): void {
-    this.api.disconnect(card.code, this.menuType).subscribe({
+    this.processApi.disconnect(this.menuType, card.code).subscribe({
       next: () => {
         this.message.set(`${card.displayName} disconnected.`);
         this.reload();

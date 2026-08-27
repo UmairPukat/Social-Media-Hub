@@ -1,16 +1,17 @@
 using SocialMedia.Domain.Common;
+using SocialMedia.Domain.Entities;
 
-namespace SocialMedia.Domain.Entities;
+namespace SocialMedia.Domain.Modules.DeveloperApps.Entities;
 
 /// <summary>
-/// Per-user Meta app credentials for the App Connections menu.
+/// Developer Apps process app credentials — table: DeveloperAppConfigs.
 /// </summary>
-public class AppConnectionConfig : BaseEntity
+public class DeveloperAppConfig : BaseEntity
 {
     public Guid UserId { get; set; }
     public Guid PlatformId { get; set; }
     public string PlatformCode { get; set; } = string.Empty;
-    public string MenuType { get; set; } = "app_connection";
+    public string MenuType { get; set; } = "developer_app";
 
     public string? Label { get; set; }
     public string ClientId { get; set; } = string.Empty;

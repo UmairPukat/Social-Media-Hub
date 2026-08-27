@@ -9,4 +9,9 @@ namespace SocialMedia.Application.Interfaces;
 public interface IDashboardService
 {
     Task<ApiResponse<DashboardSummaryDto>> GetSummaryAsync(Guid userId, CancellationToken cancellationToken = default);
+
+    Task<ApiResponse<DashboardSummaryDto>> GetSummaryForProcessAsync(
+        Guid userId,
+        string? menuType,
+        CancellationToken cancellationToken = default);
 }

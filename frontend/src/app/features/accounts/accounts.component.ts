@@ -1,7 +1,9 @@
 import { Component, OnInit, inject, signal } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { MatButtonModule } from '@angular/material/button';
-import { ApiService } from '../../core/services/api.service';
+import { ProcessApiService } from '../../core/services/process-api.service';
+import { ProcessRouteService } from '../../core/services/process-route.service';
+import { PROCESS_MODULE_LIST } from '../../core/config/process.config';
 import { SocialAccount } from '../../core/models/api.models';
 
 @Component({
@@ -9,9 +11,9 @@ import { SocialAccount } from '../../core/models/api.models';
   standalone: true,
   imports: [DatePipe, MatButtonModule],
   template: `
-    <section>
+    <section class="page">
       <h1>Connected Accounts</h1>
-      <p>SocialAccount + SocialProfiles. Tokens stay in SocialAuth on the server.</p>
+      <p>{{ processLabel() }} — SocialAccount + SocialProfiles for this process only.</p>
       <div class="list">
         @for (account of accounts(); track account.id) {
           <article>
@@ -38,7 +40,11 @@ import { SocialAccount } from '../../core/models/api.models';
   `]
 })
 export class AccountsComponent implements OnInit {
-  private readonly api = inject(ApiService);
+  private readonly processApi = inject(ProcessApiService);
+  private readonly processRoute = inject(ProcessRouteService);
+
+  readonly processLabel = () =>
+    PROCESS_MODULE_LIST.find(m => m.id === this.processRoute.currentMenuType())?.label ?? 'Process';
   readonly accounts = signal<SocialAccount[]>([]);
 
   ngOnInit(): void {
@@ -46,10 +52,10 @@ export class AccountsComponent implements OnInit {
   }
 
   reload(): void {
-    this.api.getAccounts().subscribe(res => this.accounts.set(res.data || []));
+    this.processApi.getAccounts(this.processRoute.currentMenuType()).subscribe(res => this.accounts.set(res.data || []));
   }
 
   disconnect(platformCode: string): void {
-    this.api.disconnect(platformCode).subscribe(() => this.reload());
+    this.processApi.disconnect(this.processRoute.currentMenuType(), platformCode).subscribe(() => this.reload());
   }
 }

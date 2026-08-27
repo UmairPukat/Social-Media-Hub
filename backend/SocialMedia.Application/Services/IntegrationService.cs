@@ -8,6 +8,9 @@ using SocialMedia.Application.DTOs.Integration;
 using SocialMedia.Application.Interfaces;
 using SocialMedia.Application.Settings;
 using SocialMedia.Domain.Entities;
+using SocialMedia.Domain.Modules.AppConnections.Entities;
+using SocialMedia.Domain.Modules.DeveloperApps.Entities;
+using SocialMedia.Domain.Modules.Integrations.Entities;
 using SocialMedia.Domain.Enums;
 using SocialMedia.Domain.Interfaces;
 
@@ -147,18 +150,44 @@ public class IntegrationService : IIntegrationService
                 return ApiResponse<BeginOAuthResponse>.Fail("Save this platform's app configuration before connecting.");
 
             appId = config.ClientId;
-            redirectUri = config.RedirectUri ?? ResolveRedirectUri(platformCode, null);
+            redirectUri = ResolveProcessRedirectUri(platformCode, menuType, config.RedirectUri);
+            version = config.GraphApiVersion;
+            scopes = config.Scopes ?? PlatformScopes[platformCode];
+            authBase = config.AuthUrl ?? PlatformCatalog.DefaultAuthUrl(platformCode, version);
+        }
+        else if (menuType == MenuTypes.DeveloperApp)
+        {
+            var config = await _unitOfWork.DeveloperAppConfigs.GetByUserAndPlatformCodeAsync(
+                userId, platformCode, menuType, cancellationToken);
+            if (config is null)
+                return ApiResponse<BeginOAuthResponse>.Fail("Save this platform's app configuration before connecting.");
+
+            appId = config.ClientId;
+            redirectUri = ResolveProcessRedirectUri(platformCode, menuType, config.RedirectUri);
             version = config.GraphApiVersion;
             scopes = config.Scopes ?? PlatformScopes[platformCode];
             authBase = config.AuthUrl ?? PlatformCatalog.DefaultAuthUrl(platformCode, version);
         }
         else
         {
-            appId = ResolveAppId(platformCode);
-            redirectUri = ResolveRedirectUri(platformCode, null);
-            version = ResolveGraphVersion(platformCode);
-            scopes = PlatformScopes[platformCode];
-            authBase = PlatformCatalog.DefaultAuthUrl(platformCode, version);
+            var config = await _unitOfWork.IntegrationAppConfigs.GetByUserAndPlatformCodeAsync(
+                userId, platformCode, menuType, cancellationToken);
+            if (config is not null)
+            {
+                appId = config.ClientId;
+                redirectUri = ResolveProcessRedirectUri(platformCode, menuType, config.RedirectUri);
+                version = config.GraphApiVersion;
+                scopes = config.Scopes ?? PlatformScopes[platformCode];
+                authBase = config.AuthUrl ?? PlatformCatalog.DefaultAuthUrl(platformCode, version);
+            }
+            else
+            {
+                appId = ResolveAppId(platformCode);
+                redirectUri = ResolveProcessRedirectUri(platformCode, menuType, null);
+                version = ResolveGraphVersion(platformCode);
+                scopes = PlatformScopes[platformCode];
+                authBase = PlatformCatalog.DefaultAuthUrl(platformCode, version);
+            }
         }
 
         if (string.IsNullOrWhiteSpace(appId) || appId.StartsWith("YOUR_", StringComparison.OrdinalIgnoreCase))
@@ -308,7 +337,7 @@ public class IntegrationService : IIntegrationService
             if (string.IsNullOrWhiteSpace(request.Code))
                 return ApiResponse<SocialAccountDto>.Fail("Authorization code is required.");
 
-            var redirectUri = ResolveRedirectUri(platformCode, request.RedirectUri);
+            var redirectUri = ResolveProcessRedirectUri(platformCode, request.MenuType, request.RedirectUri);
             if (string.IsNullOrWhiteSpace(redirectUri))
                 return ApiResponse<SocialAccountDto>.Fail("Redirect URI is not configured.");
 
@@ -316,33 +345,19 @@ public class IntegrationService : IIntegrationService
             OAuthTokenResult token;
             (string Id, string Name) me;
 
-            if (normalizedMenu == MenuTypes.AppConnection)
+            if (normalizedMenu is MenuTypes.AppConnection or MenuTypes.DeveloperApp)
             {
-                var config = await _unitOfWork.AppConnectionConfigs.GetByUserAndPlatformCodeAsync(
-                    userId, platformCode, normalizedMenu, cancellationToken);
-                if (config is null)
+                var configured = await TryExchangeWithStoredConfigAsync(
+                    userId, platformCode, normalizedMenu, request, redirectUri, cancellationToken);
+                if (configured is null)
                     return ApiResponse<SocialAccountDto>.Fail("Save this platform's app configuration before connecting.");
-
-                var effectiveRedirect = config.RedirectUri ?? redirectUri;
-                token = await _metaOAuthExchange.ExchangeAuthorizationCodeAsync(
-                    new MetaOAuthCredentials(
-                        platformCode,
-                        request.Code,
-                        effectiveRedirect,
-                        config.ClientId,
-                        config.ClientSecret,
-                        config.GraphApiVersion,
-                        config.BaseUrl),
-                    cancellationToken);
-
-                me = platformCode switch
-                {
-                    "facebook" => await _facebookService.GetMeAsync(token.AccessToken, cancellationToken),
-                    "instagram" => await _instagramService.GetMeAsync(token.AccessToken, cancellationToken),
-                    "instagram_login" => await _instagramService.GetInstagramLoginMeAsync(token.AccessToken, cancellationToken),
-                    "whatsapp" => await _whatsAppService.GetMeAsync(token.AccessToken, cancellationToken),
-                    _ => throw new InvalidOperationException($"Unsupported platform '{platformCode}'.")
-                };
+                (token, me) = configured.Value;
+            }
+            else if (await TryExchangeWithStoredConfigAsync(
+                         userId, platformCode, normalizedMenu, request, redirectUri, cancellationToken)
+                     is { } integrationConfigured)
+            {
+                (token, me) = integrationConfigured;
             }
             else
             {
@@ -383,6 +398,106 @@ public class IntegrationService : IIntegrationService
         {
             return ApiResponse<SocialAccountDto>.Fail(ex.Message);
         }
+    }
+
+    private string ResolveProcessRedirectUri(string platformCode, string? menuType, string? configRedirectUri)
+    {
+        if (!string.IsNullOrWhiteSpace(configRedirectUri))
+            return configRedirectUri.Trim();
+
+        var processCallback = ProcessModules.CallbackRouteFor(menuType);
+        var backendBase = FirstNonEmpty(
+            _configuration["BackendBaseUrl"],
+            ExtractBackendBaseFromMetaRedirect());
+
+        if (!string.IsNullOrWhiteSpace(backendBase))
+            return $"{backendBase.TrimEnd('/')}{processCallback}";
+
+        return ResolveRedirectUri(platformCode, null);
+    }
+
+    private string? ExtractBackendBaseFromMetaRedirect()
+    {
+        var shared = FirstNonEmpty(
+            _meta.Facebook.RedirectUri,
+            _meta.Instagram.RedirectUri,
+            _meta.InstagramLogin.RedirectUri,
+            _meta.WhatsApp.RedirectUri);
+        if (string.IsNullOrWhiteSpace(shared) || !Uri.TryCreate(shared, UriKind.Absolute, out var uri))
+            return null;
+
+        return $"{uri.Scheme}://{uri.Authority}";
+    }
+
+    private async Task<(OAuthTokenResult Token, (string Id, string Name) Me)?> TryExchangeWithStoredConfigAsync(
+        Guid userId,
+        string platformCode,
+        string menuType,
+        OAuthCallbackRequest request,
+        string fallbackRedirectUri,
+        CancellationToken cancellationToken)
+    {
+        string? clientId = null;
+        string? clientSecret = null;
+        string? redirect = null;
+        string? version = null;
+        string? baseUrl = null;
+
+        if (menuType == MenuTypes.AppConnection)
+        {
+            var config = await _unitOfWork.AppConnectionConfigs.GetByUserAndPlatformCodeAsync(
+                userId, platformCode, menuType, cancellationToken);
+            if (config is null) return null;
+            clientId = config.ClientId;
+            clientSecret = config.ClientSecret;
+            redirect = config.RedirectUri ?? fallbackRedirectUri;
+            version = config.GraphApiVersion;
+            baseUrl = config.BaseUrl;
+        }
+        else if (menuType == MenuTypes.DeveloperApp)
+        {
+            var config = await _unitOfWork.DeveloperAppConfigs.GetByUserAndPlatformCodeAsync(
+                userId, platformCode, menuType, cancellationToken);
+            if (config is null) return null;
+            clientId = config.ClientId;
+            clientSecret = config.ClientSecret;
+            redirect = config.RedirectUri ?? fallbackRedirectUri;
+            version = config.GraphApiVersion;
+            baseUrl = config.BaseUrl;
+        }
+        else
+        {
+            var config = await _unitOfWork.IntegrationAppConfigs.GetByUserAndPlatformCodeAsync(
+                userId, platformCode, menuType, cancellationToken);
+            if (config is null) return null;
+            clientId = config.ClientId;
+            clientSecret = config.ClientSecret;
+            redirect = config.RedirectUri ?? fallbackRedirectUri;
+            version = config.GraphApiVersion;
+            baseUrl = config.BaseUrl;
+        }
+
+        var token = await _metaOAuthExchange.ExchangeAuthorizationCodeAsync(
+            new MetaOAuthCredentials(
+                platformCode,
+                request.Code,
+                redirect!,
+                clientId!,
+                clientSecret!,
+                version!,
+                baseUrl),
+            cancellationToken);
+
+        var me = platformCode switch
+        {
+            "facebook" => await _facebookService.GetMeAsync(token.AccessToken, cancellationToken),
+            "instagram" => await _instagramService.GetMeAsync(token.AccessToken, cancellationToken),
+            "instagram_login" => await _instagramService.GetInstagramLoginMeAsync(token.AccessToken, cancellationToken),
+            "whatsapp" => await _whatsAppService.GetMeAsync(token.AccessToken, cancellationToken),
+            _ => throw new InvalidOperationException($"Unsupported platform '{platformCode}'.")
+        };
+
+        return (token, me);
     }
 
     private string ResolveRedirectUri(string platformCode, string? fromRequest)
@@ -894,7 +1009,7 @@ public class IntegrationService : IIntegrationService
         profile.UpdatedAt = DateTime.UtcNow;
         MarkUpdated(_unitOfWork.SocialProfiles, profile, isNew);
 
-        await ReassignOrphanProfilesAsync(account, profile.ExternalProfileId, cancellationToken);
+        await ReassignOrphanProfilesAsync(account, profile, cancellationToken);
 
         return profile;
     }
@@ -905,10 +1020,10 @@ public class IntegrationService : IIntegrationService
     /// </summary>
     private async Task ReassignOrphanProfilesAsync(
         SocialAccount account,
-        string externalProfileId,
+        SocialProfile canonicalProfile,
         CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(externalProfileId))
+        if (string.IsNullOrWhiteSpace(canonicalProfile.ExternalProfileId))
             return;
 
         var platform = await _unitOfWork.Platforms.GetByIdAsync(account.PlatformId, cancellationToken);
@@ -917,39 +1032,33 @@ public class IntegrationService : IIntegrationService
             return;
 
         var orphans = await _unitOfWork.SocialProfiles.FindAsync(
-            p => p.ExternalProfileId == externalProfileId && p.SocialAccountId != account.Id,
+            p => p.ExternalProfileId == canonicalProfile.ExternalProfileId && p.SocialAccountId != account.Id,
             cancellationToken);
 
-        var canonicalProfiles = await _unitOfWork.SocialProfiles.GetBySocialAccountAsync(account.Id, cancellationToken);
-        var canonical = canonicalProfiles.FirstOrDefault(p =>
-            string.Equals(p.ExternalProfileId, externalProfileId, StringComparison.Ordinal));
-
-        foreach (var orphan in orphans)
+        foreach (var orphanSnapshot in orphans)
         {
-            var owner = await _unitOfWork.SocialAccounts.GetWithAuthAndProfilesAsync(orphan.SocialAccountId, cancellationToken);
+            if (orphanSnapshot.Id == canonicalProfile.Id)
+                continue;
+
+            var owner = await _unitOfWork.SocialAccounts.GetByIdAsync(orphanSnapshot.SocialAccountId, cancellationToken);
             if (owner is null || owner.UserId != account.UserId)
                 continue;
 
-            var ownerPlatform = owner.Platform
-                ?? await _unitOfWork.Platforms.GetByIdAsync(owner.PlatformId, cancellationToken);
+            var ownerPlatform = await _unitOfWork.Platforms.GetByIdAsync(owner.PlatformId, cancellationToken);
             if (!string.Equals(ownerPlatform?.Code, platformCode, StringComparison.OrdinalIgnoreCase))
                 continue;
 
-            var ownerAuth = owner.Auth
-                ?? await _unitOfWork.SocialAuths.GetBySocialAccountIdAsync(owner.Id, cancellationToken);
+            var ownerAuth = await _unitOfWork.SocialAuths.GetBySocialAccountIdAsync(owner.Id, cancellationToken);
             if (owner.Status == SocialAccountStatus.Connected && HasStoredTokens(ownerAuth))
                 continue;
 
-            if (canonical is not null && canonical.Id != orphan.Id)
-            {
-                await MoveConversationsToProfileAsync(orphan.Id, canonical.Id, cancellationToken);
-                _unitOfWork.SocialProfiles.Remove(orphan);
+            // Load a single tracked instance — FindAsync is no-tracking and Include() would duplicate it.
+            var orphan = await _unitOfWork.SocialProfiles.GetByIdAsync(orphanSnapshot.Id, cancellationToken);
+            if (orphan is null)
                 continue;
-            }
 
-            orphan.SocialAccountId = account.Id;
-            orphan.UpdatedAt = DateTime.UtcNow;
-            _unitOfWork.SocialProfiles.Update(orphan);
+            await MoveConversationsToProfileAsync(orphan.Id, canonicalProfile.Id, cancellationToken);
+            _unitOfWork.SocialProfiles.Remove(orphan);
         }
     }
 
@@ -961,8 +1070,12 @@ public class IntegrationService : IIntegrationService
         var conversations = await _unitOfWork.Conversations.FindAsync(
             c => c.SocialProfileId == fromProfileId,
             cancellationToken);
-        foreach (var conversation in conversations)
+        foreach (var conversationSnapshot in conversations)
         {
+            var conversation = await _unitOfWork.Conversations.GetByIdAsync(conversationSnapshot.Id, cancellationToken);
+            if (conversation is null)
+                continue;
+
             conversation.SocialProfileId = toProfileId;
             conversation.UpdatedAt = DateTime.UtcNow;
             _unitOfWork.Conversations.Update(conversation);

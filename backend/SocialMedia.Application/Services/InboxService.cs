@@ -37,22 +37,26 @@ public class InboxService : IInboxService
         {
             Guid? platformId = null;
             IReadOnlyList<Guid>? platformIds = null;
+            var processMenu = string.IsNullOrWhiteSpace(filter?.MenuType) ? null : MenuTypes.Normalize(filter!.MenuType);
+
             if (!string.IsNullOrWhiteSpace(filter?.PlatformCode))
             {
                 if (string.Equals(filter.PlatformCode, "instagram", StringComparison.OrdinalIgnoreCase))
                 {
-                    platformIds = new[]
+                    var menus = processMenu is null
+                        ? ProcessModules.AllMenuTypes
+                        : [processMenu];
+                    platformIds = menus.SelectMany(m => new[]
                     {
-                        PlatformCatalog.IdForMenu(PlatformCatalog.InstagramId, MenuTypes.Integration),
-                        PlatformCatalog.IdForMenu(PlatformCatalog.InstagramLoginId, MenuTypes.Integration),
-                        PlatformCatalog.IdForMenu(PlatformCatalog.InstagramId, MenuTypes.AppConnection),
-                        PlatformCatalog.IdForMenu(PlatformCatalog.InstagramLoginId, MenuTypes.AppConnection)
-                    };
+                        PlatformCatalog.IdForMenu(PlatformCatalog.InstagramId, m),
+                        PlatformCatalog.IdForMenu(PlatformCatalog.InstagramLoginId, m)
+                    }).Distinct().ToArray();
                 }
                 else
                 {
                     var matching = (await _unitOfWork.Platforms.GetActiveAsync(cancellationToken))
-                        .Where(p => string.Equals(p.Code, filter.PlatformCode, StringComparison.OrdinalIgnoreCase))
+                        .Where(p => string.Equals(p.Code, filter.PlatformCode, StringComparison.OrdinalIgnoreCase)
+                                    && (processMenu is null || p.MenuType == processMenu))
                         .Select(p => p.Id)
                         .ToList();
                     platformIds = matching.Count > 0 ? matching : null;
@@ -65,6 +69,13 @@ public class InboxService : IInboxService
                 {
                     return ApiResponse<IReadOnlyList<InboxItemDto>>.Ok(Array.Empty<InboxItemDto>());
                 }
+            }
+            else if (processMenu is not null)
+            {
+                platformIds = (await _unitOfWork.Platforms.GetActiveAsync(cancellationToken))
+                    .Where(p => p.MenuType == processMenu)
+                    .Select(p => p.Id)
+                    .ToList();
             }
 
             var kind = filter?.ItemKind?.ToLowerInvariant();

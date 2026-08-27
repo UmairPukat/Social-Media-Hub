@@ -1,4 +1,7 @@
 using SocialMedia.Domain.Entities;
+using SocialMedia.Domain.Modules.AppConnections.Entities;
+using SocialMedia.Domain.Modules.DeveloperApps.Entities;
+using SocialMedia.Domain.Modules.Integrations.Entities;
 using SocialMedia.Domain.Enums;
 
 namespace SocialMedia.Domain.Interfaces;
@@ -40,7 +43,11 @@ public interface ISocialProfileRepository : IRepository<SocialProfile>
 
 public interface IPostRepository : IRepository<Post>
 {
-    Task<IReadOnlyList<Post>> GetByUserProfilesAsync(Guid userId, Guid? platformId = null, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<Post>> GetByUserProfilesAsync(
+        Guid userId,
+        Guid? platformId = null,
+        string? menuType = null,
+        CancellationToken cancellationToken = default);
     Task<Post?> GetByExternalPostIdAsync(Guid socialProfileId, string externalPostId, CancellationToken cancellationToken = default);
 }
 
@@ -88,11 +95,63 @@ public interface IAppConnectionConfigRepository : IRepository<AppConnectionConfi
         string menuType,
         CancellationToken cancellationToken = default);
 
+    Task<IReadOnlyList<string>> GetWebhookVerifyTokensAsync(string menuType, CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<string>> GetClientSecretsAsync(string menuType, CancellationToken cancellationToken = default);
+
     Task<AppConnectionConfig?> GetByUserAndPlatformCodeAsync(
         Guid userId,
         string platformCode,
         string menuType,
         CancellationToken cancellationToken = default);
+}
+
+public interface IIntegrationAppConfigRepository : IRepository<IntegrationAppConfig>
+{
+    Task<IntegrationAppConfig?> GetByUserAndPlatformAsync(
+        Guid userId,
+        Guid platformId,
+        string menuType,
+        CancellationToken cancellationToken = default);
+
+    Task<IntegrationAppConfig?> GetByUserAndPlatformCodeAsync(
+        Guid userId,
+        string platformCode,
+        string menuType,
+        CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<IntegrationAppConfig>> GetByUserAsync(
+        Guid userId,
+        string menuType,
+        CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<string>> GetWebhookVerifyTokensAsync(string menuType, CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<string>> GetClientSecretsAsync(string menuType, CancellationToken cancellationToken = default);
+}
+
+public interface IDeveloperAppConfigRepository : IRepository<DeveloperAppConfig>
+{
+    Task<DeveloperAppConfig?> GetByUserAndPlatformAsync(
+        Guid userId,
+        Guid platformId,
+        string menuType,
+        CancellationToken cancellationToken = default);
+
+    Task<DeveloperAppConfig?> GetByUserAndPlatformCodeAsync(
+        Guid userId,
+        string platformCode,
+        string menuType,
+        CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<DeveloperAppConfig>> GetByUserAsync(
+        Guid userId,
+        string menuType,
+        CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<string>> GetWebhookVerifyTokensAsync(string menuType, CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<string>> GetClientSecretsAsync(string menuType, CancellationToken cancellationToken = default);
 }
 
 public interface IUnitOfWork : IDisposable
@@ -111,6 +170,8 @@ public interface IUnitOfWork : IDisposable
     IWebhookLogRepository WebhookLogs { get; }
     ISyncJobRepository SyncJobs { get; }
     IAppConnectionConfigRepository AppConnectionConfigs { get; }
+    IIntegrationAppConfigRepository IntegrationAppConfigs { get; }
+    IDeveloperAppConfigRepository DeveloperAppConfigs { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 }

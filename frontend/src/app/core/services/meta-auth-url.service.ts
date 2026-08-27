@@ -2,6 +2,7 @@ import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { environment } from '../../../environments/environment';
 import { MENU_TYPES, MenuType } from '../models/api.models';
+import { PROCESS_MODULES } from '../config/process.config';
 
 export type MetaPlatform = 'facebook' | 'instagram' | 'instagram_login' | 'whatsapp';
 
@@ -89,8 +90,14 @@ export class MetaAuthUrlService {
 
       window.addEventListener('message', onMessage);
 
+      const apiSegment = menuType === MENU_TYPES.appConnection
+        ? PROCESS_MODULES.appConnections.apiBase
+        : menuType === MENU_TYPES.developerApp
+          ? PROCESS_MODULES.developerApps.apiBase
+          : PROCESS_MODULES.integrations.apiBase;
+
       this.http
-        .post<ApiResponse<BeginOAuthResponse>>(`${environment.apiUrl}/Integrations/BeginOAuth`, {
+        .post<ApiResponse<BeginOAuthResponse>>(`${environment.apiUrl}/${apiSegment}/oauth/begin`, {
           platformCode: platform,
           menuType
         })

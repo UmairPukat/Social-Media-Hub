@@ -3,7 +3,7 @@ import { Component, ElementRef, OnInit, computed, inject, signal, viewChild } fr
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { ApiService } from '../../core/services/api.service';
+import { ProcessApiService } from '../../core/services/process-api.service';
 import { MetaAuthUrlService, MetaPlatform } from '../../core/services/meta-auth-url.service';
 import { ApiResponse, ConnectionDetails, MENU_TYPES, MetaPage, PlatformCard } from '../../core/models/api.models';
 
@@ -45,7 +45,7 @@ const CATEGORY_ORDER = [
   styleUrl: './integrations.component.scss'
 })
 export class IntegrationsComponent implements OnInit {
-  private readonly api = inject(ApiService);
+  private readonly processApi = inject(ProcessApiService);
   private readonly metaAuth = inject(MetaAuthUrlService);
   private readonly menuType = MENU_TYPES.integration;
 
@@ -118,7 +118,7 @@ export class IntegrationsComponent implements OnInit {
   }
 
   reload(): void {
-    this.api.getPlatforms(this.menuType).subscribe({
+    this.processApi.getPlatforms(this.menuType).subscribe({
       next: (res: ApiResponse<PlatformCard[]>) => this.cards.set(res.data || []),
       error: () => this.message.set('Failed to load integrations')
     });
@@ -229,7 +229,7 @@ export class IntegrationsComponent implements OnInit {
 
     this.pagesLoading.set(true);
     this.pagesError.set('');
-    this.api.getMetaPages(code, this.menuType).subscribe({
+    this.processApi.getMetaPages(this.menuType, code).subscribe({
       next: (res: ApiResponse<MetaPage[]>) => {
         this.pagesLoading.set(false);
         if (!res.success) {
@@ -263,7 +263,7 @@ export class IntegrationsComponent implements OnInit {
     if (!code || !pageId) return;
 
     this.savingPage.set(true);
-    this.api.selectMetaPage(code, pageId, this.menuType).subscribe({
+    this.processApi.selectMetaPage(this.menuType, code, pageId).subscribe({
       next: (res) => {
         this.savingPage.set(false);
         if (!res.success) {
@@ -294,7 +294,7 @@ export class IntegrationsComponent implements OnInit {
     const dialog = this.detailsDialog()?.nativeElement;
     if (dialog && !dialog.open) dialog.showModal();
 
-    this.api.getConnectionDetails(card.code, this.menuType).subscribe({
+    this.processApi.getConnectionDetails(this.menuType, card.code).subscribe({
       next: (res: ApiResponse<ConnectionDetails>) => {
         this.detailsLoading.set(false);
         if (!res.success) {
@@ -359,7 +359,7 @@ export class IntegrationsComponent implements OnInit {
   }
 
   disconnect(card: PlatformCard): void {
-    this.api.disconnect(card.code, this.menuType).subscribe({
+    this.processApi.disconnect(this.menuType, card.code).subscribe({
       next: () => {
         this.message.set(`${card.displayName} disconnected.`);
         this.reload();

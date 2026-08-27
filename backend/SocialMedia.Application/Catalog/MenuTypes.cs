@@ -7,6 +7,7 @@ public static class MenuTypes
 {
     public const string Integration = "integration";
     public const string AppConnection = "app_connection";
+    public const string DeveloperApp = "developer_app";
 
     public static string Normalize(string? menuType)
     {
@@ -15,6 +16,7 @@ public static class MenuTypes
         {
             Integration => Integration,
             AppConnection => AppConnection,
+            DeveloperApp => DeveloperApp,
             _ => Integration
         };
     }
@@ -22,6 +24,6 @@ public static class MenuTypes
     public static bool IsKnown(string? menuType)
     {
         var value = (menuType ?? string.Empty).Trim().ToLowerInvariant();
-        return value is Integration or AppConnection;
+        return value is Integration or AppConnection or DeveloperApp;
     }
 }

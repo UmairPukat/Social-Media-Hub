@@ -1,0 +1,60 @@
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using SocialMedia.Api.Controllers.Common;
+using SocialMedia.Application.Catalog;
+using SocialMedia.Application.Interfaces;
+
+namespace SocialMedia.Api.Controllers.DeveloperApps;
+
+[Authorize]
+[Route(ProcessModules.DeveloperApps.ApiRoute)]
+[ApiController]
+public class ConnectionController : ProcessConnectionControllerBase
+{
+    public ConnectionController(IIntegrationService integrationService, IProcessAppConfigService configService)
+        : base(integrationService, configService) { }
+
+    protected override string MenuType => ProcessModules.DeveloperApps.MenuType;
+}
+
+[Authorize]
+[Route(ProcessModules.DeveloperApps.ApiRoute)]
+[ApiController]
+public class PostsController : ProcessPostsControllerBase
+{
+    public PostsController(IPostService postService) : base(postService) { }
+
+    protected override string MenuType => ProcessModules.DeveloperApps.MenuType;
+}
+
+[Authorize]
+[Route(ProcessModules.DeveloperApps.ApiRoute)]
+[ApiController]
+public class InboxController : ProcessInboxControllerBase
+{
+    public InboxController(IInboxService inboxService) : base(inboxService) { }
+
+    protected override string MenuType => ProcessModules.DeveloperApps.MenuType;
+}
+
+[AllowAnonymous]
+[Route(ProcessModules.DeveloperApps.ApiRoute)]
+[ApiController]
+public class WebhooksController : ProcessWebhooksControllerBase
+{
+    public WebhooksController(IWebhookService webhookService, ILoggerFactory loggerFactory)
+        : base(webhookService, loggerFactory) { }
+
+    protected override string MenuType => ProcessModules.DeveloperApps.MenuType;
+    protected override string WebhookRoute => ProcessModules.DeveloperApps.WebhookRoute;
+}
+
+[Authorize]
+[Route(ProcessModules.DeveloperApps.ApiRoute)]
+[ApiController]
+public class AnalyticsController : ProcessAnalyticsControllerBase
+{
+    public AnalyticsController(IDashboardService dashboardService) : base(dashboardService) { }
+
+    protected override string MenuType => ProcessModules.DeveloperApps.MenuType;
+}

@@ -5,7 +5,8 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { Subscription } from 'rxjs';
-import { ApiService } from '../../core/services/api.service';
+import { ProcessApiService } from '../../core/services/process-api.service';
+import { ProcessRouteService } from '../../core/services/process-route.service';
 import { InboxRealtimeService } from '../../core/services/inbox-realtime.service';
 import {
   ApiResponse,
@@ -72,7 +73,8 @@ export interface CommentNode {
   styleUrl: './inbox.component.scss'
 })
 export class InboxComponent implements OnInit, OnDestroy {
-  private readonly api = inject(ApiService);
+  private readonly processApi = inject(ProcessApiService);
+  private readonly processRoute = inject(ProcessRouteService);
   private readonly realtime = inject(InboxRealtimeService);
   private realtimeSub?: Subscription;
 
@@ -344,7 +346,7 @@ export class InboxComponent implements OnInit, OnDestroy {
   }
 
   reload(): void {
-    this.api.getInbox().subscribe({
+    this.processApi.getInbox(this.processRoute.currentMenuType()).subscribe({
       next: (res: ApiResponse<InboxItem[]>) => {
         this.items.set(res.data || []);
         this.banner.set('');
@@ -375,7 +377,7 @@ export class InboxComponent implements OnInit, OnDestroy {
     this.replyTargetMessageId.set(null);
     const conversationId = conv.items.find((item) => item.conversationId)?.conversationId;
     if (conversationId && conv.unreadCount > 0) {
-      this.api.markRead(conversationId).subscribe({
+      this.processApi.markRead(this.processRoute.currentMenuType(), conversationId).subscribe({
         next: () => this.items.update((items) =>
           items.map((item) => item.conversationId === conversationId ? { ...item, isRead: true } : item)
         )
@@ -501,11 +503,16 @@ export class InboxComponent implements OnInit, OnDestroy {
       if (!latest) return;
       const quoted = this.replyTargetMessage();
       this.sending.set(true);
-      this.api.replyMessage(latest.id, text, quoted?.id, {
-        menuType: conv.menuType ?? latest.menuType,
-        pageId: conv.pageId ?? latest.pageId,
-        accountId: conv.accountId ?? latest.accountId
-      }).subscribe({
+      this.processApi.replyMessage(
+        this.processRoute.currentMenuType(),
+        latest.id,
+        text,
+        quoted?.id,
+        {
+          pageId: conv.pageId ?? latest.pageId,
+          accountId: conv.accountId ?? latest.accountId
+        }
+      ).subscribe({
         next: (res) => {
           if (res.success) {
             const messageId = (res.data as { messageId?: string } | null)?.messageId;
@@ -563,11 +570,15 @@ export class InboxComponent implements OnInit, OnDestroy {
 
     const rootId = this.rootCommentId(target);
     this.sending.set(true);
-    this.api.replyComment(target.id, text, {
-      menuType: thread.menuType ?? target.menuType,
-      pageId: thread.pageId ?? target.pageId,
-      accountId: thread.accountId ?? target.accountId
-    }).subscribe({
+    this.processApi.replyComment(
+      this.processRoute.currentMenuType(),
+      target.id,
+      text,
+      {
+        pageId: thread.pageId ?? target.pageId,
+        accountId: thread.accountId ?? target.accountId
+      }
+    ).subscribe({
       next: (res) => {
         if (res.success) {
           const replyId = (res.data as { replyId?: string } | null)?.replyId;

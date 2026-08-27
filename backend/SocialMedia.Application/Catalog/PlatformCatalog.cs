@@ -190,15 +190,23 @@ public static class PlatformCatalog
         return list;
     }
 
-    /// <summary>Stable platform row id for a catalog entry in a given menu.</summary>
+    /// <summary>Stable platform row id for a catalog entry in a given process menu.</summary>
     public static Guid IdForMenu(Guid integrationId, string menuType)
     {
-        if (!string.Equals(MenuTypes.Normalize(menuType), MenuTypes.AppConnection, StringComparison.OrdinalIgnoreCase))
+        var normalized = MenuTypes.Normalize(menuType);
+        if (string.Equals(normalized, MenuTypes.Integration, StringComparison.OrdinalIgnoreCase))
             return integrationId;
 
         var bytes = integrationId.ToByteArray();
-        bytes[0] ^= 0xAC;
-        bytes[1] ^= 0x01;
+        if (string.Equals(normalized, MenuTypes.AppConnection, StringComparison.OrdinalIgnoreCase))
+        {
+            bytes[0] ^= 0xAC;
+            bytes[1] ^= 0x01;
+            return new Guid(bytes);
+        }
+
+        bytes[0] ^= 0xDA;
+        bytes[1] ^= 0x03;
         return new Guid(bytes);
     }
 

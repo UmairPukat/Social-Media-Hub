@@ -1,3 +1,4 @@
+using SocialMedia.Application.Catalog;
 using SocialMedia.Application.DTOs.Common;
 using SocialMedia.Application.DTOs.Posts;
 using SocialMedia.Application.Interfaces;
@@ -103,11 +104,16 @@ public class PostService : IPostService
         }
     }
 
-    public async Task<ApiResponse<IReadOnlyList<SocialPostDto>>> GetPostsAsync(Guid userId, Guid? platformId = null, CancellationToken cancellationToken = default)
+    public async Task<ApiResponse<IReadOnlyList<SocialPostDto>>> GetPostsAsync(
+        Guid userId,
+        Guid? platformId = null,
+        string? menuType = null,
+        CancellationToken cancellationToken = default)
     {
         try
         {
-            var posts = await _unitOfWork.Posts.GetByUserProfilesAsync(userId, platformId, cancellationToken);
+            var normalizedMenu = string.IsNullOrWhiteSpace(menuType) ? null : MenuTypes.Normalize(menuType);
+            var posts = await _unitOfWork.Posts.GetByUserProfilesAsync(userId, platformId, normalizedMenu, cancellationToken);
             return ApiResponse<IReadOnlyList<SocialPostDto>>.Ok(posts.Select(p => Map(p, p.Platform?.Code)).ToList());
         }
         catch (Exception ex)

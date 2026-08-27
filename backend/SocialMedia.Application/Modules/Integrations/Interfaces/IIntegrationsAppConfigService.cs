@@ -1,25 +1,23 @@
 using SocialMedia.Application.DTOs.Common;
-using SocialMedia.Application.DTOs.AppConnection;
+using SocialMedia.Application.DTOs.Process;
 
-namespace SocialMedia.Application.Interfaces;
+namespace SocialMedia.Application.Modules.Integrations.Interfaces;
 
-public interface IAppConnectionService
+public interface IIntegrationsAppConfigService
 {
-    Task<ApiResponse<AppConnectionConfigDto>> GetConfigAsync(
+    Task<ApiResponse<ProcessAppConfigDto>> GetConfigAsync(
         Guid userId,
         string platformCode,
-        string menuType,
         bool revealSecret = false,
         CancellationToken cancellationToken = default);
 
-    Task<ApiResponse<AppConnectionConfigDto>> SaveConfigAsync(
+    Task<ApiResponse<ProcessAppConfigDto>> SaveConfigAsync(
         Guid userId,
-        SaveAppConnectionConfigRequest request,
+        SaveProcessAppConfigRequest request,
         CancellationToken cancellationToken = default);
 
     Task<ApiResponse<object>> DeleteConfigAsync(
         Guid userId,
         string platformCode,
-        string menuType,
         CancellationToken cancellationToken = default);
 }

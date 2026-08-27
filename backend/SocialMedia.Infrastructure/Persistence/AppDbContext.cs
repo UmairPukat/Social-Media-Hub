@@ -1,5 +1,8 @@
 using Microsoft.EntityFrameworkCore;
 using SocialMedia.Domain.Entities;
+using SocialMedia.Domain.Modules.AppConnections.Entities;
+using SocialMedia.Domain.Modules.DeveloperApps.Entities;
+using SocialMedia.Domain.Modules.Integrations.Entities;
 
 namespace SocialMedia.Infrastructure.Persistence;
 
@@ -28,6 +31,8 @@ public class AppDbContext : DbContext
     public DbSet<WebhookLog> WebhookLogs => Set<WebhookLog>();
     public DbSet<SyncJob> SyncJobs => Set<SyncJob>();
     public DbSet<AppConnectionConfig> AppConnectionConfigs => Set<AppConnectionConfig>();
+    public DbSet<IntegrationAppConfig> IntegrationAppConfigs => Set<IntegrationAppConfig>();
+    public DbSet<DeveloperAppConfig> DeveloperAppConfigs => Set<DeveloperAppConfig>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

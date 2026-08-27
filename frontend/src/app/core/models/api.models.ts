@@ -7,7 +7,8 @@ export interface ApiResponse<T> {
 /** Which UI menu owns platform catalog rows and connected accounts. */
 export const MENU_TYPES = {
   integration: 'integration',
-  appConnection: 'app_connection'
+  appConnection: 'app_connection',
+  developerApp: 'developer_app'
 } as const;
 
 export type MenuType = (typeof MENU_TYPES)[keyof typeof MENU_TYPES];

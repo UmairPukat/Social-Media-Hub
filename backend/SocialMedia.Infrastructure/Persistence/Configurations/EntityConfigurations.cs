@@ -1,6 +1,9 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using SocialMedia.Domain.Entities;
+using SocialMedia.Domain.Modules.AppConnections.Entities;
+using SocialMedia.Domain.Modules.DeveloperApps.Entities;
+using SocialMedia.Domain.Modules.Integrations.Entities;
 
 namespace SocialMedia.Infrastructure.Persistence.Configurations;
 
@@ -219,6 +222,38 @@ public class AppConnectionConfigConfiguration : IEntityTypeConfiguration<AppConn
         builder.Property(x => x.WabaId).HasMaxLength(100);
         builder.HasIndex(x => new { x.UserId, x.PlatformId, x.MenuType }).IsUnique();
 
+        builder.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+        builder.HasOne(x => x.Platform).WithMany().HasForeignKey(x => x.PlatformId).OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
+public class IntegrationAppConfigConfiguration : IEntityTypeConfiguration<IntegrationAppConfig>
+{
+    public void Configure(EntityTypeBuilder<IntegrationAppConfig> builder)
+    {
+        builder.ToTable("IntegrationAppConfigs");
+        builder.HasKey(x => x.Id);
+        builder.Property(x => x.PlatformCode).IsRequired().HasMaxLength(50);
+        builder.Property(x => x.MenuType).IsRequired().HasMaxLength(50).HasDefaultValue("integration");
+        builder.Property(x => x.ClientId).IsRequired().HasMaxLength(200);
+        builder.Property(x => x.ClientSecret).IsRequired();
+        builder.HasIndex(x => new { x.UserId, x.PlatformId, x.MenuType }).IsUnique();
+        builder.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+        builder.HasOne(x => x.Platform).WithMany().HasForeignKey(x => x.PlatformId).OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
+public class DeveloperAppConfigConfiguration : IEntityTypeConfiguration<DeveloperAppConfig>
+{
+    public void Configure(EntityTypeBuilder<DeveloperAppConfig> builder)
+    {
+        builder.ToTable("DeveloperAppConfigs");
+        builder.HasKey(x => x.Id);
+        builder.Property(x => x.PlatformCode).IsRequired().HasMaxLength(50);
+        builder.Property(x => x.MenuType).IsRequired().HasMaxLength(50).HasDefaultValue("developer_app");
+        builder.Property(x => x.ClientId).IsRequired().HasMaxLength(200);
+        builder.Property(x => x.ClientSecret).IsRequired();
+        builder.HasIndex(x => new { x.UserId, x.PlatformId, x.MenuType }).IsUnique();
         builder.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
         builder.HasOne(x => x.Platform).WithMany().HasForeignKey(x => x.PlatformId).OnDelete(DeleteBehavior.Cascade);
     }
