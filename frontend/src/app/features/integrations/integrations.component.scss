@@ -572,6 +572,19 @@
   color: var(--app-muted, #475569);
 }
 
+.detail-section-label {
+  grid-column: 1 / -1;
+  margin-top: 4px;
+  padding-top: 12px;
+  border-top: 1px solid color-mix(in srgb, var(--app-border, #e2e8f0) 80%, transparent);
+}
+
+.detail-section-label .section-note {
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--app-muted, #64748b);
+}
+
 .token-row {
   grid-column: 1 / -1;
 }

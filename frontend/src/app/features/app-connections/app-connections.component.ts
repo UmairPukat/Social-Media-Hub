@@ -216,6 +216,29 @@ export class AppConnectionsComponent implements OnInit {
     return value === 'instagram' || value === 'instagram_login';
   }
 
+  isFacebookPlatform(code: string | null | undefined): boolean {
+    return (code || '').toLowerCase() === 'facebook';
+  }
+
+  isInstagramFbLoginPlatform(code: string | null | undefined): boolean {
+    return (code || '').toLowerCase() === 'instagram';
+  }
+
+  instagramAccountName(info: ConnectionDetails): string {
+    if (info.instagramUsername) {
+      return info.instagramUsername.startsWith('@')
+        ? info.instagramUsername
+        : `@${info.instagramUsername}`;
+    }
+    const profile = info.profiles?.[0];
+    if (profile?.username) {
+      return profile.username.startsWith('@') ? profile.username : `@${profile.username}`;
+    }
+    if (profile?.name) return profile.name;
+    if (info.pageName) return info.pageName;
+    return '—';
+  }
+
   readonly isInstagramLoginDetails = computed(() =>
     this.isInstagramLoginPlatform(this.details()?.platformCode) ||
     this.isInstagramLoginPlatform(this.detailsPlatformCode())
