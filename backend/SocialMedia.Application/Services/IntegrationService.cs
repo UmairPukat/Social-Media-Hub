@@ -383,17 +383,10 @@ public class IntegrationService : IIntegrationService
         auth.UpdatedAt = DateTime.UtcNow;
         MarkUpdated(_unitOfWork.SocialAuths, auth, isNewAuth);
 
-        // Legacy duplicate rows (e.g. from App Connections) must share the same token so
-        // inbox replies work when webhooks land on a different profile/account pair.
-        await SyncTokenToDuplicateAccountsAsync(
-            userId,
-            platform.Id,
-            account.Id,
-            accessToken,
-            expiresAt,
-            externalAccountId,
-            displayName,
-            cancellationToken);
+        // Legacy App Connections may have left extra rows for the same user+platform.
+        // Merge profiles into this account and delete duplicates — updating multiple rows
+        // that share the unique (UserId, PlatformId) index causes an EF circular dependency.
+        await ConsolidateLegacyDuplicateAccountsAsync(userId, platform.Id, account.Id, cancellationToken);
 
         await _unitOfWork.SaveChangesAsync(cancellationToken);
 
@@ -869,40 +862,47 @@ public class IntegrationService : IIntegrationService
         return !string.IsNullOrWhiteSpace(auth.RefreshToken) ? auth.RefreshToken : null;
     }
 
-    private async Task SyncTokenToDuplicateAccountsAsync(
+    /// <summary>
+    /// Merges legacy duplicate <see cref="SocialAccount"/> rows (same user + platform) into one.
+    /// Profiles/conversations move to the primary row; extra account rows are deleted.
+    /// </summary>
+    private async Task ConsolidateLegacyDuplicateAccountsAsync(
         Guid userId,
         Guid platformId,
         Guid primaryAccountId,
-        string accessToken,
-        DateTime? expiresAt,
-        string externalAccountId,
-        string displayName,
         CancellationToken cancellationToken)
     {
         var duplicateAccounts = await _unitOfWork.SocialAccounts.FindAsync(
             a => a.UserId == userId && a.PlatformId == platformId && a.Id != primaryAccountId,
             cancellationToken);
+        if (duplicateAccounts.Count == 0)
+            return;
+
         foreach (var duplicate in duplicateAccounts)
         {
-            duplicate.Status = SocialAccountStatus.Connected;
-            duplicate.ExternalAccountId = externalAccountId;
-            duplicate.DisplayName = displayName;
-            duplicate.ConnectedAt ??= DateTime.UtcNow;
-            duplicate.UpdatedAt = DateTime.UtcNow;
-            _unitOfWork.SocialAccounts.Update(duplicate);
-
-            var duplicateAuth = await _unitOfWork.SocialAuths.GetBySocialAccountIdAsync(duplicate.Id, cancellationToken);
-            if (duplicateAuth is null)
+            var profiles = await _unitOfWork.SocialProfiles.GetBySocialAccountAsync(duplicate.Id, cancellationToken);
+            foreach (var profile in profiles)
             {
-                duplicateAuth = new SocialAuth { SocialAccountId = duplicate.Id };
-                await _unitOfWork.SocialAuths.AddAsync(duplicateAuth, cancellationToken);
-            }
+                var tracked = await _unitOfWork.SocialProfiles.GetByIdAsync(profile.Id, cancellationToken);
+                if (tracked is null)
+                    continue;
 
-            duplicateAuth.AccessToken = accessToken;
-            duplicateAuth.RefreshToken = accessToken;
-            duplicateAuth.ExpiresAt = expiresAt;
-            duplicateAuth.UpdatedAt = DateTime.UtcNow;
-            _unitOfWork.SocialAuths.Update(duplicateAuth);
+                tracked.SocialAccountId = primaryAccountId;
+                tracked.UpdatedAt = DateTime.UtcNow;
+                _unitOfWork.SocialProfiles.Update(tracked);
+            }
+        }
+
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        foreach (var duplicate in duplicateAccounts)
+        {
+            var toRemove = await _unitOfWork.SocialAccounts.GetByIdAsync(duplicate.Id, cancellationToken);
+            if (toRemove is null)
+                continue;
+
+            _unitOfWork.SocialAccounts.Remove(toRemove);
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
         }
     }
 
@@ -968,31 +968,30 @@ public class IntegrationService : IIntegrationService
             if (platform is null)
                 return ApiResponse<object>.Fail("Unknown platform.");
 
-            var accounts = await _unitOfWork.SocialAccounts.FindAsync(
-                a => a.UserId == userId && a.PlatformId == platform.Id,
-                cancellationToken);
-            if (accounts.Count == 0)
+            var account = await _unitOfWork.SocialAccounts.GetByUserAndPlatformAsync(userId, platform.Id, cancellationToken);
+            if (account is null)
                 return ApiResponse<object>.Fail("Account not connected.");
 
+            await ConsolidateLegacyDuplicateAccountsAsync(userId, platform.Id, account.Id, cancellationToken);
+            account = await _unitOfWork.SocialAccounts.GetByUserAndPlatformAsync(userId, platform.Id, cancellationToken)
+                ?? account;
+
             var code = platformCode.Trim().ToLowerInvariant();
-            foreach (var account in accounts)
+            var auth = await _unitOfWork.SocialAuths.GetBySocialAccountIdAsync(account.Id, cancellationToken);
+
+            if (SupportsPageSelection(code) && account.Status == SocialAccountStatus.Connected)
+                await UnsubscribePageWebhooksAsync(code, account, auth?.AccessToken, cancellationToken);
+
+            account.Status = SocialAccountStatus.Disconnected;
+            account.UpdatedAt = DateTime.UtcNow;
+            _unitOfWork.SocialAccounts.Update(account);
+
+            if (auth is not null)
             {
-                var auth = await _unitOfWork.SocialAuths.GetBySocialAccountIdAsync(account.Id, cancellationToken);
-
-                if (SupportsPageSelection(code) && account.Status == SocialAccountStatus.Connected)
-                    await UnsubscribePageWebhooksAsync(code, account, auth?.AccessToken, cancellationToken);
-
-                account.Status = SocialAccountStatus.Disconnected;
-                account.UpdatedAt = DateTime.UtcNow;
-                _unitOfWork.SocialAccounts.Update(account);
-
-                if (auth is not null)
-                {
-                    auth.AccessToken = string.Empty;
-                    auth.RefreshToken = null;
-                    auth.UpdatedAt = DateTime.UtcNow;
-                    _unitOfWork.SocialAuths.Update(auth);
-                }
+                auth.AccessToken = string.Empty;
+                auth.RefreshToken = null;
+                auth.UpdatedAt = DateTime.UtcNow;
+                _unitOfWork.SocialAuths.Update(auth);
             }
 
             await _unitOfWork.SaveChangesAsync(cancellationToken);
