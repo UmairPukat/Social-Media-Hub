@@ -652,8 +652,8 @@ public class InstagramService : IInstagramService
                     continue;
                 }
 
-                var profile = await MetaWebhookProfileResolver.ResolveAsync(
-                    _unitOfWork, igUserId!, webhookEvent.MenuType, result, cancellationToken);
+                var profile = await MetaWebhookEntryHelper.ResolveProfileForEntryAsync(
+                    _unitOfWork, entry, webhookEvent.MenuType, result, cancellationToken);
                 if (profile is null)
                     continue;
 
@@ -684,7 +684,7 @@ public class InstagramService : IInstagramService
                 if (entry.TryGetProperty("changes", out var changes))
                     await ProcessChangesAsync(profile, entry, changes, result, cancellationToken);
 
-                if (entry.TryGetProperty("messaging", out var messaging))
+                foreach (var messaging in MetaWebhookEntryHelper.EnumerateMessageArrays(entry))
                     await ProcessMessagesAsync(profile, messaging, result, cancellationToken);
             }
 

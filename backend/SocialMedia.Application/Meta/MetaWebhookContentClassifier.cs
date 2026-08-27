@@ -43,6 +43,16 @@ public static class MetaWebhookContentClassifier
                     }
                 }
 
+                if (entry.TryGetProperty("standby", out var standby) &&
+                    standby.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var item in standby.EnumerateArray())
+                    {
+                        if (IsRealUserMessageItem(item, entryId))
+                            return true;
+                    }
+                }
+
                 if (entry.TryGetProperty("changes", out var changes) &&
                     changes.ValueKind == JsonValueKind.Array)
                 {
@@ -124,13 +134,6 @@ public static class MetaWebhookContentClassifier
 
         if (HasMarketingTag(message) || HasMarketingTag(item))
             return false;
-
-        if (item.TryGetProperty("messaging_type", out var messagingType))
-        {
-            var type = messagingType.GetString();
-            if (type is "MESSAGE_TAG" or "UPDATE")
-                return false;
-        }
 
         var senderId = ReadActorId(item, "sender");
         if (string.IsNullOrWhiteSpace(senderId))

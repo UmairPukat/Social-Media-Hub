@@ -295,8 +295,8 @@ public class FacebookService : IFacebookService
                     continue;
                 }
 
-                var profile = await MetaWebhookProfileResolver.ResolveAsync(
-                    _unitOfWork, pageId!, webhookEvent.MenuType, result, cancellationToken);
+                var profile = await MetaWebhookEntryHelper.ResolveProfileForEntryAsync(
+                    _unitOfWork, entry, webhookEvent.MenuType, result, cancellationToken);
                 if (profile is null)
                     continue;
 
@@ -313,8 +313,8 @@ public class FacebookService : IFacebookService
                 if (entry.TryGetProperty("changes", out var changes))
                     await ProcessChangesAsync(profile, account, entry, changes, result, cancellationToken);
 
-                // Messenger threads arrive as a top-level messaging array.
-                if (entry.TryGetProperty("messaging", out var messaging))
+                // Messenger / Instagram DMs — Meta may use messaging or standby arrays.
+                foreach (var messaging in MetaWebhookEntryHelper.EnumerateMessageArrays(entry))
                     await ProcessMessagesAsync(profile, account, messaging, result, cancellationToken);
             }
 

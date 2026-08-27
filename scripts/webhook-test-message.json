@@ -1,0 +1,20 @@
+{
+  "object": "page",
+  "entry": [
+    {
+      "id": "REPLACE_WITH_YOUR_PAGE_ID",
+      "time": 1735286400,
+      "messaging": [
+        {
+          "sender": { "id": "9876543210123456" },
+          "recipient": { "id": "REPLACE_WITH_YOUR_PAGE_ID" },
+          "timestamp": 1735286400,
+          "message": {
+            "mid": "curl_test_msg_001",
+            "text": "Hello from curl test"
+          }
+        }
+      ]
+    }
+  ]
+}

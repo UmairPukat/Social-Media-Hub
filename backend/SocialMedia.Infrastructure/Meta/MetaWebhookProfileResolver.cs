@@ -41,6 +41,23 @@ internal static class MetaWebhookProfileResolver
         return null;
     }
 
+    /// <summary>Profile lookup without adding skip notes (used while probing alternate ids).</summary>
+    public static async Task<SocialProfile?> TryResolveAsync(
+        IUnitOfWork unitOfWork,
+        string entryId,
+        string? menuType,
+        CancellationToken cancellationToken)
+    {
+        var normalizedMenu = string.IsNullOrWhiteSpace(menuType) ? null : MenuTypes.Normalize(menuType);
+
+        var profile = await unitOfWork.SocialProfiles.GetByExternalProfileIdAsync(entryId, normalizedMenu, cancellationToken);
+        if (profile is not null)
+            return profile;
+
+        profile = await ScanConnectedProfilesAsync(unitOfWork, entryId, normalizedMenu, cancellationToken);
+        return profile;
+    }
+
     private static async Task<SocialProfile?> ScanConnectedProfilesAsync(
         IUnitOfWork unitOfWork,
         string entryId,

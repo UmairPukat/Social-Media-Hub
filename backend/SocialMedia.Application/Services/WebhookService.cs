@@ -275,8 +275,10 @@ public class WebhookService : IWebhookService
             if (!MetaWebhookContentClassifier.ContainsRealUserInboundContent(payloadJson))
             {
                 _logger.LogInformation(
-                    "Webhook ignored for module {MenuType} — not a real user message or comment (marketing/social/echo/receipt).",
-                    normalizedMenu);
+                    "Webhook ignored for module {MenuType} — not a real user message/comment. Object={ObjectType}, EntryId={EntryId}",
+                    normalizedMenu,
+                    descriptor.PlatformCode ?? platformCode,
+                    descriptor.EntryId);
                 return ApiResponse<object>.Ok(new
                 {
                     stored = false,
@@ -287,6 +289,13 @@ public class WebhookService : IWebhookService
 
             await _unitOfWork.WebhookEvents.AddAsync(webhookEvent, cancellationToken);
             await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+            _logger.LogInformation(
+                "Real-user webhook saved for module {MenuType}. WebhookEventId={WebhookEventId}, Object={ObjectType}, EntryId={EntryId}",
+                normalizedMenu,
+                webhookEvent.Id,
+                targetCode,
+                descriptor.EntryId);
 
             webhookEvent.Status = WebhookEventStatus.Processing;
             _unitOfWork.WebhookEvents.Update(webhookEvent);
@@ -331,6 +340,13 @@ public class WebhookService : IWebhookService
             await _unitOfWork.WebhookLogs.AddAsync(log, cancellationToken);
             _unitOfWork.WebhookEvents.Update(webhookEvent);
             await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+            _logger.LogInformation(
+                "Webhook processed for module {MenuType}. WebhookEventId={WebhookEventId}, Handled={Handled}, Error={Error}",
+                normalizedMenu,
+                webhookEvent.Id,
+                result?.Handled ?? 0,
+                webhookEvent.Error);
 
             return ApiResponse<object>.Ok(new
             {
