@@ -333,63 +333,25 @@ public class FacebookService : IFacebookService
         CancellationToken cancellationToken)
     {
         var profile = await _unitOfWork.SocialProfiles.GetByExternalProfileIdAsync(pageId, cancellationToken);
-        if (profile is not null && await IsConnectedProfileAsync(profile, cancellationToken))
+        if (profile is not null)
             return profile;
-
-        var facebookPages = await _unitOfWork.SocialProfiles.FindAsync(
-            p => p.ProfileType == ProfileType.FacebookPage, cancellationToken);
-        foreach (var candidate in facebookPages.OrderByDescending(p => p.UpdatedAt ?? p.CreatedAt))
-        {
-            if (!await IsConnectedProfileAsync(candidate, cancellationToken))
-                continue;
-
-            if (string.Equals(candidate.ExternalProfileId, pageId, StringComparison.Ordinal))
-                return candidate;
-
-            var linkedPageId = ReadMetadataPageId(candidate.MetadataJson);
-            if (string.Equals(linkedPageId, pageId, StringComparison.Ordinal))
-                return candidate;
-        }
 
         if (IsTestDeliveryId(pageId))
         {
-            foreach (var candidate in facebookPages.OrderByDescending(p => p.CreatedAt))
-            {
-                if (!await IsConnectedProfileAsync(candidate, cancellationToken))
-                    continue;
+            var pages = await _unitOfWork.SocialProfiles.FindAsync(
+                p => p.ProfileType == ProfileType.FacebookPage, cancellationToken);
+            profile = pages.OrderByDescending(p => p.CreatedAt).FirstOrDefault();
 
-                result.Skip($"Test delivery (entry id '{pageId}') applied to connected page '{candidate.Name}'.");
-                return candidate;
+            if (profile is not null)
+            {
+                result.Skip($"Test delivery (entry id '{pageId}') applied to connected page '{profile.Name}'.");
+                return profile;
             }
         }
 
         _logger.LogInformation("Facebook webhook ignored — page {PageId} is not connected.", pageId);
-        result.Skip(
-            $"No connected Facebook page matches entry id '{pageId}'. " +
-            "Open Integrations or App Connections, connect Facebook, and select the page that receives this webhook.");
+        result.Skip($"No connected Facebook page matches entry id '{pageId}'.");
         return null;
-    }
-
-    private async Task<bool> IsConnectedProfileAsync(SocialProfile profile, CancellationToken cancellationToken)
-    {
-        var account = await _unitOfWork.SocialAccounts.GetByIdAsync(profile.SocialAccountId, cancellationToken);
-        return account is not null && account.Status == SocialAccountStatus.Connected;
-    }
-
-    private static string? ReadMetadataPageId(string? metadataJson)
-    {
-        if (string.IsNullOrWhiteSpace(metadataJson))
-            return null;
-
-        try
-        {
-            using var doc = JsonDocument.Parse(metadataJson);
-            return doc.RootElement.TryGetProperty("pageId", out var value) ? value.GetString() : null;
-        }
-        catch (JsonException)
-        {
-            return null;
-        }
     }
 
     /// <summary>Meta's webhook test tool sends placeholder ids rather than a real page id.</summary>

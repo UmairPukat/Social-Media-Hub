@@ -232,10 +232,19 @@
 
   <dialog #detailsDialog class="picker details" aria-labelledby="page-details-title" (close)="onDetailsClosed()">
     @if (detailsOpen()) {
-      <header class="picker-head details-head">
+      <header class="picker-head">
         <div>
           <p class="eyebrow">{{ detailsTitle() }}</p>
-          <h2 id="page-details-title">Connected account</h2>
+          <h2 id="page-details-title">
+            {{ isInstagramLoginDetails() ? 'Account information' : 'Page information' }}
+          </h2>
+          <p class="picker-lede">
+            @if (isInstagramLoginDetails()) {
+              Connection identity and the Instagram Login token stored for this account.
+            } @else {
+              Connection, page identity, and the webhook fields Meta is sending right now.
+            }
+          </p>
         </div>
         <button type="button" class="picker-close" aria-label="Close" (click)="closeDetails()">
           <mat-icon>close</mat-icon>
@@ -244,37 +253,124 @@
 
       <div class="details-body">
         @if (detailsLoading()) {
-          <p class="picker-empty">Loading connection details…</p>
+          <p class="picker-empty">
+            {{ isInstagramLoginDetails() ? 'Loading account information…' : 'Loading page information…' }}
+          </p>
         } @else if (detailsError()) {
           <p class="picker-error">{{ detailsError() }}</p>
         }
 
         @if (details(); as info) {
-          <div class="connection-summary">
-            @if (info.pageImage) {
-              <img class="connection-avatar" [src]="info.pageImage" [alt]="connectionDisplayName(info)" />
-            } @else {
-              <div class="connection-avatar placeholder" [attr.data-tone]="tone(info.platformCode)">
-                <mat-icon>{{ platformIcon(info.platformCode) }}</mat-icon>
+          <dl class="detail-grid">
+            <div>
+              <dt>{{ isInstagramLoginPlatform(info.platformCode) ? 'Instagram login' : 'Meta login' }}</dt>
+              <dd>{{ info.accountName || '—' }}</dd>
+            </div>
+            @if (!isInstagramLoginPlatform(info.platformCode)) {
+              <div>
+                <dt>Page name</dt>
+                <dd>{{ info.pageName || 'No page selected' }}</dd>
+              </div>
+              <div>
+                <dt>Page ID</dt>
+                <dd><code>{{ info.pageId || '—' }}</code></dd>
               </div>
             }
+            @if (isInstagramPlatform(info.platformCode)) {
+              <div>
+                <dt>Instagram account</dt>
+                <dd>
+                  @if (info.instagramUsername) {
+                    <span class="ig-handle">&#64;{{ info.instagramUsername }}</span>
+                  } @else if (info.pageName) {
+                    {{ info.pageName }}
+                  } @else {
+                    <span class="muted">Not linked</span>
+                  }
+                </dd>
+              </div>
+              <div>
+                <dt>Instagram ID</dt>
+                <dd><code>{{ info.instagramId || '—' }}</code></dd>
+              </div>
+            }
+            <div>
+              <dt>Connected</dt>
+              <dd>{{ info.connectedAt ? (info.connectedAt | date: 'medium') : '—' }}</dd>
+            </div>
+            <div>
+              <dt>Last sync</dt>
+              <dd>{{ info.lastSyncAt ? (info.lastSyncAt | date: 'medium') : 'Not synced yet' }}</dd>
+            </div>
+            <div class="token-row">
+              <dt>{{ tokenLabel(info.platformCode) }}</dt>
+              <dd>
+                @if (info.accessToken) {
+                  <div class="token-line">
+                    <code [class.revealed]="tokenRevealed()">{{ tokenRevealed() ? info.accessToken : maskedToken(info.accessToken) }}</code>
+                    <button type="button" class="token-btn" (click)="toggleTokenReveal()" [attr.aria-label]="tokenRevealed() ? 'Hide token' : 'Show token'">
+                      <mat-icon>{{ tokenRevealed() ? 'visibility_off' : 'visibility' }}</mat-icon>
+                    </button>
+                    <button type="button" class="token-btn" (click)="copyToken(info.accessToken)" aria-label="Copy token">
+                      <mat-icon>content_copy</mat-icon>
+                    </button>
+                  </div>
+                  @if (tokenCopied()) {
+                    <span class="token-copied">Copied</span>
+                  }
+                } @else {
+                  <span class="muted">No token stored</span>
+                }
+              </dd>
+            </div>
+          </dl>
 
-            <dl class="connection-fields">
-              <div class="connection-field">
-                <dt>Name</dt>
-                <dd>{{ connectionDisplayName(info) }}</dd>
-              </div>
-              <div class="connection-field">
-                <dt>{{ connectionIdLabel(info) }}</dt>
-                <dd><code>{{ connectionDisplayId(info) }}</code></dd>
-              </div>
-            </dl>
-          </div>
+          <section class="webhook-block">
+            <div class="webhook-head">
+              <h3>Webhooks</h3>
+              <span class="webhook-state" [class.on]="info.webhookSubscribed">
+                <mat-icon>{{ info.webhookSubscribed ? 'check_circle' : 'error_outline' }}</mat-icon>
+                {{ info.webhookSubscribed ? 'Subscribed' : 'Not subscribed' }}
+              </span>
+            </div>
+
+            @if (info.subscribedFields.length) {
+              <ul class="field-list">
+                @for (field of info.subscribedFields; track field) {
+                  <li>{{ field }}</li>
+                }
+              </ul>
+            }
+
+            @if (info.webhookError) {
+              <p [class]="isInstagramLoginPlatform(info.platformCode) ? 'picker-empty' : 'picker-error'">
+                {{ info.webhookError }}
+              </p>
+            }
+          </section>
+
+          @if (info.profiles.length) {
+            <section class="webhook-block">
+              <h3>Connected profiles</h3>
+              <ul class="profile-list">
+                @for (profile of info.profiles; track profile.id) {
+                  <li>
+                    <strong>{{ profile.name }}</strong>
+                    <span class="muted">{{ profile.profileType }}</span>
+                    <code>{{ profile.externalProfileId }}</code>
+                  </li>
+                }
+              </ul>
+            </section>
+          }
         }
       </div>
 
-      <footer class="picker-foot details-foot">
-        <button mat-stroked-button type="button" (click)="closeDetails()">Close</button>
+      <footer class="picker-foot">
+        <span class="picker-count">Read-only view</span>
+        <div class="picker-actions">
+          <button mat-flat-button color="primary" type="button" (click)="closeDetails()">Close</button>
+        </div>
       </footer>
     }
   </dialog>

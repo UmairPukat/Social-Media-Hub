@@ -26,12 +26,12 @@ public class WebhooksController : ControllerBase
 
     /// <summary>Shared Meta webhook verification for all products.</summary>
     [HttpGet("~/api/webhooks")]
-    public async Task<IActionResult> MetaVerification(
+    public IActionResult MetaVerification(
         [FromQuery(Name = "hub.mode")] string mode,
         [FromQuery(Name = "hub.challenge")] string challenge,
         [FromQuery(Name = "hub.verify_token")] string verifyToken)
     {
-        var result = await _webhookService.VerifyConnectionAsync(null, mode, challenge, verifyToken);
+        var result = _webhookService.VerifyConnection(null, mode, challenge, verifyToken);
         if (result is null)
             return Unauthorized();
 
@@ -61,12 +61,11 @@ public class WebhooksController : ControllerBase
             Request.Headers.ToDictionary(h => h.Key, h => h.Value.ToString()));
 
         var resolved = _webhookService.DetectPlatformFromPayload(rawBody) ?? "meta";
-        var signatureValid = await _webhookService.IsSignatureValidAsync(resolved, rawBody, signature);
+        var signatureValid = _webhookService.IsSignatureValid(resolved, rawBody, signature);
         var response = await _webhookService.ReceiveAsync(resolved, rawBody, signature, headersJson, signatureValid);
 
-        if (!response.Success)
-            _logger.LogWarning("Webhook processing note: {Message}", response.Message);
-
+        // Always 200 so Meta does not retry or disable the subscription. Signature/process
+        // failures are already recorded on WebhookLogs / WebhookEvents.
         return Ok("EVENT_RECEIVED");
     }
 
@@ -90,24 +89,6 @@ public class WebhooksController : ControllerBase
         var headersJson = System.Text.Json.JsonSerializer.Serialize(
             Request.Headers.ToDictionary(h => h.Key, h => h.Value.ToString()));
         var response = await _webhookService.ReceiveAsync(platformCode, payload, "test-signature", headersJson);
-        return Ok(response);
-    }
-
-    /// <summary>Recent webhook events with status and error notes — use to debug inbox gaps.</summary>
-    [Authorize]
-    [HttpGet]
-    public async Task<IActionResult> GetRecentEvents([FromQuery] int take = 25)
-    {
-        var response = await _webhookService.GetRecentEventsAsync(take);
-        return Ok(response);
-    }
-
-    /// <summary>Re-run inbox processing for a stored webhook event.</summary>
-    [Authorize]
-    [HttpPost]
-    public async Task<IActionResult> ReprocessEvent(Guid id)
-    {
-        var response = await _webhookService.ReprocessEventAsync(id);
         return Ok(response);
     }
 }

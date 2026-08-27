@@ -234,12 +234,6 @@ public class WebhookEventRepository : Repository<WebhookEvent>, IWebhookEventRep
             .OrderBy(e => e.ReceivedAt)
             .Take(take)
             .ToListAsync(cancellationToken);
-
-    public async Task<IReadOnlyList<WebhookEvent>> GetRecentAsync(int take = 25, CancellationToken cancellationToken = default)
-        => await DbSet.AsNoTracking()
-            .OrderByDescending(e => e.ReceivedAt)
-            .Take(take)
-            .ToListAsync(cancellationToken);
 }
 
 public class WebhookLogRepository : Repository<WebhookLog>, IWebhookLogRepository

@@ -1,3 +1,4 @@
+import { DatePipe } from '@angular/common';
 import { Component, ElementRef, OnInit, computed, inject, signal, viewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
@@ -58,6 +59,7 @@ const DEFAULT_BASE_URLS: Record<string, string> = {
   selector: 'app-app-connections',
   standalone: true,
   imports: [
+    DatePipe,
     FormsModule,
     MatButtonModule,
     MatFormFieldModule,
@@ -88,6 +90,8 @@ export class AppConnectionsComponent implements OnInit {
   readonly details = signal<ConnectionDetails | null>(null);
   readonly detailsLoading = signal(false);
   readonly detailsError = signal('');
+  readonly tokenRevealed = signal(false);
+  readonly tokenCopied = signal(false);
 
   readonly configOpen = signal(false);
   readonly configTitle = signal('');
@@ -212,37 +216,10 @@ export class AppConnectionsComponent implements OnInit {
     return value === 'instagram' || value === 'instagram_login';
   }
 
-  connectionDisplayName(info: ConnectionDetails): string {
-    if (this.isInstagramLoginPlatform(info.platformCode)) {
-      const profile = info.profiles[0];
-      return profile?.name || profile?.username || info.accountName || 'Not connected';
-    }
-
-    if (info.platformCode.toLowerCase() === 'instagram') {
-      if (info.instagramUsername) return `@${info.instagramUsername}`;
-      return info.pageName || info.profiles[0]?.name || 'No page selected';
-    }
-
-    return info.pageName || info.profiles[0]?.name || 'No page selected';
-  }
-
-  connectionDisplayId(info: ConnectionDetails): string {
-    if (this.isInstagramLoginPlatform(info.platformCode)) {
-      return info.profiles[0]?.externalProfileId || '—';
-    }
-
-    if (info.platformCode.toLowerCase() === 'instagram') {
-      return info.instagramId || '—';
-    }
-
-    return info.pageId || info.profiles[0]?.externalProfileId || '—';
-  }
-
-  connectionIdLabel(info: ConnectionDetails): string {
-    if (this.isInstagramLoginPlatform(info.platformCode)) return 'Account ID';
-    if (info.platformCode.toLowerCase() === 'instagram') return 'Instagram ID';
-    return 'Page ID';
-  }
+  readonly isInstagramLoginDetails = computed(() =>
+    this.isInstagramLoginPlatform(this.details()?.platformCode) ||
+    this.isInstagramLoginPlatform(this.detailsPlatformCode())
+  );
 
   isWhatsAppPlatform(code: string | null | undefined): boolean {
     return (code || '').toLowerCase() === 'whatsapp';
@@ -440,6 +417,8 @@ export class AppConnectionsComponent implements OnInit {
     this.detailsPlatformCode.set(card.code.toLowerCase());
     this.details.set(null);
     this.detailsError.set('');
+    this.tokenRevealed.set(false);
+    this.tokenCopied.set(false);
     this.detailsLoading.set(true);
     this.detailsOpen.set(true);
 
@@ -480,6 +459,8 @@ export class AppConnectionsComponent implements OnInit {
     this.detailsPlatformCode.set(null);
     this.details.set(null);
     this.detailsError.set('');
+    this.tokenRevealed.set(false);
+    this.tokenCopied.set(false);
   }
 
   updateConfigField<K extends keyof SaveAppConnectionConfigRequest>(
@@ -491,6 +472,32 @@ export class AppConnectionsComponent implements OnInit {
 
   toggleSecretReveal(): void {
     this.secretRevealed.update((v) => !v);
+  }
+
+  tokenLabel(platformCode: string): string {
+    const code = (platformCode || '').toLowerCase();
+    if (code === 'facebook' || code === 'instagram') return 'Page access token';
+    if (code === 'instagram_login') return 'Instagram access token';
+    return 'Access token';
+  }
+
+  maskedToken(token: string): string {
+    if (token.length <= 12) return '••••••••';
+    return `${token.slice(0, 6)}…${token.slice(-4)}`;
+  }
+
+  toggleTokenReveal(): void {
+    this.tokenRevealed.update((v) => !v);
+  }
+
+  async copyToken(token: string): Promise<void> {
+    try {
+      await navigator.clipboard.writeText(token);
+      this.tokenCopied.set(true);
+      window.setTimeout(() => this.tokenCopied.set(false), 1600);
+    } catch {
+      this.tokenCopied.set(false);
+    }
   }
 
   disconnect(card: PlatformCard): void {

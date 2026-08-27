@@ -65,7 +65,6 @@ public interface IMessageRepository : IRepository<Message>
 public interface IWebhookEventRepository : IRepository<WebhookEvent>
 {
     Task<IReadOnlyList<WebhookEvent>> GetPendingAsync(int take = 50, CancellationToken cancellationToken = default);
-    Task<IReadOnlyList<WebhookEvent>> GetRecentAsync(int take = 25, CancellationToken cancellationToken = default);
 }
 
 public interface IWebhookLogRepository : IRepository<WebhookLog>

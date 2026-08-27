@@ -1,4 +1,3 @@
-using System.Text.Json;
 using Microsoft.OpenApi.Models;
 using SocialMedia.Api.Configuration;
 using SocialMedia.Api.Hubs;
@@ -8,6 +7,7 @@ using SocialMedia.Infrastructure;
 using SocialMedia.Infrastructure.Persistence;
 
 var builder = WebApplication.CreateBuilder(args);
+
 // Local secrets (gitignored): appsettings.Development.local.json, etc.
 builder.Configuration.AddJsonFile(
     $"appsettings.{builder.Environment.EnvironmentName}.local.json",
@@ -21,18 +21,11 @@ builder.Configuration.AddRailwayFlatEnv();
 builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
 
-builder.Services.AddSignalR()
-    .AddJsonProtocol(options =>
-    {
-        options.PayloadSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
-    });
+builder.Services.AddSignalR();
 builder.Services.AddScoped<IInboxRealtimeNotifier, InboxRealtimeNotifier>();
 
-builder.Services.AddControllers()
-    .AddJsonOptions(options =>
-    {
-        options.JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
-    });builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddControllers();
+builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
     c.SwaggerDoc("v1", new OpenApiInfo
