@@ -4,6 +4,7 @@ using Microsoft.Extensions.Options;
 using SocialMedia.Application.DTOs.Inbox;
 using SocialMedia.Application.DTOs.Meta;
 using SocialMedia.Application.Interfaces;
+using SocialMedia.Application.Meta;
 using SocialMedia.Application.Settings;
 using SocialMedia.Domain.Entities;
 using SocialMedia.Domain.Enums;
@@ -543,7 +544,7 @@ public class FacebookService : IFacebookService
         await _unitOfWork.SaveChangesAsync(cancellationToken);
         result.Handled++;
 
-        await _inboxRealtime.NotifyInboxItemAsync(account.UserId, new InboxItemDto
+        var inboxItem = new InboxItemDto
         {
             Id = comment.Id,
             ItemKind = "comment",
@@ -570,7 +571,9 @@ public class FacebookService : IFacebookService
                 SharesCount = post.ShareCount,
                 PostedAt = post.PublishedAt ?? post.CreatedAt
             }
-        }, cancellationToken);
+        };
+        InboxRoutingHelper.Apply(inboxItem, profile, account);
+        await _inboxRealtime.NotifyInboxItemAsync(account.UserId, inboxItem, cancellationToken);
     }
 
     private async Task ProcessReactionAsync(
@@ -783,7 +786,7 @@ public class FacebookService : IFacebookService
         await _unitOfWork.SaveChangesAsync(cancellationToken);
         result.Handled++;
 
-        await _inboxRealtime.NotifyInboxItemAsync(account.UserId, new InboxItemDto
+        var inboxItem = new InboxItemDto
         {
             Id = row.Id,
             ItemKind = "message",
@@ -802,7 +805,10 @@ public class FacebookService : IFacebookService
                 ? null
                 : quoted.Direction == MessageDirection.Outbound ? "You" : conversation.CustomerName ?? quoted.SenderId,
             ReplyToContent = quoted?.Body
-        }, cancellationToken);
+        };
+        InboxRoutingHelper.Apply(inboxItem, profile, account);
+
+        await _inboxRealtime.NotifyInboxItemAsync(account.UserId, inboxItem, cancellationToken);
     }
 
     /// <summary>Messenger and Instagram both mark a quoted reply with <c>message.reply_to.mid</c>.</summary>

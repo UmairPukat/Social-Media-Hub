@@ -23,6 +23,9 @@ export interface MessageConversation {
   lastAt: string;
   unreadCount: number;
   items: InboxItem[];
+  menuType?: string;
+  pageId?: string;
+  accountId?: string;
 }
 
 export interface CommentPostThread {
@@ -32,6 +35,9 @@ export interface CommentPostThread {
   comments: InboxItem[];
   lastAt: string;
   unreadCount: number;
+  menuType?: string;
+  pageId?: string;
+  accountId?: string;
 }
 
 /** One rendered chat bubble, grouped the way Messenger and Instagram stack consecutive messages. */
@@ -117,7 +123,10 @@ export class InboxComponent implements OnInit, OnDestroy {
           lastContent: item.content,
           lastAt: item.receivedAt,
           unreadCount: item.isRead ? 0 : 1,
-          items: [item]
+          items: [item],
+          menuType: item.menuType,
+          pageId: item.pageId,
+          accountId: item.accountId
         });
       } else {
         existing.items.push(item);
@@ -130,6 +139,9 @@ export class InboxComponent implements OnInit, OnDestroy {
           existing.lastContent = item.content;
           existing.lastAt = item.receivedAt;
         }
+        if (item.menuType) existing.menuType = item.menuType;
+        if (item.pageId) existing.pageId = item.pageId;
+        if (item.accountId) existing.accountId = item.accountId;
       }
     }
 
@@ -156,7 +168,10 @@ export class InboxComponent implements OnInit, OnDestroy {
           post: item.post,
           comments: [item],
           lastAt: item.receivedAt,
-          unreadCount: item.isRead ? 0 : 1
+          unreadCount: item.isRead ? 0 : 1,
+          menuType: item.menuType,
+          pageId: item.pageId,
+          accountId: item.accountId
         });
       } else {
         existing.comments.push(item);
@@ -164,6 +179,9 @@ export class InboxComponent implements OnInit, OnDestroy {
         if (new Date(item.receivedAt) > new Date(existing.lastAt)) {
           existing.lastAt = item.receivedAt;
         }
+        if (item.menuType) existing.menuType = item.menuType;
+        if (item.pageId) existing.pageId = item.pageId;
+        if (item.accountId) existing.accountId = item.accountId;
       }
     }
 
@@ -483,7 +501,11 @@ export class InboxComponent implements OnInit, OnDestroy {
       if (!latest) return;
       const quoted = this.replyTargetMessage();
       this.sending.set(true);
-      this.api.replyMessage(latest.id, text, quoted?.id).subscribe({
+      this.api.replyMessage(latest.id, text, quoted?.id, {
+        menuType: conv.menuType ?? latest.menuType,
+        pageId: conv.pageId ?? latest.pageId,
+        accountId: conv.accountId ?? latest.accountId
+      }).subscribe({
         next: (res) => {
           if (res.success) {
             const messageId = (res.data as { messageId?: string } | null)?.messageId;
@@ -502,7 +524,10 @@ export class InboxComponent implements OnInit, OnDestroy {
               receivedAt: new Date().toISOString(),
               replyToId: quoted?.id,
               replyToAuthor: quoted ? (quoted.isOutgoing ? 'You' : quoted.authorName) : undefined,
-              replyToContent: quoted?.content
+              replyToContent: quoted?.content,
+              menuType: conv.menuType ?? latest.menuType,
+              pageId: conv.pageId ?? latest.pageId,
+              accountId: conv.accountId ?? latest.accountId
             });
             this.replyText.set('');
             this.clearMessageReplyTarget();
@@ -538,7 +563,11 @@ export class InboxComponent implements OnInit, OnDestroy {
 
     const rootId = this.rootCommentId(target);
     this.sending.set(true);
-    this.api.replyComment(target.id, text).subscribe({
+    this.api.replyComment(target.id, text, {
+      menuType: thread.menuType ?? target.menuType,
+      pageId: thread.pageId ?? target.pageId,
+      accountId: thread.accountId ?? target.accountId
+    }).subscribe({
       next: (res) => {
         if (res.success) {
           const replyId = (res.data as { replyId?: string } | null)?.replyId;
@@ -556,7 +585,10 @@ export class InboxComponent implements OnInit, OnDestroy {
             commentLikes: 0,
             replyCount: 0,
             parentId: rootId,
-            post: thread.post
+            post: thread.post,
+            menuType: thread.menuType ?? target.menuType,
+            pageId: thread.pageId ?? target.pageId,
+            accountId: thread.accountId ?? target.accountId
           };
           this.upsertItem(item);
           this.expandedReplies.update(map => ({ ...map, [rootId]: true }));

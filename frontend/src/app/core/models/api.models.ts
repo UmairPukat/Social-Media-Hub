@@ -210,6 +210,9 @@ export interface InboxItem {
   replyToId?: string;
   replyToAuthor?: string;
   replyToContent?: string;
+  menuType?: string;
+  pageId?: string;
+  accountId?: string;
 }
 
 export interface DashboardSummary {

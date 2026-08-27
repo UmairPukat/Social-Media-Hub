@@ -94,8 +94,17 @@ export class ApiService {
     return this.http.get<ApiResponse<InboxItem[]>>(`${this.base}/Inbox/GetInbox${q}`);
   }
 
-  replyComment(id: string, message: string): Observable<ApiResponse<object>> {
-    return this.http.post<ApiResponse<object>>(`${this.base}/Inbox/ReplyToComment?id=${id}`, { message });
+  replyComment(
+    id: string,
+    message: string,
+    routing?: { menuType?: string; pageId?: string; accountId?: string }
+  ): Observable<ApiResponse<object>> {
+    return this.http.post<ApiResponse<object>>(`${this.base}/Inbox/ReplyToComment?id=${id}`, {
+      message,
+      menuType: routing?.menuType,
+      pageId: routing?.pageId,
+      accountId: routing?.accountId
+    });
   }
 
   hideComment(id: string, hide: boolean): Observable<ApiResponse<object>> {
@@ -106,10 +115,18 @@ export class ApiService {
     return this.http.delete<ApiResponse<object>>(`${this.base}/Inbox/DeleteComment?id=${id}`);
   }
 
-  replyMessage(id: string, message: string, replyToMessageId?: string): Observable<ApiResponse<object>> {
+  replyMessage(
+    id: string,
+    message: string,
+    replyToMessageId?: string,
+    routing?: { menuType?: string; pageId?: string; accountId?: string }
+  ): Observable<ApiResponse<object>> {
     return this.http.post<ApiResponse<object>>(`${this.base}/Inbox/ReplyToMessage?id=${id}`, {
       message,
-      replyToMessageId: replyToMessageId ?? null
+      replyToMessageId: replyToMessageId ?? null,
+      menuType: routing?.menuType,
+      pageId: routing?.pageId,
+      accountId: routing?.accountId
     });
   }
 

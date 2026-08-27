@@ -1026,6 +1026,7 @@ public class InstagramService : IInstagramService
                 }
             };
 
+            InboxRoutingHelper.Apply(inboxItem, profile, account);
             await _inboxRealtime.NotifyInboxItemAsync(account.UserId, inboxItem, cancellationToken);
         }
     }
@@ -1172,6 +1173,7 @@ public class InstagramService : IInstagramService
             ReplyToContent = quoted?.Body
         };
 
+        InboxRoutingHelper.Apply(inboxItem, profile, account);
         await _inboxRealtime.NotifyInboxItemAsync(account.UserId, inboxItem, cancellationToken);
     }
 

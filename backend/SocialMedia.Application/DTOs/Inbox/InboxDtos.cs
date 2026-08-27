@@ -25,6 +25,15 @@ public class InboxItemDto
     public Guid? ReplyToId { get; set; }
     public string? ReplyToAuthor { get; set; }
     public string? ReplyToContent { get; set; }
+
+    /// <summary>integration or app_connection — which menu owns the connected account.</summary>
+    public string? MenuType { get; set; }
+
+    /// <summary>Facebook Page external id used for Messenger replies.</summary>
+    public string? PageId { get; set; }
+
+    /// <summary>Instagram account external id used for Instagram DM replies.</summary>
+    public string? AccountId { get; set; }
 }
 
 public class InboxPostMetaDto
@@ -48,6 +57,9 @@ public class InboxFilterRequest
 public class ReplyCommentRequest
 {
     public string Message { get; set; } = string.Empty;
+    public string? MenuType { get; set; }
+    public string? PageId { get; set; }
+    public string? AccountId { get; set; }
 }
 
 public class ReplyMessageRequest
@@ -56,6 +68,10 @@ public class ReplyMessageRequest
 
     /// <summary>Optional message being quoted, sent to Meta as reply_to.mid.</summary>
     public Guid? ReplyToMessageId { get; set; }
+
+    public string? MenuType { get; set; }
+    public string? PageId { get; set; }
+    public string? AccountId { get; set; }
 }
 
 public class HideCommentRequest

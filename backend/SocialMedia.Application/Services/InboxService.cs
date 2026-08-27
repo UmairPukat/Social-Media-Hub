@@ -36,22 +36,27 @@ public class InboxService : IInboxService
         try
         {
             Guid? platformId = null;
-            IReadOnlyList<Guid>? instagramPlatformIds = null;
+            IReadOnlyList<Guid>? platformIds = null;
             if (!string.IsNullOrWhiteSpace(filter?.PlatformCode))
             {
-                // Instagram filter includes both Facebook Login and Instagram Login accounts.
                 if (string.Equals(filter.PlatformCode, "instagram", StringComparison.OrdinalIgnoreCase))
                 {
-                    instagramPlatformIds = new[]
+                    platformIds = new[]
                     {
-                        PlatformCatalog.InstagramId,
-                        PlatformCatalog.InstagramLoginId
+                        PlatformCatalog.IdForMenu(PlatformCatalog.InstagramId, MenuTypes.Integration),
+                        PlatformCatalog.IdForMenu(PlatformCatalog.InstagramLoginId, MenuTypes.Integration),
+                        PlatformCatalog.IdForMenu(PlatformCatalog.InstagramId, MenuTypes.AppConnection),
+                        PlatformCatalog.IdForMenu(PlatformCatalog.InstagramLoginId, MenuTypes.AppConnection)
                     };
                 }
                 else
                 {
-                    var platform = await _unitOfWork.Platforms.GetByCodeAsync(filter.PlatformCode, cancellationToken: cancellationToken);
-                    platformId = platform?.Id;
+                    var matching = (await _unitOfWork.Platforms.GetActiveAsync(cancellationToken))
+                        .Where(p => string.Equals(p.Code, filter.PlatformCode, StringComparison.OrdinalIgnoreCase))
+                        .Select(p => p.Id)
+                        .ToList();
+                    platformIds = matching.Count > 0 ? matching : null;
+                    platformId = matching.Count == 1 ? matching[0] : null;
                 }
 
                 // WhatsApp has no comments.
@@ -67,65 +72,80 @@ public class InboxService : IInboxService
 
             if (kind is null or "comment")
             {
-                var comments = await LoadCommentsAsync(userId, platformId, instagramPlatformIds, cancellationToken);
-                items.AddRange(comments.Select(c => new InboxItemDto
+                var comments = await LoadCommentsAsync(userId, platformId, platformIds, cancellationToken);
+                items.AddRange(comments.Select(c =>
                 {
-                    Id = c.Id,
-                    ItemKind = "comment",
-                    PlatformCode = InstagramConnectionResolver.ToInboxPlatformCode(
-                        c.Post?.SocialProfile?.SocialAccount?.Platform?.Code),
-                    ExternalId = c.ExternalCommentId,
-                    AuthorName = c.AuthorName,
-                    AuthorId = c.AuthorId,
-                    Content = c.Message,
-                    IsHidden = c.IsHidden,
-                    IsRead = true,
-                    IsOutgoing = !string.IsNullOrWhiteSpace(c.AuthorId) &&
-                                 c.AuthorId == c.Post?.SocialProfile?.ExternalProfileId,
-                    ReceivedAt = c.PlatformCreatedAt ?? c.CreatedAt,
-                    CommentLikes = c.LikeCount,
-                    ReplyCount = c.Replies.Count,
-                    ParentId = c.ParentCommentId,
-                    Post = c.Post is null ? null : new InboxPostMetaDto
+                    var profile = c.Post?.SocialProfile;
+                    var account = profile?.SocialAccount;
+                    var item = new InboxItemDto
                     {
-                        PostId = c.Post.ExternalPostId ?? c.Post.Id.ToString(),
-                        PageName = c.Post.SocialProfile?.Name ?? c.Post.SocialProfile?.Username ?? "Instagram",
-                        PostText = DisplayPostText(c.Post),
-                        PostImageUrl = c.Post.MediaItems.FirstOrDefault()?.Url,
-                        LikesCount = c.Post.LikeCount,
-                        CommentsCount = c.Post.CommentCount,
-                        SharesCount = c.Post.ShareCount,
-                        PostedAt = c.Post.PublishedAt ?? c.Post.CreatedAt
-                    }
+                        Id = c.Id,
+                        ItemKind = "comment",
+                        PlatformCode = InstagramConnectionResolver.ToInboxPlatformCode(
+                            account?.Platform?.Code),
+                        ExternalId = c.ExternalCommentId,
+                        AuthorName = c.AuthorName,
+                        AuthorId = c.AuthorId,
+                        Content = c.Message,
+                        IsHidden = c.IsHidden,
+                        IsRead = true,
+                        IsOutgoing = !string.IsNullOrWhiteSpace(c.AuthorId) &&
+                                     c.AuthorId == profile?.ExternalProfileId,
+                        ReceivedAt = c.PlatformCreatedAt ?? c.CreatedAt,
+                        CommentLikes = c.LikeCount,
+                        ReplyCount = c.Replies.Count,
+                        ParentId = c.ParentCommentId,
+                        Post = c.Post is null ? null : new InboxPostMetaDto
+                        {
+                            PostId = c.Post.ExternalPostId ?? c.Post.Id.ToString(),
+                            PageName = profile?.Name ?? profile?.Username ?? "Instagram",
+                            PostText = DisplayPostText(c.Post),
+                            PostImageUrl = c.Post.MediaItems.FirstOrDefault()?.Url,
+                            LikesCount = c.Post.LikeCount,
+                            CommentsCount = c.Post.CommentCount,
+                            SharesCount = c.Post.ShareCount,
+                            PostedAt = c.Post.PublishedAt ?? c.Post.CreatedAt
+                        }
+                    };
+                    if (profile is not null && account is not null)
+                        InboxRoutingHelper.Apply(item, profile, account);
+                    return item;
                 }));
             }
 
             if (kind is null or "message")
             {
-                var messages = await LoadMessagesAsync(userId, platformId, instagramPlatformIds, cancellationToken);
+                var messages = await LoadMessagesAsync(userId, platformId, platformIds, cancellationToken);
                 var byId = messages.ToDictionary(m => m.Id);
-                items.AddRange(messages.Select(m => new InboxItemDto
+                items.AddRange(messages.Select(m =>
                 {
-                    Id = m.Id,
-                    ItemKind = "message",
-                    PlatformCode = InstagramConnectionResolver.ToInboxPlatformCode(
-                        m.Conversation?.SocialProfile?.SocialAccount?.Platform?.Code),
-                    ExternalId = m.ExternalMessageId,
-                    AuthorName = m.Direction == MessageDirection.Outbound
-                        ? "You"
-                        : m.Conversation?.CustomerName ?? m.SenderId ?? "Instagram user",
-                    AuthorId = m.SenderId,
-                    Content = m.Body ?? string.Empty,
-                    IsHidden = false,
-                    IsRead = m.Direction == MessageDirection.Outbound || m.Conversation?.UnreadCount == 0,
-                    IsOutgoing = m.Direction == MessageDirection.Outbound,
-                    ConversationId = m.ConversationId,
-                    ReceivedAt = m.PlatformCreatedAt ?? m.CreatedAt,
-                    ReplyToId = m.ReplyToMessageId,
-                    ReplyToAuthor = QuotedAuthor(m, byId),
-                    ReplyToContent = m.ReplyToMessageId.HasValue && byId.TryGetValue(m.ReplyToMessageId.Value, out var quoted)
-                        ? quoted.Body
-                        : null
+                    var profile = m.Conversation?.SocialProfile;
+                    var account = profile?.SocialAccount;
+                    var item = new InboxItemDto
+                    {
+                        Id = m.Id,
+                        ItemKind = "message",
+                        PlatformCode = InstagramConnectionResolver.ToInboxPlatformCode(account?.Platform?.Code),
+                        ExternalId = m.ExternalMessageId,
+                        AuthorName = m.Direction == MessageDirection.Outbound
+                            ? "You"
+                            : m.Conversation?.CustomerName ?? m.SenderId ?? "Instagram user",
+                        AuthorId = m.SenderId,
+                        Content = m.Body ?? string.Empty,
+                        IsHidden = false,
+                        IsRead = m.Direction == MessageDirection.Outbound || m.Conversation?.UnreadCount == 0,
+                        IsOutgoing = m.Direction == MessageDirection.Outbound,
+                        ConversationId = m.ConversationId,
+                        ReceivedAt = m.PlatformCreatedAt ?? m.CreatedAt,
+                        ReplyToId = m.ReplyToMessageId,
+                        ReplyToAuthor = QuotedAuthor(m, byId),
+                        ReplyToContent = m.ReplyToMessageId.HasValue && byId.TryGetValue(m.ReplyToMessageId.Value, out var quoted)
+                            ? quoted.Body
+                            : null
+                    };
+                    if (profile is not null && account is not null)
+                        InboxRoutingHelper.Apply(item, profile, account);
+                    return item;
                 }));
             }
 
@@ -140,14 +160,14 @@ public class InboxService : IInboxService
     private async Task<IReadOnlyList<Comment>> LoadCommentsAsync(
         Guid userId,
         Guid? platformId,
-        IReadOnlyList<Guid>? instagramPlatformIds,
+        IReadOnlyList<Guid>? platformIds,
         CancellationToken cancellationToken)
     {
-        if (instagramPlatformIds is null)
+        if (platformIds is null || platformIds.Count == 0)
             return await _unitOfWork.Comments.GetByUserAsync(userId, platformId, cancellationToken);
 
         var merged = new List<Comment>();
-        foreach (var id in instagramPlatformIds)
+        foreach (var id in platformIds)
             merged.AddRange(await _unitOfWork.Comments.GetByUserAsync(userId, id, cancellationToken));
 
         return merged
@@ -160,14 +180,14 @@ public class InboxService : IInboxService
     private async Task<IReadOnlyList<Message>> LoadMessagesAsync(
         Guid userId,
         Guid? platformId,
-        IReadOnlyList<Guid>? instagramPlatformIds,
+        IReadOnlyList<Guid>? platformIds,
         CancellationToken cancellationToken)
     {
-        if (instagramPlatformIds is null)
+        if (platformIds is null || platformIds.Count == 0)
             return await _unitOfWork.Messages.GetByUserAsync(userId, platformId, cancellationToken);
 
         var merged = new List<Message>();
-        foreach (var id in instagramPlatformIds)
+        foreach (var id in platformIds)
             merged.AddRange(await _unitOfWork.Messages.GetByUserAsync(userId, id, cancellationToken));
 
         return merged
@@ -190,7 +210,11 @@ public class InboxService : IInboxService
                 ?? throw new InvalidOperationException("Post not found.");
             var profile = await _unitOfWork.SocialProfiles.GetByIdAsync(post.SocialProfileId, cancellationToken)
                 ?? throw new InvalidOperationException("Profile not found.");
-            var resolvedAuth = await ResolveReplyAuthAsync(profile, userId, cancellationToken);
+            var resolvedAuth = await ResolveReplyAuthAsync(
+                profile,
+                userId,
+                ReplyAuthHints.FromRequest(request.MenuType, request.PageId, request.AccountId),
+                cancellationToken);
             if (resolvedAuth is null)
                 return ApiResponse<object>.Fail("No access token is available. Reconnect the account.");
 
@@ -253,7 +277,10 @@ public class InboxService : IInboxService
             var inboxPlatformCode = InstagramConnectionResolver.ToInboxPlatformCode(code);
             if (existing is not null)
             {
-                await _inboxRealtime.NotifyInboxItemAsync(userId, MapCommentInboxItem(existing, post, profile, inboxPlatformCode, isOutgoing: true), cancellationToken);
+                await _inboxRealtime.NotifyInboxItemAsync(
+                    userId,
+                    MapCommentInboxItem(existing, post, profile, account, inboxPlatformCode, isOutgoing: true),
+                    cancellationToken);
                 return ApiResponse<object>.Ok(new { replyId = existing.Id }, "Comment reply sent.");
             }
 
@@ -275,7 +302,7 @@ public class InboxService : IInboxService
 
             await _inboxRealtime.NotifyInboxItemAsync(
                 userId,
-                MapCommentInboxItem(reply, post, profile, inboxPlatformCode, isOutgoing: true),
+                MapCommentInboxItem(reply, post, profile, account, inboxPlatformCode, isOutgoing: true),
                 cancellationToken);
 
             return ApiResponse<object>.Ok(new { replyId = reply.Id }, "Comment reply sent.");
@@ -287,14 +314,23 @@ public class InboxService : IInboxService
     }
 
     /// <summary>
-    /// Resolves a token for inbox replies. Webhooks may store messages on a profile whose linked
-    /// account lost its token when duplicate platform rows exist (legacy App Connections data).
+    /// Resolves a token for inbox replies. Uses menuType/pageId/accountId hints from the client
+    /// when duplicate platform rows exist (Integrations vs App Connections).
     /// </summary>
     private async Task<(SocialAccount Account, SocialAuth Auth)?> ResolveReplyAuthAsync(
         SocialProfile profile,
         Guid userId,
+        ReplyAuthHints hints,
         CancellationToken cancellationToken)
     {
+        if (!string.IsNullOrWhiteSpace(hints.MenuType)
+            && (!string.IsNullOrWhiteSpace(hints.PageId) || !string.IsNullOrWhiteSpace(hints.AccountId)))
+        {
+            var hinted = await FindAccountByRoutingHintsAsync(userId, profile, hints, cancellationToken);
+            if (hinted is not null)
+                return hinted;
+        }
+
         var linked = await _unitOfWork.SocialAccounts.GetWithAuthAndProfilesAsync(profile.SocialAccountId, cancellationToken);
         if (linked is not null
             && linked.UserId == userId
@@ -302,34 +338,23 @@ public class InboxService : IInboxService
             && CandidateTokens(linked.Auth).Count > 0)
             return (linked, linked.Auth);
 
-        var platformId = linked?.PlatformId;
-        if (!platformId.HasValue)
-        {
-            var platformCode = profile.ProfileType switch
-            {
-                ProfileType.InstagramLogin => InstagramConnectionResolver.InstagramLoginPlatformCode,
-                ProfileType.InstagramBusiness => InstagramConnectionResolver.FacebookLoginPlatformCode,
-                ProfileType.FacebookPage => "facebook",
-                _ => null
-            };
-            if (!string.IsNullOrWhiteSpace(platformCode))
-            {
-                var platform = await _unitOfWork.Platforms.GetByCodeAsync(platformCode, cancellationToken: cancellationToken);
-                platformId = platform?.Id;
-            }
-        }
-
-        if (!platformId.HasValue)
+        var platformCode = linked?.Platform?.Code ?? InferPlatformCode(profile);
+        if (string.IsNullOrWhiteSpace(platformCode))
             return null;
 
-        var menuType = linked?.MenuType;
+        var preferredMenu = string.IsNullOrWhiteSpace(hints.MenuType)
+            ? linked?.MenuType
+            : MenuTypes.Normalize(hints.MenuType);
+
         var accounts = await _unitOfWork.SocialAccounts.GetByUserAsync(userId, cancellationToken);
-        foreach (var row in accounts
+        var candidates = accounts
             .Where(a => a.Status == SocialAccountStatus.Connected
-                        && a.PlatformId == platformId.Value
-                        && (string.IsNullOrWhiteSpace(menuType)
-                            || string.Equals(a.MenuType, menuType, StringComparison.OrdinalIgnoreCase)))
-            .OrderByDescending(a => a.ConnectedAt ?? a.UpdatedAt ?? a.CreatedAt))
+                        && string.Equals(a.Platform?.Code, platformCode, StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(a => !string.IsNullOrWhiteSpace(preferredMenu)
+                                    && string.Equals(a.MenuType, preferredMenu, StringComparison.OrdinalIgnoreCase))
+            .ThenByDescending(a => a.ConnectedAt ?? a.UpdatedAt ?? a.CreatedAt);
+
+        foreach (var row in candidates)
         {
             var loaded = await _unitOfWork.SocialAccounts.GetWithAuthAndProfilesAsync(row.Id, cancellationToken);
             if (loaded?.Auth is null || CandidateTokens(loaded.Auth).Count == 0)
@@ -337,14 +362,13 @@ public class InboxService : IInboxService
 
             if (loaded.Profiles.Any(p => ProfilesShareIdentity(p, profile)))
                 return (loaded, loaded.Auth);
+
+            if (InboxRoutingHelper.ProfileMatchesRouting(profile, hints.PageId, hints.AccountId)
+                && loaded.Profiles.Any(p => InboxRoutingHelper.ProfileMatchesRouting(p, hints.PageId, hints.AccountId)))
+                return (loaded, loaded.Auth);
         }
 
-        foreach (var row in accounts
-            .Where(a => a.Status == SocialAccountStatus.Connected
-                        && a.PlatformId == platformId.Value
-                        && (string.IsNullOrWhiteSpace(menuType)
-                            || string.Equals(a.MenuType, menuType, StringComparison.OrdinalIgnoreCase)))
-            .OrderByDescending(a => a.ConnectedAt ?? a.UpdatedAt ?? a.CreatedAt))
+        foreach (var row in candidates)
         {
             var loaded = await _unitOfWork.SocialAccounts.GetWithAuthAndProfilesAsync(row.Id, cancellationToken);
             if (loaded?.Auth is not null && CandidateTokens(loaded.Auth).Count > 0)
@@ -352,6 +376,59 @@ public class InboxService : IInboxService
         }
 
         return null;
+    }
+
+    private async Task<(SocialAccount Account, SocialAuth Auth)?> FindAccountByRoutingHintsAsync(
+        Guid userId,
+        SocialProfile profile,
+        ReplyAuthHints hints,
+        CancellationToken cancellationToken)
+    {
+        var menuType = MenuTypes.Normalize(hints.MenuType!);
+        var platformCode = InferPlatformCode(profile);
+        var accounts = await _unitOfWork.SocialAccounts.GetByUserAsync(userId, cancellationToken);
+
+        foreach (var row in accounts
+                     .Where(a => a.Status == SocialAccountStatus.Connected
+                                 && string.Equals(a.MenuType, menuType, StringComparison.OrdinalIgnoreCase))
+                     .OrderByDescending(a => a.ConnectedAt ?? a.UpdatedAt ?? a.CreatedAt))
+        {
+            if (!string.IsNullOrWhiteSpace(platformCode)
+                && !string.Equals(row.Platform?.Code, platformCode, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            var loaded = await _unitOfWork.SocialAccounts.GetWithAuthAndProfilesAsync(row.Id, cancellationToken);
+            if (loaded?.Auth is null || CandidateTokens(loaded.Auth).Count == 0)
+                continue;
+
+            if (loaded.Profiles.Any(p => InboxRoutingHelper.ProfileMatchesRouting(p, hints.PageId, hints.AccountId)))
+                return (loaded, loaded.Auth);
+
+            if (InboxRoutingHelper.ProfileMatchesRouting(profile, hints.PageId, hints.AccountId))
+                return (loaded, loaded.Auth);
+        }
+
+        return null;
+    }
+
+    private static string? InferPlatformCode(SocialProfile profile)
+        => profile.ProfileType switch
+        {
+            ProfileType.InstagramLogin => InstagramConnectionResolver.InstagramLoginPlatformCode,
+            ProfileType.InstagramBusiness => InstagramConnectionResolver.FacebookLoginPlatformCode,
+            ProfileType.FacebookPage => "facebook",
+            _ => null
+        };
+
+    private sealed record ReplyAuthHints(string? MenuType, string? PageId, string? AccountId)
+    {
+        public static ReplyAuthHints FromRequest(string? menuType, string? pageId, string? accountId)
+            => new(
+                string.IsNullOrWhiteSpace(menuType) ? null : MenuTypes.Normalize(menuType),
+                string.IsNullOrWhiteSpace(pageId) ? null : pageId.Trim(),
+                string.IsNullOrWhiteSpace(accountId) ? null : accountId.Trim());
+
+        public static ReplyAuthHints Empty => new(null, null, null);
     }
 
     private static bool ProfilesShareIdentity(SocialProfile a, SocialProfile b)
@@ -481,13 +558,15 @@ public class InboxService : IInboxService
         => id.StartsWith("local_reply_", StringComparison.OrdinalIgnoreCase)
             || id.StartsWith("local_", StringComparison.OrdinalIgnoreCase);
 
-    private InboxItemDto MapCommentInboxItem(
+    private static InboxItemDto MapCommentInboxItem(
         Comment comment,
         Post post,
         SocialProfile profile,
+        SocialAccount account,
         string platformCode,
         bool isOutgoing)
-        => new()
+    {
+        var item = new InboxItemDto
         {
             Id = comment.Id,
             ItemKind = "comment",
@@ -515,6 +594,9 @@ public class InboxService : IInboxService
                 PostedAt = post.PublishedAt ?? post.CreatedAt
             }
         };
+        InboxRoutingHelper.Apply(item, profile, account);
+        return item;
+    }
 
     public async Task<ApiResponse<object>> HideCommentAsync(Guid userId, Guid commentId, HideCommentRequest request, CancellationToken cancellationToken = default)
     {
@@ -579,7 +661,11 @@ public class InboxService : IInboxService
                 ?? throw new InvalidOperationException("Conversation not found.");
             var profile = await _unitOfWork.SocialProfiles.GetByIdAsync(conversation.SocialProfileId, cancellationToken)
                 ?? throw new InvalidOperationException("Profile not found.");
-            var resolvedAuth = await ResolveReplyAuthAsync(profile, userId, cancellationToken);
+            var resolvedAuth = await ResolveReplyAuthAsync(
+                profile,
+                userId,
+                ReplyAuthHints.FromRequest(request.MenuType, request.PageId, request.AccountId),
+                cancellationToken);
             if (resolvedAuth is null)
                 return ApiResponse<object>.Fail("No access token is available. Reconnect the account.");
 
@@ -659,7 +745,7 @@ public class InboxService : IInboxService
             {
                 await _inboxRealtime.NotifyInboxItemAsync(
                     userId,
-                    MapMessageInboxItem(existing, conversation, inboxPlatformCode, quoted),
+                    MapMessageInboxItem(existing, conversation, profile, account, inboxPlatformCode, quoted),
                     cancellationToken);
                 return ApiResponse<object>.Ok(new { messageId = existing.Id }, "Message sent.");
             }
@@ -688,7 +774,7 @@ public class InboxService : IInboxService
 
             await _inboxRealtime.NotifyInboxItemAsync(
                 userId,
-                MapMessageInboxItem(outbound, conversation, inboxPlatformCode, quoted),
+                MapMessageInboxItem(outbound, conversation, profile, account, inboxPlatformCode, quoted),
                 cancellationToken);
 
             return ApiResponse<object>.Ok(new { messageId = outbound.Id }, "Message sent.");
@@ -702,9 +788,12 @@ public class InboxService : IInboxService
     private static InboxItemDto MapMessageInboxItem(
         Message message,
         Conversation conversation,
+        SocialProfile profile,
+        SocialAccount account,
         string platformCode,
         Message? quoted = null)
-        => new()
+    {
+        var item = new InboxItemDto
         {
             Id = message.Id,
             ItemKind = "message",
@@ -726,6 +815,9 @@ public class InboxService : IInboxService
                 : quoted.Direction == MessageDirection.Outbound ? "You" : conversation.CustomerName ?? quoted.SenderId,
             ReplyToContent = quoted?.Body
         };
+        InboxRoutingHelper.Apply(item, profile, account);
+        return item;
+    }
 
     public async Task<ApiResponse<object>> DeleteMessageAsync(Guid userId, Guid messageId, CancellationToken cancellationToken = default)
     {
