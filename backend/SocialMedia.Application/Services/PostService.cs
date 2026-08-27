@@ -38,6 +38,7 @@ public class PostService : IPostService
             {
                 SocialProfileId = profile.Id,
                 PlatformId = account.PlatformId,
+                MenuType = account.MenuType,
                 Text = request.Content,
                 Caption = request.Content,
                 Type = string.IsNullOrWhiteSpace(request.MediaUrl) ? ContentPostType.Text : ContentPostType.Image,

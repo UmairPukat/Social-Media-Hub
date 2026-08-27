@@ -38,7 +38,7 @@ public interface ISocialAuthRepository : IRepository<SocialAuth>
 public interface ISocialProfileRepository : IRepository<SocialProfile>
 {
     Task<IReadOnlyList<SocialProfile>> GetBySocialAccountAsync(Guid socialAccountId, CancellationToken cancellationToken = default);
-    Task<SocialProfile?> GetByExternalProfileIdAsync(string externalProfileId, CancellationToken cancellationToken = default);
+    Task<SocialProfile?> GetByExternalProfileIdAsync(string externalProfileId, string? menuType = null, CancellationToken cancellationToken = default);
 }
 
 public interface IPostRepository : IRepository<Post>
@@ -48,25 +48,25 @@ public interface IPostRepository : IRepository<Post>
         Guid? platformId = null,
         string? menuType = null,
         CancellationToken cancellationToken = default);
-    Task<Post?> GetByExternalPostIdAsync(Guid socialProfileId, string externalPostId, CancellationToken cancellationToken = default);
+    Task<Post?> GetByExternalPostIdAsync(Guid socialProfileId, string externalPostId, string? menuType = null, CancellationToken cancellationToken = default);
 }
 
 public interface ICommentRepository : IRepository<Comment>
 {
-    Task<IReadOnlyList<Comment>> GetByUserAsync(Guid userId, Guid? platformId = null, CancellationToken cancellationToken = default);
-    Task<Comment?> GetByExternalCommentIdAsync(string externalCommentId, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<Comment>> GetByUserAsync(Guid userId, Guid? platformId = null, string? menuType = null, CancellationToken cancellationToken = default);
+    Task<Comment?> GetByExternalCommentIdAsync(string externalCommentId, string? menuType = null, CancellationToken cancellationToken = default);
 }
 
 public interface IConversationRepository : IRepository<Conversation>
 {
-    Task<IReadOnlyList<Conversation>> GetByUserAsync(Guid userId, Guid? platformId = null, CancellationToken cancellationToken = default);
-    Task<Conversation?> GetByExternalConversationIdAsync(Guid socialProfileId, string externalConversationId, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<Conversation>> GetByUserAsync(Guid userId, Guid? platformId = null, string? menuType = null, CancellationToken cancellationToken = default);
+    Task<Conversation?> GetByExternalConversationIdAsync(Guid socialProfileId, string externalConversationId, string? menuType = null, CancellationToken cancellationToken = default);
 }
 
 public interface IMessageRepository : IRepository<Message>
 {
-    Task<IReadOnlyList<Message>> GetByUserAsync(Guid userId, Guid? platformId = null, CancellationToken cancellationToken = default);
-    Task<Message?> GetByExternalMessageIdAsync(string externalMessageId, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<Message>> GetByUserAsync(Guid userId, Guid? platformId = null, string? menuType = null, CancellationToken cancellationToken = default);
+    Task<Message?> GetByExternalMessageIdAsync(string externalMessageId, string? menuType = null, CancellationToken cancellationToken = default);
 }
 
 public interface IWebhookEventRepository : IRepository<WebhookEvent>

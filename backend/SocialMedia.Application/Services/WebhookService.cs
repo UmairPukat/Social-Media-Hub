@@ -205,17 +205,36 @@ public class WebhookService : IWebhookService
         }
     }
 
-    public async Task<ApiResponse<object>> ReceiveAsync(
+    public Task<ApiResponse<object>> ReceiveForProcessAsync(
+        string menuType,
         string platformCode,
         string payloadJson,
         string? signature,
         string? headersJson,
         bool signatureValid = true,
         CancellationToken cancellationToken = default)
+        => ReceiveAsync(
+            platformCode,
+            payloadJson,
+            signature,
+            headersJson,
+            signatureValid,
+            MenuTypes.Normalize(menuType),
+            cancellationToken);
+
+    public async Task<ApiResponse<object>> ReceiveAsync(
+        string platformCode,
+        string payloadJson,
+        string? signature,
+        string? headersJson,
+        bool signatureValid = true,
+        string? menuType = null,
+        CancellationToken cancellationToken = default)
     {
         try
         {
-            var platform = await _unitOfWork.Platforms.GetByCodeAsync(platformCode, cancellationToken: cancellationToken);
+            var normalizedMenu = string.IsNullOrWhiteSpace(menuType) ? null : MenuTypes.Normalize(menuType);
+            var platform = await _unitOfWork.Platforms.GetByCodeAsync(platformCode, normalizedMenu, cancellationToken: cancellationToken);
 
             // 1) Always persist the full raw payload to WebhookLogs first.
             var log = new WebhookLog
@@ -236,7 +255,7 @@ public class WebhookService : IWebhookService
             var targetCode = descriptor.PlatformCode ?? platformCode;
             var targetPlatform = string.Equals(targetCode, platformCode, StringComparison.OrdinalIgnoreCase)
                 ? platform
-                : await _unitOfWork.Platforms.GetByCodeAsync(targetCode, cancellationToken: cancellationToken);
+                : await _unitOfWork.Platforms.GetByCodeAsync(targetCode, normalizedMenu, cancellationToken: cancellationToken);
 
             var webhookEvent = new WebhookEvent
             {
@@ -247,6 +266,7 @@ public class WebhookService : IWebhookService
                 PayloadJson = payloadJson,
                 Signature = signature,
                 HeadersJson = headersJson,
+                MenuType = normalizedMenu,
                 Status = WebhookEventStatus.Received,
                 ReceivedAt = DateTime.UtcNow
             };
@@ -417,16 +437,6 @@ public class WebhookService : IWebhookService
 
         return false;
     }
-
-    public Task<ApiResponse<object>> ReceiveForProcessAsync(
-        string menuType,
-        string platformCode,
-        string payloadJson,
-        string? signature,
-        string? headersJson,
-        bool signatureValid = true,
-        CancellationToken cancellationToken = default)
-        => ReceiveAsync(platformCode, payloadJson, signature, headersJson, signatureValid, cancellationToken);
 
     private async Task<IReadOnlyList<string>> LoadVerifyTokensForProcessAsync(
         string menuType,

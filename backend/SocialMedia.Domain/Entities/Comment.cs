@@ -20,6 +20,9 @@ public class Comment : BaseEntity
     public bool IsHidden { get; set; }
     public DateTime? PlatformCreatedAt { get; set; }
 
+    /// <summary>Process module that owns this comment (integration, app_connection, developer_app).</summary>
+    public string MenuType { get; set; } = "integration";
+
     public Post? Post { get; set; }
     public Comment? ParentComment { get; set; }
     public ICollection<Comment> Replies { get; set; } = new List<Comment>();

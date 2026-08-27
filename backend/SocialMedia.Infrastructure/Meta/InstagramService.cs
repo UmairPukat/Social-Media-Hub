@@ -652,7 +652,7 @@ public class InstagramService : IInstagramService
                     continue;
                 }
 
-                var profile = await ResolveProfileAsync(igUserId!, result, cancellationToken);
+                var profile = await ResolveProfileAsync(igUserId!, webhookEvent.MenuType, result, cancellationToken);
                 if (profile is null)
                     continue;
 
@@ -680,20 +680,22 @@ public class InstagramService : IInstagramService
     /// </summary>
     private async Task<SocialProfile?> ResolveProfileAsync(
         string entryId,
+        string? menuType,
         WebhookProcessResult result,
         CancellationToken cancellationToken)
     {
-        var profile = await _unitOfWork.SocialProfiles.GetByExternalProfileIdAsync(entryId, cancellationToken)
-            ?? await FindProfileByPageIdAsync(entryId, cancellationToken)
-            ?? await FindProfileByAlternateIdAsync(entryId, cancellationToken);
+        var profile = await _unitOfWork.SocialProfiles.GetByExternalProfileIdAsync(entryId, menuType, cancellationToken)
+            ?? await FindProfileByPageIdAsync(entryId, menuType, cancellationToken)
+            ?? await FindProfileByAlternateIdAsync(entryId, menuType, cancellationToken);
         if (profile is not null)
             return profile;
 
         if (string.IsNullOrWhiteSpace(entryId) || entryId == "0")
         {
             var profiles = await _unitOfWork.SocialProfiles.FindAsync(
-                p => p.ProfileType == ProfileType.InstagramBusiness
-                     || p.ProfileType == ProfileType.InstagramLogin,
+                p => (p.ProfileType == ProfileType.InstagramBusiness
+                      || p.ProfileType == ProfileType.InstagramLogin)
+                     && (menuType == null || p.MenuType == menuType),
                 cancellationToken);
             profile = profiles.OrderByDescending(p => p.CreatedAt).FirstOrDefault();
 
@@ -708,7 +710,9 @@ public class InstagramService : IInstagramService
         // did not store at connect time. With a single Instagram Login profile the owner is
         // unambiguous, so adopt it and remember the id instead of dropping the delivery.
         var instagramLoginProfiles = await _unitOfWork.SocialProfiles.FindAsync(
-            p => p.ProfileType == ProfileType.InstagramLogin, cancellationToken);
+            p => p.ProfileType == ProfileType.InstagramLogin
+                 && (menuType == null || p.MenuType == menuType),
+            cancellationToken);
         if (instagramLoginProfiles.Count == 1)
         {
             profile = instagramLoginProfiles[0];
@@ -727,13 +731,15 @@ public class InstagramService : IInstagramService
     }
 
     /// <summary>Matches an id previously recorded in <c>MetadataJson.alternateIds</c>.</summary>
-    private async Task<SocialProfile?> FindProfileByAlternateIdAsync(string externalId, CancellationToken cancellationToken)
+    private async Task<SocialProfile?> FindProfileByAlternateIdAsync(string externalId, string? menuType, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(externalId))
             return null;
 
         var profiles = await _unitOfWork.SocialProfiles.FindAsync(
-            p => p.MetadataJson != null && p.MetadataJson.Contains(externalId), cancellationToken);
+            p => p.MetadataJson != null && p.MetadataJson.Contains(externalId)
+                 && (menuType == null || p.MenuType == menuType),
+            cancellationToken);
         return profiles.FirstOrDefault(p => ReadAlternateIds(p.MetadataJson).Contains(externalId));
     }
 
@@ -823,10 +829,13 @@ public class InstagramService : IInstagramService
         return tokens;
     }
 
-    private async Task<SocialProfile?> FindProfileByPageIdAsync(string pageId, CancellationToken cancellationToken)
+    private async Task<SocialProfile?> FindProfileByPageIdAsync(string pageId, string? menuType, CancellationToken cancellationToken)
     {
         var profiles = await _unitOfWork.SocialProfiles.FindAsync(
-            p => p.ProfileType == ProfileType.InstagramBusiness && p.MetadataJson != null && p.MetadataJson.Contains(pageId),
+            p => p.ProfileType == ProfileType.InstagramBusiness
+                 && p.MetadataJson != null
+                 && p.MetadataJson.Contains(pageId)
+                 && (menuType == null || p.MenuType == menuType),
             cancellationToken);
         return profiles.FirstOrDefault(p =>
         {
@@ -933,12 +942,13 @@ public class InstagramService : IInstagramService
                 account.PlatformId,
                 mediaId!,
                 enriched?.CreatedTime ?? UnixSeconds(entry, "time") ?? DateTime.UtcNow,
+                account.MenuType,
                 ct => GetMediaSnapshotWithTokensAsync(accessTokens, mediaId!, connectionType, ct),
                 "Instagram post",
                 requireMedia: true,
                 cancellationToken: cancellationToken);
 
-            var existing = await _unitOfWork.Comments.GetByExternalCommentIdAsync(commentId, cancellationToken);
+            var existing = await _unitOfWork.Comments.GetByExternalCommentIdAsync(commentId, account.MenuType, cancellationToken);
             if (existing is not null)
             {
                 var changed = existing.Message != commentText || existing.PostId != post.Id;
@@ -975,7 +985,7 @@ public class InstagramService : IInstagramService
                 enriched?.ParentExternalId,
                 value.TryGetProperty("parent_id", out var parentIdElement) ? parentIdElement.ToString() : null);
             if (!string.IsNullOrWhiteSpace(parentExternalId) && parentExternalId != mediaId)
-                parentComment = await _unitOfWork.Comments.GetByExternalCommentIdAsync(parentExternalId!, cancellationToken);
+                parentComment = await _unitOfWork.Comments.GetByExternalCommentIdAsync(parentExternalId!, account.MenuType, cancellationToken);
 
             var receivedAt = enriched?.CreatedTime ?? UnixSeconds(entry, "time") ?? DateTime.UtcNow;
             var comment = new Comment
@@ -986,6 +996,7 @@ public class InstagramService : IInstagramService
                 AuthorId = authorId,
                 AuthorName = authorName,
                 Message = commentText,
+                MenuType = account.MenuType,
                 LikeCount = enriched?.LikeCount ?? 0,
                 PlatformCreatedAt = receivedAt
             };
@@ -1074,7 +1085,7 @@ public class InstagramService : IInstagramService
             result.Skip("Message has no mid.");
             return;
         }
-        if (await _unitOfWork.Messages.GetByExternalMessageIdAsync(messageId, cancellationToken) is not null)
+        if (await _unitOfWork.Messages.GetByExternalMessageIdAsync(messageId, account.MenuType, cancellationToken) is not null)
         {
             result.Skip($"Message '{messageId}' already stored.");
             return;
@@ -1099,7 +1110,7 @@ public class InstagramService : IInstagramService
 
         var conversationKey = $"{profile.ExternalProfileId}:{customerId}";
         var conversation = await _unitOfWork.Conversations.GetByExternalConversationIdAsync(
-            profile.Id, conversationKey, cancellationToken);
+            profile.Id, conversationKey, account.MenuType, cancellationToken);
         var isNewConversation = conversation is null;
         if (conversation is null)
         {
@@ -1109,6 +1120,7 @@ public class InstagramService : IInstagramService
                 ExternalConversationId = conversationKey,
                 CustomerId = customerId,
                 CustomerName = customerId,
+                MenuType = account.MenuType,
                 Status = ConversationStatus.Open
             };
             await _unitOfWork.Conversations.AddAsync(conversation, cancellationToken);
@@ -1126,7 +1138,7 @@ public class InstagramService : IInstagramService
             : null;
         var quoted = string.IsNullOrWhiteSpace(replyToMid)
             ? null
-            : await _unitOfWork.Messages.GetByExternalMessageIdAsync(replyToMid!, cancellationToken);
+            : await _unitOfWork.Messages.GetByExternalMessageIdAsync(replyToMid!, account.MenuType, cancellationToken);
 
         var msg = new Message
         {
@@ -1137,6 +1149,7 @@ public class InstagramService : IInstagramService
             Direction = outbound ? MessageDirection.Outbound : MessageDirection.Inbound,
             MessageType = MessageContentType.Text,
             Body = body,
+            MenuType = account.MenuType,
             Status = outbound ? MessageDeliveryStatus.Sent : MessageDeliveryStatus.Delivered,
             PlatformCreatedAt = receivedAt,
             ReplyToMessageId = quoted?.Id,

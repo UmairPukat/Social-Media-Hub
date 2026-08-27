@@ -32,21 +32,9 @@ public class DashboardService : IDashboardService
             var posts = await _unitOfWork.Posts.GetByUserProfilesAsync(
                 userId, menuType: menuType, cancellationToken: cancellationToken);
 
-            var comments = await _unitOfWork.Comments.GetByUserAsync(userId, cancellationToken: cancellationToken);
-            if (!string.IsNullOrWhiteSpace(menuType))
-            {
-                comments = comments
-                    .Where(c => c.Post?.SocialProfile?.SocialAccount?.MenuType == menuType)
-                    .ToList();
-            }
+            var comments = await _unitOfWork.Comments.GetByUserAsync(userId, menuType: menuType, cancellationToken: cancellationToken);
 
-            var messages = await _unitOfWork.Messages.GetByUserAsync(userId, cancellationToken: cancellationToken);
-            if (!string.IsNullOrWhiteSpace(menuType))
-            {
-                messages = messages
-                    .Where(m => m.Conversation?.SocialProfile?.SocialAccount?.MenuType == menuType)
-                    .ToList();
-            }
+            var messages = await _unitOfWork.Messages.GetByUserAsync(userId, menuType: menuType, cancellationToken: cancellationToken);
 
             return ApiResponse<DashboardSummaryDto>.Ok(new DashboardSummaryDto
             {

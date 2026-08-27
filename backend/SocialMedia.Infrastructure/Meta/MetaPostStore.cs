@@ -26,12 +26,13 @@ internal static class MetaPostStore
         Guid platformId,
         string externalPostId,
         DateTime fallbackPublishedAt,
+        string menuType,
         Func<CancellationToken, Task<RemotePostSnapshot?>> fetchSnapshot,
         string placeholderText,
         bool requireMedia,
         CancellationToken cancellationToken)
     {
-        var post = await unitOfWork.Posts.GetByExternalPostIdAsync(profile.Id, externalPostId, cancellationToken);
+        var post = await unitOfWork.Posts.GetByExternalPostIdAsync(profile.Id, externalPostId, menuType, cancellationToken);
         if (post is not null)
         {
             // Instagram posts always have media. A previously stored row may predate media
@@ -49,6 +50,7 @@ internal static class MetaPostStore
             SocialProfileId = profile.Id,
             PlatformId = platformId,
             ExternalPostId = externalPostId,
+            MenuType = menuType,
             Status = ContentPostStatus.Published,
             PublishedAt = snapshot?.CreatedTime ?? fallbackPublishedAt,
             Text = text,

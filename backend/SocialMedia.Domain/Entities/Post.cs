@@ -26,6 +26,9 @@ public class Post : BaseEntity
     public string? MetadataJson { get; set; }
     public string? ErrorMessage { get; set; }
 
+    /// <summary>Process module that owns this post.</summary>
+    public string MenuType { get; set; } = "integration";
+
     public SocialProfile? SocialProfile { get; set; }
     public Platform? Platform { get; set; }
     public ICollection<Media> MediaItems { get; set; } = new List<Media>();

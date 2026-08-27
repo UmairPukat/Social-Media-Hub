@@ -81,10 +81,12 @@ public class InboxService : IInboxService
             var kind = filter?.ItemKind?.ToLowerInvariant();
             var items = new List<InboxItemDto>();
             var userAccounts = await _unitOfWork.SocialAccounts.GetByUserAsync(userId, cancellationToken);
+            if (processMenu is not null)
+                userAccounts = userAccounts.Where(a => a.MenuType == processMenu).ToList();
 
             if (kind is null or "comment")
             {
-                var comments = await LoadCommentsAsync(userId, platformId, platformIds, cancellationToken);
+                var comments = await LoadCommentsAsync(userId, platformId, platformIds, processMenu, cancellationToken);
                 items.AddRange(comments.Select(c =>
                 {
                     var profile = c.Post?.SocialProfile;
@@ -121,7 +123,7 @@ public class InboxService : IInboxService
                     };
                     if (profile is not null && account is not null)
                     {
-                        var routingAccount = PickRoutingAccount(profile, account, userAccounts) ?? account;
+                        var routingAccount = PickRoutingAccount(profile, account, userAccounts, processMenu) ?? account;
                         InboxRoutingHelper.Apply(item, profile, routingAccount);
                     }
                     return item;
@@ -130,7 +132,7 @@ public class InboxService : IInboxService
 
             if (kind is null or "message")
             {
-                var messages = await LoadMessagesAsync(userId, platformId, platformIds, cancellationToken);
+                var messages = await LoadMessagesAsync(userId, platformId, platformIds, processMenu, cancellationToken);
                 var byId = messages.ToDictionary(m => m.Id);
                 items.AddRange(messages.Select(m =>
                 {
@@ -160,7 +162,7 @@ public class InboxService : IInboxService
                     };
                     if (profile is not null && account is not null)
                     {
-                        var routingAccount = PickRoutingAccount(profile, account, userAccounts) ?? account;
+                        var routingAccount = PickRoutingAccount(profile, account, userAccounts, processMenu) ?? account;
                         InboxRoutingHelper.Apply(item, profile, routingAccount);
                     }
                     return item;
@@ -179,14 +181,18 @@ public class InboxService : IInboxService
         Guid userId,
         Guid? platformId,
         IReadOnlyList<Guid>? platformIds,
+        string? menuType,
         CancellationToken cancellationToken)
     {
+        if (platformIds is not null && platformIds.Count == 0)
+            return Array.Empty<Comment>();
+
         if (platformIds is null || platformIds.Count == 0)
-            return await _unitOfWork.Comments.GetByUserAsync(userId, platformId, cancellationToken);
+            return await _unitOfWork.Comments.GetByUserAsync(userId, platformId, menuType, cancellationToken);
 
         var merged = new List<Comment>();
         foreach (var id in platformIds)
-            merged.AddRange(await _unitOfWork.Comments.GetByUserAsync(userId, id, cancellationToken));
+            merged.AddRange(await _unitOfWork.Comments.GetByUserAsync(userId, id, menuType, cancellationToken));
 
         return merged
             .GroupBy(c => c.Id)
@@ -199,14 +205,18 @@ public class InboxService : IInboxService
         Guid userId,
         Guid? platformId,
         IReadOnlyList<Guid>? platformIds,
+        string? menuType,
         CancellationToken cancellationToken)
     {
+        if (platformIds is not null && platformIds.Count == 0)
+            return Array.Empty<Message>();
+
         if (platformIds is null || platformIds.Count == 0)
-            return await _unitOfWork.Messages.GetByUserAsync(userId, platformId, cancellationToken);
+            return await _unitOfWork.Messages.GetByUserAsync(userId, platformId, menuType, cancellationToken);
 
         var merged = new List<Message>();
         foreach (var id in platformIds)
-            merged.AddRange(await _unitOfWork.Messages.GetByUserAsync(userId, id, cancellationToken));
+            merged.AddRange(await _unitOfWork.Messages.GetByUserAsync(userId, id, menuType, cancellationToken));
 
         return merged
             .GroupBy(m => m.Id)
@@ -291,7 +301,7 @@ public class InboxService : IInboxService
                 : remoteCommentId!;
 
             // Avoid duplicates when Meta immediately echoes the reply through webhooks.
-            var existing = await _unitOfWork.Comments.GetByExternalCommentIdAsync(externalId, cancellationToken);
+            var existing = await _unitOfWork.Comments.GetByExternalCommentIdAsync(externalId, account.MenuType, cancellationToken);
             var inboxPlatformCode = InstagramConnectionResolver.ToInboxPlatformCode(code);
             if (existing is not null)
             {
@@ -310,6 +320,7 @@ public class InboxService : IInboxService
                 AuthorId = profile.ExternalProfileId,
                 AuthorName = profile.Name ?? profile.Username ?? "You",
                 Message = request.Message.Trim(),
+                MenuType = account.MenuType,
                 PlatformCreatedAt = DateTime.UtcNow
             };
             await _unitOfWork.Comments.AddAsync(reply, cancellationToken);
@@ -343,9 +354,7 @@ public class InboxService : IInboxService
     {
         if (!string.IsNullOrWhiteSpace(hints.MenuType))
         {
-            var hinted = await FindAccountByRoutingHintsAsync(userId, profile, hints, cancellationToken);
-            if (hinted is not null)
-                return hinted;
+            return await FindAccountByRoutingHintsAsync(userId, profile, hints, cancellationToken);
         }
 
         var linked = await _unitOfWork.SocialAccounts.GetWithAuthAndProfilesAsync(profile.SocialAccountId, cancellationToken);
@@ -389,13 +398,6 @@ public class InboxService : IInboxService
 
             if (InboxRoutingHelper.ProfileMatchesRouting(profile, hints.PageId, hints.AccountId)
                 && loaded.Profiles.Any(p => InboxRoutingHelper.ProfileMatchesRouting(p, hints.PageId, hints.AccountId)))
-                return (loaded, loaded.Auth);
-        }
-
-        foreach (var row in candidates)
-        {
-            var loaded = await _unitOfWork.SocialAccounts.GetWithAuthAndProfilesAsync(row.Id, cancellationToken);
-            if (loaded?.Auth is not null && CandidateTokens(loaded.Auth).Count > 0)
                 return (loaded, loaded.Auth);
         }
 
@@ -452,17 +454,23 @@ public class InboxService : IInboxService
     private static SocialAccount? PickRoutingAccount(
         SocialProfile profile,
         SocialAccount? linkedAccount,
-        IReadOnlyList<SocialAccount> userAccounts)
+        IReadOnlyList<SocialAccount> userAccounts,
+        string? restrictMenuType = null)
     {
         if (linkedAccount is not null
             && linkedAccount.Auth is not null
-            && HasStoredTokens(linkedAccount.Auth))
+            && HasStoredTokens(linkedAccount.Auth)
+            && (restrictMenuType is null || linkedAccount.MenuType == restrictMenuType))
             return linkedAccount;
 
         var platformCodes = ResolvePlatformCodes(profile, linkedAccount);
-        var preferredMenu = linkedAccount?.MenuType;
+        var preferredMenu = restrictMenuType ?? linkedAccount?.MenuType;
 
-        return userAccounts
+        var scopedAccounts = restrictMenuType is null
+            ? userAccounts
+            : userAccounts.Where(a => a.MenuType == restrictMenuType).ToList();
+
+        return scopedAccounts
             .Where(a => HasStoredTokens(a.Auth)
                         && PlatformCodesOverlap(a.Platform?.Code, platformCodes)
                         && (a.Status == SocialAccountStatus.Connected || HasStoredTokens(a.Auth)))
@@ -853,7 +861,7 @@ public class InboxService : IInboxService
                 : remoteMessageId!;
 
             var inboxPlatformCode = InstagramConnectionResolver.ToInboxPlatformCode(code);
-            var existing = await _unitOfWork.Messages.GetByExternalMessageIdAsync(externalId, cancellationToken);
+            var existing = await _unitOfWork.Messages.GetByExternalMessageIdAsync(externalId, account.MenuType, cancellationToken);
             if (existing is not null)
             {
                 await _inboxRealtime.NotifyInboxItemAsync(
@@ -874,6 +882,7 @@ public class InboxService : IInboxService
                 MessageType = MessageContentType.Text,
                 Body = request.Message.Trim(),
                 Status = MessageDeliveryStatus.Sent,
+                MenuType = account.MenuType,
                 PlatformCreatedAt = sentAt,
                 ReplyToMessageId = quoted?.Id,
                 ReplyToExternalId = replyToMid
@@ -1011,17 +1020,21 @@ public class InboxService : IInboxService
             ?? throw new InvalidOperationException("Post not found.");
         var profile = await _unitOfWork.SocialProfiles.GetByIdAsync(post.SocialProfileId, cancellationToken)
             ?? throw new InvalidOperationException("Profile not found.");
-        var account = await _unitOfWork.SocialAccounts.GetWithAuthAndProfilesAsync(profile.SocialAccountId, cancellationToken)
-            ?? throw new InvalidOperationException("Account not found.");
-        if (account.UserId != userId || account.Auth is null)
-            throw new InvalidOperationException("Comment not found.");
+        var resolvedAuth = await ResolveReplyAuthAsync(
+            profile,
+            userId,
+            ReplyAuthHints.FromRequest(comment.MenuType, null, null),
+            cancellationToken)
+            ?? throw new InvalidOperationException("Comment not found.");
+
+        var (account, auth) = resolvedAuth;
 
         var platform = await _unitOfWork.Platforms.GetByIdAsync(account.PlatformId, cancellationToken);
         var code = platform?.Code?.ToLowerInvariant() ?? string.Empty;
         var connectionType = InstagramConnectionResolver.FromProfile(profile, code);
         return (new MetaCallContext
         {
-            AccessToken = account.Auth.AccessToken,
+            AccessToken = auth.AccessToken,
             ProfileExternalId = profile.ExternalProfileId,
             PageExternalId = connectionType == InstagramConnectionType.FacebookLogin
                 ? ReadPageId(profile.MetadataJson)

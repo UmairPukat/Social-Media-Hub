@@ -17,6 +17,9 @@ public class SocialProfile : BaseEntity
     public string? ProfileImage { get; set; }
     public string? MetadataJson { get; set; }
 
+    /// <summary>Process module that owns this profile (mirrors SocialAccount.MenuType).</summary>
+    public string MenuType { get; set; } = "integration";
+
     public SocialAccount? SocialAccount { get; set; }
     public ICollection<Post> Posts { get; set; } = new List<Post>();
     public ICollection<Conversation> Conversations { get; set; } = new List<Conversation>();

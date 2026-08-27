@@ -68,18 +68,48 @@
                 </span>
                 <div class="stat-top-end">
                   <span class="stat-label">
-                    {{ card.isConnected ? 'Connected' : card.canConnect ? 'Ready' : 'Soon' }}
+                    @if (card.isConnected) {
+                      Connected
+                    } @else if (card.hasAppConfig) {
+                      Configured
+                    } @else if (card.canConnect && supportsMetaConfig(card.code)) {
+                      Ready
+                    } @else if (card.canConnect) {
+                      Ready
+                    } @else {
+                      Soon
+                    }
                   </span>
-                  @if (card.isConnected && supportsConnectionDetails(card.code)) {
-                    <button
-                      type="button"
-                      class="eye-btn"
-                      matTooltip="View account information"
-                      [attr.aria-label]="'View ' + card.displayName + ' account information'"
-                      (click)="openDetails(card)">
-                      <mat-icon>visibility</mat-icon>
-                    </button>
-                  }
+                  <div class="card-actions">
+                    @if (card.canConnect && supportsMetaConfig(card.code)) {
+                      <button
+                        type="button"
+                        class="icon-btn"
+                        matTooltip="Edit integration configuration"
+                        (click)="openConfig(card)">
+                        <mat-icon>edit</mat-icon>
+                      </button>
+                      @if (card.hasAppConfig) {
+                        <button
+                          type="button"
+                          class="icon-btn danger"
+                          matTooltip="Delete integration configuration"
+                          (click)="deleteConfig(card)">
+                          <mat-icon>delete</mat-icon>
+                        </button>
+                      }
+                    }
+                    @if (card.isConnected && supportsConnectionDetails(card.code)) {
+                      <button
+                        type="button"
+                        class="icon-btn"
+                        matTooltip="View account information"
+                        [attr.aria-label]="'View ' + card.displayName + ' account information'"
+                        (click)="openDetails(card)">
+                        <mat-icon>visibility</mat-icon>
+                      </button>
+                    }
+                  </div>
                 </div>
               </div>
 
@@ -88,6 +118,8 @@
               <p class="stat-hint">
                 @if (card.accountName) {
                   Linked as {{ card.accountName }}
+                } @else if (card.hasAppConfig) {
+                  App configured — ready to connect
                 } @else {
                   {{ shortDesc(card.description) }}
                 }
@@ -102,6 +134,19 @@
                   }
                   <button mat-stroked-button type="button" class="danger" (click)="disconnect(card)">
                     Disconnect
+                  </button>
+                } @else if (canConnectCard(card)) {
+                  <button
+                    mat-flat-button
+                    color="primary"
+                    type="button"
+                    [disabled]="connecting() === card.code.toLowerCase()"
+                    (click)="connect(card)">
+                    {{ connecting() === card.code.toLowerCase() ? 'Connecting…' : 'Connect' }}
+                  </button>
+                } @else if (card.canConnect && supportsMetaConfig(card.code)) {
+                  <button mat-flat-button color="primary" type="button" (click)="openConfig(card)">
+                    Configure app
                   </button>
                 } @else if (card.canConnect) {
                   <button
@@ -372,6 +417,105 @@
           <button mat-flat-button color="primary" type="button" (click)="closeDetails()">Close</button>
         </div>
       </footer>
+    }
+  </dialog>
+
+  <dialog #configDialog class="picker config" aria-labelledby="config-title" (close)="onConfigClosed()">
+    @if (configOpen()) {
+      <header class="picker-head">
+        <div>
+          <p class="eyebrow">{{ configTitle() }}</p>
+          <h2 id="config-title">Integration configuration</h2>
+          <p class="picker-lede">Meta app credentials for this Integrations process. Overrides environment defaults when saved.</p>
+        </div>
+        <button type="button" class="picker-close" aria-label="Close" (click)="closeConfig()">
+          <mat-icon>close</mat-icon>
+        </button>
+      </header>
+
+      @if (configError()) {
+        <p class="picker-error">{{ configError() }}</p>
+      }
+
+      @if (configLoading()) {
+        <p class="picker-empty">Loading configuration…</p>
+      } @else {
+        <form class="config-form" (ngSubmit)="saveConfig()">
+          <mat-form-field appearance="outline">
+            <mat-label>Label (optional)</mat-label>
+            <input matInput [ngModel]="configForm().label" name="label" (ngModelChange)="updateConfigField('label', $event)" />
+          </mat-form-field>
+
+          <mat-form-field appearance="outline">
+            <mat-label>Client Id (App Id)</mat-label>
+            <input matInput required [ngModel]="configForm().clientId" name="clientId" (ngModelChange)="updateConfigField('clientId', $event)" />
+          </mat-form-field>
+
+          <mat-form-field appearance="outline">
+            <mat-label>Client Secret (App Secret)</mat-label>
+            <input
+              matInput
+              [type]="secretRevealed() ? 'text' : 'password'"
+              [ngModel]="configForm().clientSecret"
+              name="clientSecret"
+              (ngModelChange)="updateConfigField('clientSecret', $event)" />
+            <button matSuffix type="button" class="token-btn" (click)="toggleSecretReveal()">
+              <mat-icon>{{ secretRevealed() ? 'visibility_off' : 'visibility' }}</mat-icon>
+            </button>
+          </mat-form-field>
+
+          <mat-form-field appearance="outline">
+            <mat-label>Redirect URI</mat-label>
+            <input matInput [ngModel]="configForm().redirectUri" name="redirectUri" (ngModelChange)="updateConfigField('redirectUri', $event)" />
+          </mat-form-field>
+
+          <mat-form-field appearance="outline">
+            <mat-label>Auth URL</mat-label>
+            <input matInput [ngModel]="configForm().authUrl" name="authUrl" (ngModelChange)="updateConfigField('authUrl', $event)" />
+          </mat-form-field>
+
+          <mat-form-field appearance="outline">
+            <mat-label>Base URL (Graph API)</mat-label>
+            <input matInput [ngModel]="configForm().baseUrl" name="baseUrl" (ngModelChange)="updateConfigField('baseUrl', $event)" />
+          </mat-form-field>
+
+          <mat-form-field appearance="outline">
+            <mat-label>Graph API version</mat-label>
+            <input matInput [ngModel]="configForm().graphApiVersion" name="graphApiVersion" (ngModelChange)="updateConfigField('graphApiVersion', $event)" />
+          </mat-form-field>
+
+          <mat-form-field appearance="outline" class="full">
+            <mat-label>Scopes (comma-separated)</mat-label>
+            <textarea matInput rows="3" [ngModel]="configForm().scopes" name="scopes" (ngModelChange)="updateConfigField('scopes', $event)"></textarea>
+          </mat-form-field>
+
+          <mat-form-field appearance="outline">
+            <mat-label>Webhook verify token</mat-label>
+            <input matInput [ngModel]="configForm().webhookVerifyToken" name="webhookVerifyToken" (ngModelChange)="updateConfigField('webhookVerifyToken', $event)" />
+          </mat-form-field>
+
+          @if (isWhatsAppPlatform(configPlatformCode())) {
+            <mat-form-field appearance="outline">
+              <mat-label>Phone number Id</mat-label>
+              <input matInput [ngModel]="configForm().phoneNumberId" name="phoneNumberId" (ngModelChange)="updateConfigField('phoneNumberId', $event)" />
+            </mat-form-field>
+            <mat-form-field appearance="outline">
+              <mat-label>WABA Id</mat-label>
+              <input matInput [ngModel]="configForm().wabaId" name="wabaId" (ngModelChange)="updateConfigField('wabaId', $event)" />
+            </mat-form-field>
+          }
+
+          <footer class="picker-foot">
+            <span class="picker-count">Secrets are stored on the server only.</span>
+            <div class="picker-actions">
+              <button mat-stroked-button type="button" (click)="closeConfig()">Cancel</button>
+              <button mat-flat-button color="primary" type="submit" [disabled]="configSaving()">
+                {{ configSaving() ? 'Saving…' : 'Save configuration' }}
+              </button>
+            </div>
+          </footer>
+        </form>
+      }
     }
   </dialog>
 </section>

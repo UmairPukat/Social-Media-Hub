@@ -65,6 +65,7 @@ public static class DbSeeder
         await EnsureWebhookLogsTableAsync(db);
         await EnsureMessageReplyColumnsAsync(db);
         await EnsureMenuTypeColumnsAsync(db);
+        await EnsureProcessDataMenuTypeColumnsAsync(db);
         await EnsureAppConnectionConfigsTableAsync(db);
         await EnsureIntegrationAppConfigsTableAsync(db);
         await EnsureDeveloperAppConfigsTableAsync(db);
@@ -205,6 +206,107 @@ public static class DbSeeder
         await db.Database.ExecuteSqlRawAsync("""
             CREATE UNIQUE INDEX IF NOT EXISTS "IX_Platforms_Code_MenuType"
             ON "Platforms" ("Code", "MenuType");
+            """);
+    }
+
+    /// <summary>
+    /// Adds MenuType to inbox/post entities and backfills from owning SocialAccount rows.
+    /// </summary>
+    private static async Task EnsureProcessDataMenuTypeColumnsAsync(AppDbContext db)
+    {
+        await db.Database.ExecuteSqlRawAsync("""
+            ALTER TABLE "SocialProfiles" ADD COLUMN IF NOT EXISTS "MenuType" character varying(50) NOT NULL DEFAULT 'integration';
+            """);
+        await db.Database.ExecuteSqlRawAsync("""
+            ALTER TABLE "Posts" ADD COLUMN IF NOT EXISTS "MenuType" character varying(50) NOT NULL DEFAULT 'integration';
+            """);
+        await db.Database.ExecuteSqlRawAsync("""
+            ALTER TABLE "Comments" ADD COLUMN IF NOT EXISTS "MenuType" character varying(50) NOT NULL DEFAULT 'integration';
+            """);
+        await db.Database.ExecuteSqlRawAsync("""
+            ALTER TABLE "Conversations" ADD COLUMN IF NOT EXISTS "MenuType" character varying(50) NOT NULL DEFAULT 'integration';
+            """);
+        await db.Database.ExecuteSqlRawAsync("""
+            ALTER TABLE "Messages" ADD COLUMN IF NOT EXISTS "MenuType" character varying(50) NOT NULL DEFAULT 'integration';
+            """);
+        await db.Database.ExecuteSqlRawAsync("""
+            ALTER TABLE "WebhookEvents" ADD COLUMN IF NOT EXISTS "MenuType" character varying(50) NULL;
+            """);
+
+        await db.Database.ExecuteSqlRawAsync("""
+            UPDATE "SocialProfiles" sp
+            SET "MenuType" = sa."MenuType"
+            FROM "SocialAccounts" sa
+            WHERE sp."SocialAccountId" = sa."Id"
+              AND (sp."MenuType" IS NULL OR sp."MenuType" = 'integration');
+            """);
+
+        await db.Database.ExecuteSqlRawAsync("""
+            UPDATE "Posts" p
+            SET "MenuType" = sp."MenuType"
+            FROM "SocialProfiles" sp
+            WHERE p."SocialProfileId" = sp."Id"
+              AND (p."MenuType" IS NULL OR p."MenuType" = 'integration');
+            """);
+
+        await db.Database.ExecuteSqlRawAsync("""
+            UPDATE "Comments" c
+            SET "MenuType" = p."MenuType"
+            FROM "Posts" p
+            WHERE c."PostId" = p."Id"
+              AND (c."MenuType" IS NULL OR c."MenuType" = 'integration');
+            """);
+
+        await db.Database.ExecuteSqlRawAsync("""
+            UPDATE "Conversations" c
+            SET "MenuType" = sp."MenuType"
+            FROM "SocialProfiles" sp
+            WHERE c."SocialProfileId" = sp."Id"
+              AND (c."MenuType" IS NULL OR c."MenuType" = 'integration');
+            """);
+
+        await db.Database.ExecuteSqlRawAsync("""
+            UPDATE "Messages" m
+            SET "MenuType" = c."MenuType"
+            FROM "Conversations" c
+            WHERE m."ConversationId" = c."Id"
+              AND (m."MenuType" IS NULL OR m."MenuType" = 'integration');
+            """);
+
+        await db.Database.ExecuteSqlRawAsync("""
+            DROP INDEX IF EXISTS "IX_SocialProfiles_ExternalProfileId";
+            """);
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE INDEX IF NOT EXISTS "IX_SocialProfiles_ExternalProfileId_MenuType"
+            ON "SocialProfiles" ("ExternalProfileId", "MenuType");
+            """);
+
+        await db.Database.ExecuteSqlRawAsync("""
+            DROP INDEX IF EXISTS "IX_Comments_ExternalCommentId";
+            """);
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE UNIQUE INDEX IF NOT EXISTS "IX_Comments_ExternalCommentId_MenuType"
+            ON "Comments" ("ExternalCommentId", "MenuType");
+            """);
+
+        await db.Database.ExecuteSqlRawAsync("""
+            DROP INDEX IF EXISTS "IX_Conversations_SocialProfileId_ExternalConversationId";
+            """);
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE UNIQUE INDEX IF NOT EXISTS "IX_Conversations_SocialProfileId_ExternalConversationId_MenuType"
+            ON "Conversations" ("SocialProfileId", "ExternalConversationId", "MenuType");
+            """);
+
+        await db.Database.ExecuteSqlRawAsync("""
+            DROP INDEX IF EXISTS "IX_Messages_ExternalMessageId";
+            """);
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE UNIQUE INDEX IF NOT EXISTS "IX_Messages_ExternalMessageId_MenuType"
+            ON "Messages" ("ExternalMessageId", "MenuType");
+            """);
+
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE INDEX IF NOT EXISTS "IX_WebhookEvents_MenuType" ON "WebhookEvents" ("MenuType");
             """);
     }
 

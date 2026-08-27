@@ -164,8 +164,11 @@ public class WhatsAppService : IWhatsAppService
                         ? pn.GetString() : null;
                     if (phoneNumberId is null) continue;
 
-                    var profile = await _unitOfWork.SocialProfiles.GetByExternalProfileIdAsync(phoneNumberId, cancellationToken);
+                    var profile = await _unitOfWork.SocialProfiles.GetByExternalProfileIdAsync(phoneNumberId, webhookEvent.MenuType, cancellationToken);
                     if (profile is null || !value.TryGetProperty("messages", out var messages)) continue;
+
+                    var account = await _unitOfWork.SocialAccounts.GetByIdAsync(profile.SocialAccountId, cancellationToken);
+                    if (account is null) continue;
 
                     foreach (var message in messages.EnumerateArray())
                     {
@@ -186,6 +189,7 @@ public class WhatsAppService : IWhatsAppService
                                 ExternalConversationId = from ?? id,
                                 CustomerId = from,
                                 CustomerName = from,
+                                MenuType = account.MenuType,
                                 LastMessageAt = DateTime.UtcNow,
                                 UnreadCount = 1,
                                 Status = ConversationStatus.Open
@@ -208,6 +212,7 @@ public class WhatsAppService : IWhatsAppService
                             Direction = MessageDirection.Inbound,
                             MessageType = MessageContentType.Text,
                             Body = text,
+                            MenuType = account.MenuType,
                             Status = MessageDeliveryStatus.Delivered,
                             PlatformCreatedAt = DateTime.UtcNow
                         }, cancellationToken);

@@ -1,5 +1,6 @@
 using System.Linq.Expressions;
 using Microsoft.EntityFrameworkCore;
+using SocialMedia.Application.Catalog;
 using SocialMedia.Domain.Entities;
 using SocialMedia.Domain.Modules.AppConnections.Entities;
 using SocialMedia.Domain.Modules.DeveloperApps.Entities;
@@ -131,15 +132,20 @@ public class SocialProfileRepository : Repository<SocialProfile>, ISocialProfile
     public async Task<IReadOnlyList<SocialProfile>> GetBySocialAccountAsync(Guid socialAccountId, CancellationToken cancellationToken = default)
         => await DbSet.AsNoTracking().Where(p => p.SocialAccountId == socialAccountId).ToListAsync(cancellationToken);
 
-    public async Task<SocialProfile?> GetByExternalProfileIdAsync(string externalProfileId, CancellationToken cancellationToken = default)
+    public async Task<SocialProfile?> GetByExternalProfileIdAsync(string externalProfileId, string? menuType = null, CancellationToken cancellationToken = default)
     {
-        var profiles = await DbSet.Include(p => p.SocialAccount).ThenInclude(a => a!.Auth)
-            .Where(p => p.ExternalProfileId == externalProfileId)
-            .ToListAsync(cancellationToken);
+        var normalizedMenu = string.IsNullOrWhiteSpace(menuType) ? null : MenuTypes.Normalize(menuType);
+        var query = DbSet.Include(p => p.SocialAccount).ThenInclude(a => a!.Auth)
+            .Where(p => p.ExternalProfileId == externalProfileId);
 
-        // Prefer the profile whose account actually holds OAuth tokens (avoids stale duplicate rows).
+        if (normalizedMenu is not null)
+            query = query.Where(p => p.MenuType == normalizedMenu || p.SocialAccount!.MenuType == normalizedMenu);
+
+        var profiles = await query.ToListAsync(cancellationToken);
+
         return profiles
-            .OrderByDescending(p => p.SocialAccount?.Status == Domain.Enums.SocialAccountStatus.Connected ? 1 : 0)
+            .OrderByDescending(p => normalizedMenu is not null && string.Equals(p.MenuType, normalizedMenu, StringComparison.OrdinalIgnoreCase) ? 1 : 0)
+            .ThenByDescending(p => p.SocialAccount?.Status == Domain.Enums.SocialAccountStatus.Connected ? 1 : 0)
             .ThenByDescending(p => HasStoredOAuthTokens(p.SocialAccount?.Auth) ? 1 : 0)
             .ThenByDescending(p => p.UpdatedAt ?? p.CreatedAt)
             .FirstOrDefault();
@@ -170,22 +176,34 @@ public class PostRepository : Repository<Post>, IPostRepository
             query = query.Where(p => p.PlatformId == platformId.Value);
 
         if (!string.IsNullOrWhiteSpace(menuType))
-            query = query.Where(p => p.SocialProfile!.SocialAccount!.MenuType == menuType);
+        {
+            var normalized = MenuTypes.Normalize(menuType);
+            query = query.Where(p => p.MenuType == normalized || p.SocialProfile!.SocialAccount!.MenuType == normalized);
+        }
 
         return await query.OrderByDescending(p => p.CreatedAt).ToListAsync(cancellationToken);
     }
 
-    public Task<Post?> GetByExternalPostIdAsync(Guid socialProfileId, string externalPostId, CancellationToken cancellationToken = default)
-        => DbSet.Include(p => p.MediaItems).FirstOrDefaultAsync(
-            p => p.SocialProfileId == socialProfileId && p.ExternalPostId == externalPostId,
-            cancellationToken);
+    public Task<Post?> GetByExternalPostIdAsync(Guid socialProfileId, string externalPostId, string? menuType = null, CancellationToken cancellationToken = default)
+    {
+        var query = DbSet.Include(p => p.MediaItems)
+            .Where(p => p.SocialProfileId == socialProfileId && p.ExternalPostId == externalPostId);
+
+        if (!string.IsNullOrWhiteSpace(menuType))
+        {
+            var normalized = MenuTypes.Normalize(menuType);
+            query = query.Where(p => p.MenuType == normalized);
+        }
+
+        return query.FirstOrDefaultAsync(cancellationToken);
+    }
 }
 
 public class CommentRepository : Repository<Comment>, ICommentRepository
 {
     public CommentRepository(AppDbContext context) : base(context) { }
 
-    public async Task<IReadOnlyList<Comment>> GetByUserAsync(Guid userId, Guid? platformId = null, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<Comment>> GetByUserAsync(Guid userId, Guid? platformId = null, string? menuType = null, CancellationToken cancellationToken = default)
     {
         var query = DbSet.AsNoTracking()
             .Include(c => c.Post).ThenInclude(p => p!.SocialProfile).ThenInclude(sp => sp!.SocialAccount).ThenInclude(a => a!.Platform)
@@ -196,18 +214,34 @@ public class CommentRepository : Repository<Comment>, ICommentRepository
         if (platformId.HasValue)
             query = query.Where(c => c.Post!.PlatformId == platformId.Value);
 
+        if (!string.IsNullOrWhiteSpace(menuType))
+        {
+            var normalized = MenuTypes.Normalize(menuType);
+            query = query.Where(c => c.MenuType == normalized || c.Post!.SocialProfile!.SocialAccount!.MenuType == normalized);
+        }
+
         return await query.OrderByDescending(c => c.CreatedAt).ToListAsync(cancellationToken);
     }
 
-    public Task<Comment?> GetByExternalCommentIdAsync(string externalCommentId, CancellationToken cancellationToken = default)
-        => DbSet.FirstOrDefaultAsync(c => c.ExternalCommentId == externalCommentId, cancellationToken);
+    public Task<Comment?> GetByExternalCommentIdAsync(string externalCommentId, string? menuType = null, CancellationToken cancellationToken = default)
+    {
+        var query = DbSet.Where(c => c.ExternalCommentId == externalCommentId);
+
+        if (!string.IsNullOrWhiteSpace(menuType))
+        {
+            var normalized = MenuTypes.Normalize(menuType);
+            query = query.Where(c => c.MenuType == normalized);
+        }
+
+        return query.FirstOrDefaultAsync(cancellationToken);
+    }
 }
 
 public class ConversationRepository : Repository<Conversation>, IConversationRepository
 {
     public ConversationRepository(AppDbContext context) : base(context) { }
 
-    public async Task<IReadOnlyList<Conversation>> GetByUserAsync(Guid userId, Guid? platformId = null, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<Conversation>> GetByUserAsync(Guid userId, Guid? platformId = null, string? menuType = null, CancellationToken cancellationToken = default)
     {
         var query = DbSet.AsNoTracking()
             .Include(c => c.SocialProfile).ThenInclude(p => p!.SocialAccount).ThenInclude(a => a!.Platform)
@@ -217,23 +251,38 @@ public class ConversationRepository : Repository<Conversation>, IConversationRep
         if (platformId.HasValue)
             query = query.Where(c => c.SocialProfile!.SocialAccount!.PlatformId == platformId.Value);
 
+        if (!string.IsNullOrWhiteSpace(menuType))
+        {
+            var normalized = MenuTypes.Normalize(menuType);
+            query = query.Where(c => c.MenuType == normalized || c.SocialProfile!.SocialAccount!.MenuType == normalized);
+        }
+
         return await query.OrderByDescending(c => c.LastMessageAt).ToListAsync(cancellationToken);
     }
 
     public Task<Conversation?> GetByExternalConversationIdAsync(
         Guid socialProfileId,
         string externalConversationId,
+        string? menuType = null,
         CancellationToken cancellationToken = default)
-        => DbSet.FirstOrDefaultAsync(
-            c => c.SocialProfileId == socialProfileId && c.ExternalConversationId == externalConversationId,
-            cancellationToken);
+    {
+        var query = DbSet.Where(c => c.SocialProfileId == socialProfileId && c.ExternalConversationId == externalConversationId);
+
+        if (!string.IsNullOrWhiteSpace(menuType))
+        {
+            var normalized = MenuTypes.Normalize(menuType);
+            query = query.Where(c => c.MenuType == normalized);
+        }
+
+        return query.FirstOrDefaultAsync(cancellationToken);
+    }
 }
 
 public class MessageRepository : Repository<Message>, IMessageRepository
 {
     public MessageRepository(AppDbContext context) : base(context) { }
 
-    public async Task<IReadOnlyList<Message>> GetByUserAsync(Guid userId, Guid? platformId = null, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<Message>> GetByUserAsync(Guid userId, Guid? platformId = null, string? menuType = null, CancellationToken cancellationToken = default)
     {
         var query = DbSet.AsNoTracking()
             .Include(m => m.Conversation).ThenInclude(c => c!.SocialProfile).ThenInclude(p => p!.SocialAccount).ThenInclude(a => a!.Platform)
@@ -242,11 +291,27 @@ public class MessageRepository : Repository<Message>, IMessageRepository
         if (platformId.HasValue)
             query = query.Where(m => m.Conversation!.SocialProfile!.SocialAccount!.PlatformId == platformId.Value);
 
+        if (!string.IsNullOrWhiteSpace(menuType))
+        {
+            var normalized = MenuTypes.Normalize(menuType);
+            query = query.Where(m => m.MenuType == normalized || m.Conversation!.SocialProfile!.SocialAccount!.MenuType == normalized);
+        }
+
         return await query.OrderByDescending(m => m.CreatedAt).ToListAsync(cancellationToken);
     }
 
-    public Task<Message?> GetByExternalMessageIdAsync(string externalMessageId, CancellationToken cancellationToken = default)
-        => DbSet.FirstOrDefaultAsync(m => m.ExternalMessageId == externalMessageId, cancellationToken);
+    public Task<Message?> GetByExternalMessageIdAsync(string externalMessageId, string? menuType = null, CancellationToken cancellationToken = default)
+    {
+        var query = DbSet.Where(m => m.ExternalMessageId == externalMessageId);
+
+        if (!string.IsNullOrWhiteSpace(menuType))
+        {
+            var normalized = MenuTypes.Normalize(menuType);
+            query = query.Where(m => m.MenuType == normalized);
+        }
+
+        return query.FirstOrDefaultAsync(cancellationToken);
+    }
 }
 
 public class WebhookEventRepository : Repository<WebhookEvent>, IWebhookEventRepository

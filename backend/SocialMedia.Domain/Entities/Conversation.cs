@@ -18,6 +18,9 @@ public class Conversation : BaseEntity
     public DateTime? LastMessageAt { get; set; }
     public ConversationStatus Status { get; set; } = ConversationStatus.Open;
 
+    /// <summary>Process module that owns this conversation.</summary>
+    public string MenuType { get; set; } = "integration";
+
     public SocialProfile? SocialProfile { get; set; }
     public ICollection<Message> Messages { get; set; } = new List<Message>();
 }

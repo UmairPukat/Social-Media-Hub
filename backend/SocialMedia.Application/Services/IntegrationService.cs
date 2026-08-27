@@ -997,6 +997,7 @@ public class IntegrationService : IIntegrationService
         profile.Username = draft.Username;
         profile.ProfileImage = draft.ProfileImage;
         profile.ProfileType = ParseProfileType(draft.ProfileType);
+        profile.MenuType = account.MenuType;
 
         var metadata = new Dictionary<string, object>();
         if (!string.IsNullOrWhiteSpace(draft.PageId))
@@ -1042,6 +1043,9 @@ public class IntegrationService : IIntegrationService
 
             var owner = await _unitOfWork.SocialAccounts.GetByIdAsync(orphanSnapshot.SocialAccountId, cancellationToken);
             if (owner is null || owner.UserId != account.UserId)
+                continue;
+
+            if (!string.Equals(owner.MenuType, account.MenuType, StringComparison.OrdinalIgnoreCase))
                 continue;
 
             var ownerPlatform = await _unitOfWork.Platforms.GetByIdAsync(owner.PlatformId, cancellationToken);

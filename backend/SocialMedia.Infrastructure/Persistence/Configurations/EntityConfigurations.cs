@@ -86,7 +86,8 @@ public class SocialProfileConfiguration : IEntityTypeConfiguration<SocialProfile
         builder.HasKey(x => x.Id);
         builder.Property(x => x.ExternalProfileId).IsRequired().HasMaxLength(200);
         builder.Property(x => x.Name).IsRequired().HasMaxLength(200);
-        builder.HasIndex(x => x.ExternalProfileId);
+        builder.Property(x => x.MenuType).IsRequired().HasMaxLength(50).HasDefaultValue("integration");
+        builder.HasIndex(x => new { x.ExternalProfileId, x.MenuType });
         builder.HasOne(x => x.SocialAccount).WithMany(x => x.Profiles).HasForeignKey(x => x.SocialAccountId).OnDelete(DeleteBehavior.Cascade);
     }
 }
@@ -100,6 +101,7 @@ public class PostConfiguration : IEntityTypeConfiguration<Post>
         builder.Property(x => x.ExternalPostId).HasMaxLength(200);
         builder.Property(x => x.Text).HasMaxLength(5000);
         builder.Property(x => x.Caption).HasMaxLength(5000);
+        builder.Property(x => x.MenuType).IsRequired().HasMaxLength(50).HasDefaultValue("integration");
         builder.HasOne(x => x.SocialProfile).WithMany(x => x.Posts).HasForeignKey(x => x.SocialProfileId).OnDelete(DeleteBehavior.Cascade);
         builder.HasOne(x => x.Platform).WithMany().HasForeignKey(x => x.PlatformId).OnDelete(DeleteBehavior.Restrict);
     }
@@ -125,6 +127,8 @@ public class CommentConfiguration : IEntityTypeConfiguration<Comment>
         builder.Property(x => x.ExternalCommentId).IsRequired().HasMaxLength(200);
         builder.Property(x => x.AuthorName).IsRequired().HasMaxLength(200);
         builder.Property(x => x.Message).IsRequired().HasMaxLength(5000);
+        builder.Property(x => x.MenuType).IsRequired().HasMaxLength(50).HasDefaultValue("integration");
+        builder.HasIndex(x => new { x.ExternalCommentId, x.MenuType }).IsUnique();
         builder.HasOne(x => x.Post).WithMany(x => x.Comments).HasForeignKey(x => x.PostId).OnDelete(DeleteBehavior.Cascade);
         builder.HasOne(x => x.ParentComment).WithMany(x => x.Replies).HasForeignKey(x => x.ParentCommentId).OnDelete(DeleteBehavior.Restrict);
     }
@@ -137,6 +141,8 @@ public class ConversationConfiguration : IEntityTypeConfiguration<Conversation>
         builder.ToTable("Conversations");
         builder.HasKey(x => x.Id);
         builder.Property(x => x.ExternalConversationId).IsRequired().HasMaxLength(200);
+        builder.Property(x => x.MenuType).IsRequired().HasMaxLength(50).HasDefaultValue("integration");
+        builder.HasIndex(x => new { x.SocialProfileId, x.ExternalConversationId, x.MenuType }).IsUnique();
         builder.HasOne(x => x.SocialProfile).WithMany(x => x.Conversations).HasForeignKey(x => x.SocialProfileId).OnDelete(DeleteBehavior.Cascade);
     }
 }
@@ -150,6 +156,8 @@ public class MessageConfiguration : IEntityTypeConfiguration<Message>
         builder.Property(x => x.ExternalMessageId).IsRequired().HasMaxLength(200);
         builder.Property(x => x.Body).HasMaxLength(5000);
         builder.Property(x => x.ReplyToExternalId).HasMaxLength(200);
+        builder.Property(x => x.MenuType).IsRequired().HasMaxLength(50).HasDefaultValue("integration");
+        builder.HasIndex(x => new { x.ExternalMessageId, x.MenuType }).IsUnique();
         builder.HasOne(x => x.Conversation).WithMany(x => x.Messages).HasForeignKey(x => x.ConversationId).OnDelete(DeleteBehavior.Cascade);
     }
 }
@@ -173,8 +181,10 @@ public class WebhookEventConfiguration : IEntityTypeConfiguration<WebhookEvent>
         builder.HasKey(x => x.Id);
         builder.Property(x => x.EventType).IsRequired().HasMaxLength(100);
         builder.Property(x => x.PayloadJson).IsRequired();
+        builder.Property(x => x.MenuType).HasMaxLength(50);
         builder.HasOne(x => x.Platform).WithMany().HasForeignKey(x => x.PlatformId).OnDelete(DeleteBehavior.SetNull);
         builder.HasIndex(x => x.Status);
+        builder.HasIndex(x => x.MenuType);
     }
 }
 

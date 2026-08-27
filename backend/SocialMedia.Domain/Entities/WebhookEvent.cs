@@ -25,5 +25,8 @@ public class WebhookEvent : BaseEntity
     public DateTime? ProcessedAt { get; set; }
     public string? Error { get; set; }
 
+    /// <summary>Process module webhook endpoint that received this event.</summary>
+    public string? MenuType { get; set; }
+
     public Platform? Platform { get; set; }
 }

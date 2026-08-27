@@ -25,6 +25,9 @@ public class Message : BaseEntity
     /// <summary>Meta mid of the quoted message, kept even when that message was never stored.</summary>
     public string? ReplyToExternalId { get; set; }
 
+    /// <summary>Process module that owns this message.</summary>
+    public string MenuType { get; set; } = "integration";
+
     public Conversation? Conversation { get; set; }
     public ICollection<MessageAttachment> Attachments { get; set; } = new List<MessageAttachment>();
 }

@@ -1,11 +1,23 @@
 import { DatePipe } from '@angular/common';
 import { Component, ElementRef, OnInit, computed, inject, signal, viewChild } from '@angular/core';
+import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
+import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
+import { MatInputModule } from '@angular/material/input';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { ProcessApiService } from '../../core/services/process-api.service';
 import { MetaAuthUrlService, MetaPlatform } from '../../core/services/meta-auth-url.service';
-import { ApiResponse, ConnectionDetails, MENU_TYPES, MetaPage, PlatformCard } from '../../core/models/api.models';
+import {
+  ApiResponse,
+  AppConnectionConfig,
+  ConnectionDetails,
+  MENU_TYPES,
+  MetaPage,
+  PlatformCard,
+  SaveAppConnectionConfigRequest
+} from '../../core/models/api.models';
+import { PROCESS_MODULES } from '../../core/config/process.config';
 
 export interface IntegrationCategoryGroup {
   id: string;
@@ -37,10 +49,34 @@ const CATEGORY_ORDER = [
   'ai'
 ];
 
+const META_PLATFORMS = new Set(['facebook', 'instagram', 'instagram_login', 'whatsapp']);
+
+const DEFAULT_AUTH_URLS: Record<string, string> = {
+  instagram_login: 'https://www.instagram.com/oauth/authorize',
+  facebook: 'https://www.facebook.com/v21.0/dialog/oauth',
+  instagram: 'https://www.facebook.com/v21.0/dialog/oauth',
+  whatsapp: 'https://www.facebook.com/v21.0/dialog/oauth'
+};
+
+const DEFAULT_BASE_URLS: Record<string, string> = {
+  instagram_login: 'https://graph.instagram.com',
+  facebook: 'https://graph.facebook.com',
+  instagram: 'https://graph.facebook.com',
+  whatsapp: 'https://graph.facebook.com'
+};
+
 @Component({
   selector: 'app-integrations',
   standalone: true,
-  imports: [DatePipe, MatButtonModule, MatIconModule, MatTooltipModule],
+  imports: [
+    DatePipe,
+    FormsModule,
+    MatButtonModule,
+    MatFormFieldModule,
+    MatIconModule,
+    MatInputModule,
+    MatTooltipModule
+  ],
   templateUrl: './integrations.component.html',
   styleUrl: './integrations.component.scss'
 })
@@ -60,6 +96,16 @@ export class IntegrationsComponent implements OnInit {
    */
   private readonly pickerDialog = viewChild<ElementRef<HTMLDialogElement>>('pickerDialog');
   private readonly detailsDialog = viewChild<ElementRef<HTMLDialogElement>>('detailsDialog');
+  private readonly configDialog = viewChild<ElementRef<HTMLDialogElement>>('configDialog');
+
+  readonly configOpen = signal(false);
+  readonly configTitle = signal('');
+  readonly configPlatformCode = signal<string | null>(null);
+  readonly configLoading = signal(false);
+  readonly configSaving = signal(false);
+  readonly configError = signal('');
+  readonly configForm = signal<SaveAppConnectionConfigRequest>(this.emptyConfigForm('facebook'));
+  readonly secretRevealed = signal(false);
 
   /** Account information popup opened from the eye icon on a connected card. */
   readonly detailsOpen = signal(false);
@@ -128,15 +174,141 @@ export class IntegrationsComponent implements OnInit {
     this.activeCategory.set(id);
   }
 
+  supportsMetaConfig(code: string): boolean {
+    return META_PLATFORMS.has(code.toLowerCase());
+  }
+
+  canConnectCard(card: PlatformCard): boolean {
+    const code = card.code.toLowerCase();
+    if (!card.canConnect || !this.supportsMetaConfig(code)) return false;
+    return !!card.hasAppConfig || this.metaAuth.isConfigured(code as MetaPlatform);
+  }
+
+  isWhatsAppPlatform(code: string | null | undefined): boolean {
+    return (code || '').toLowerCase() === 'whatsapp';
+  }
+
+  openConfig(card: PlatformCard): void {
+    const code = card.code.toLowerCase();
+    this.configTitle.set(card.displayName);
+    this.configPlatformCode.set(code);
+    this.configError.set('');
+    this.secretRevealed.set(false);
+    this.configLoading.set(true);
+    this.configOpen.set(true);
+
+    const dialog = this.configDialog()?.nativeElement;
+    if (dialog && !dialog.open) dialog.showModal();
+
+    if (card.hasAppConfig) {
+      this.processApi.getConfig(this.menuType, code, true).subscribe({
+        next: (res) => {
+          this.configLoading.set(false);
+          if (!res.success || !res.data) {
+            this.configForm.set(this.emptyConfigForm(code));
+            this.configError.set(res.message || 'Could not load configuration.');
+            return;
+          }
+          this.configForm.set(this.mapConfigToForm(res.data as AppConnectionConfig));
+        },
+        error: () => {
+          this.configLoading.set(false);
+          this.configForm.set(this.emptyConfigForm(code));
+          this.configError.set('Could not load configuration.');
+        }
+      });
+    } else {
+      this.configLoading.set(false);
+      this.configForm.set(this.emptyConfigForm(code));
+    }
+  }
+
+  closeConfig(): void {
+    const dialog = this.configDialog()?.nativeElement;
+    if (dialog?.open) {
+      dialog.close();
+      return;
+    }
+    this.resetConfig();
+  }
+
+  onConfigClosed(): void {
+    this.resetConfig();
+  }
+
+  private resetConfig(): void {
+    this.configOpen.set(false);
+    this.configPlatformCode.set(null);
+    this.configError.set('');
+    this.secretRevealed.set(false);
+  }
+
+  saveConfig(): void {
+    const code = this.configPlatformCode();
+    if (!code) return;
+
+    const form = this.configForm();
+    if (!form.clientId?.trim()) {
+      this.configError.set('Client Id is required.');
+      return;
+    }
+
+    this.configSaving.set(true);
+    this.configError.set('');
+
+    this.processApi.saveConfig(this.menuType, { ...form, platformCode: code, menuType: this.menuType }).subscribe({
+      next: (res) => {
+        this.configSaving.set(false);
+        if (!res.success) {
+          this.configError.set(res.message || 'Could not save configuration.');
+          return;
+        }
+        this.message.set(res.message || 'Integration configuration saved.');
+        this.closeConfig();
+        this.reload();
+      },
+      error: (err: { error?: { message?: string } }) => {
+        this.configSaving.set(false);
+        this.configError.set(err?.error?.message || 'Could not save configuration.');
+      }
+    });
+  }
+
+  deleteConfig(card: PlatformCard): void {
+    if (!card.hasAppConfig) return;
+    if (!confirm(`Delete integration configuration for ${card.displayName}?`)) return;
+
+    this.processApi.deleteConfig(this.menuType, card.code).subscribe({
+      next: (res) => {
+        this.message.set(res.message || 'Integration configuration deleted.');
+        this.reload();
+      },
+      error: (err: { error?: { message?: string } }) =>
+        this.message.set(err?.error?.message || 'Delete failed')
+    });
+  }
+
+  updateConfigField<K extends keyof SaveAppConnectionConfigRequest>(
+    field: K,
+    value: SaveAppConnectionConfigRequest[K]
+  ): void {
+    this.configForm.update((form) => ({ ...form, [field]: value }));
+  }
+
+  toggleSecretReveal(): void {
+    this.secretRevealed.update((v) => !v);
+  }
+
   async connect(card: PlatformCard): Promise<void> {
     const code = card.code.toLowerCase() as MetaPlatform;
-    if (!card.canConnect || !['facebook', 'instagram', 'instagram_login', 'whatsapp'].includes(code)) {
+    if (!card.canConnect || !this.supportsMetaConfig(code)) {
       this.message.set(`${card.displayName} is coming soon.`);
       return;
     }
 
-    if (!this.metaAuth.isConfigured(code)) {
-      this.message.set(`Set a real Meta App Id for ${card.displayName} in environment.ts and appsettings.json.`);
+    if (!this.canConnectCard(card)) {
+      this.message.set(`Configure ${card.displayName} or set Meta App Id in environment settings.`);
+      this.openConfig(card);
       return;
     }
 
@@ -367,6 +539,42 @@ export class IntegrationsComponent implements OnInit {
       error: (err: { error?: { message?: string } }) =>
         this.message.set(err?.error?.message || 'Disconnect failed')
     });
+  }
+
+  private emptyConfigForm(platformCode: string): SaveAppConnectionConfigRequest {
+    const code = platformCode.toLowerCase();
+    return {
+      platformCode: code,
+      menuType: this.menuType,
+      clientId: '',
+      clientSecret: '',
+      redirectUri: PROCESS_MODULES.integrations.callbackPath,
+      authUrl: DEFAULT_AUTH_URLS[code] || '',
+      baseUrl: DEFAULT_BASE_URLS[code] || 'https://graph.facebook.com',
+      scopes: '',
+      graphApiVersion: 'v21.0',
+      webhookVerifyToken: '',
+      phoneNumberId: '',
+      wabaId: ''
+    };
+  }
+
+  private mapConfigToForm(config: AppConnectionConfig): SaveAppConnectionConfigRequest {
+    return {
+      platformCode: config.platformCode,
+      menuType: this.menuType,
+      label: config.label,
+      clientId: config.clientId,
+      clientSecret: config.clientSecret,
+      redirectUri: config.redirectUri,
+      authUrl: config.authUrl,
+      baseUrl: config.baseUrl,
+      scopes: config.scopes,
+      graphApiVersion: config.graphApiVersion,
+      webhookVerifyToken: config.webhookVerifyToken,
+      phoneNumberId: config.phoneNumberId,
+      wabaId: config.wabaId
+    };
   }
 
   tone(code: string): string {

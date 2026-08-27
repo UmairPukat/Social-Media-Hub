@@ -30,7 +30,7 @@ public interface IWebhookService
     /// Always saves the raw payload and a WebhookEvent, then processes. Pass
     /// <paramref name="signatureValid"/> as false to record a rejected delivery without processing it.
     /// </summary>
-    Task<ApiResponse<object>> ReceiveAsync(string platformCode, string payloadJson, string? signature, string? headersJson, bool signatureValid = true, CancellationToken cancellationToken = default);
+    Task<ApiResponse<object>> ReceiveAsync(string platformCode, string payloadJson, string? signature, string? headersJson, bool signatureValid = true, string? menuType = null, CancellationToken cancellationToken = default);
 
     /// <summary>Process-scoped webhook verification (Integrations / App Connections / Developer Apps).</summary>
     Task<string?> VerifyConnectionForProcessAsync(string menuType, string mode, string challenge, string verifyToken, CancellationToken cancellationToken = default);

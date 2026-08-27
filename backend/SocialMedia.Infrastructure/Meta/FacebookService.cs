@@ -295,7 +295,7 @@ public class FacebookService : IFacebookService
                     continue;
                 }
 
-                var profile = await ResolveProfileAsync(pageId!, result, cancellationToken);
+                var profile = await ResolveProfileAsync(pageId!, webhookEvent.MenuType, result, cancellationToken);
                 if (profile is null)
                     continue;
 
@@ -329,17 +329,20 @@ public class FacebookService : IFacebookService
     /// </summary>
     private async Task<SocialProfile?> ResolveProfileAsync(
         string pageId,
+        string? menuType,
         WebhookProcessResult result,
         CancellationToken cancellationToken)
     {
-        var profile = await _unitOfWork.SocialProfiles.GetByExternalProfileIdAsync(pageId, cancellationToken);
+        var profile = await _unitOfWork.SocialProfiles.GetByExternalProfileIdAsync(pageId, menuType, cancellationToken);
         if (profile is not null)
             return profile;
 
         if (IsTestDeliveryId(pageId))
         {
             var pages = await _unitOfWork.SocialProfiles.FindAsync(
-                p => p.ProfileType == ProfileType.FacebookPage, cancellationToken);
+                p => p.ProfileType == ProfileType.FacebookPage
+                     && (menuType == null || p.MenuType == menuType),
+                cancellationToken);
             profile = pages.OrderByDescending(p => p.CreatedAt).FirstOrDefault();
 
             if (profile is not null)
@@ -428,7 +431,7 @@ public class FacebookService : IFacebookService
                 return;
             }
 
-            var removed = await _unitOfWork.Comments.GetByExternalCommentIdAsync(removeId, cancellationToken);
+            var removed = await _unitOfWork.Comments.GetByExternalCommentIdAsync(removeId, account.MenuType, cancellationToken);
             if (removed is null)
             {
                 result.Skip($"Comment '{removeId}' was removed but is not stored.");
@@ -472,7 +475,7 @@ public class FacebookService : IFacebookService
             enriched?.Message,
             value.TryGetProperty("message", out var messageElement) ? messageElement.GetString() : null) ?? string.Empty;
 
-        var existing = await _unitOfWork.Comments.GetByExternalCommentIdAsync(commentId, cancellationToken);
+        var existing = await _unitOfWork.Comments.GetByExternalCommentIdAsync(commentId, account.MenuType, cancellationToken);
         if (existing is not null)
         {
             if (existing.Message == message && verb != "edited")
@@ -521,7 +524,7 @@ public class FacebookService : IFacebookService
             enriched?.ParentExternalId,
             value.TryGetProperty("parent_id", out var parentIdElement) ? parentIdElement.ToString() : null);
         if (!string.IsNullOrWhiteSpace(parentExternalId) && parentExternalId != postExternalId)
-            parentComment = await _unitOfWork.Comments.GetByExternalCommentIdAsync(parentExternalId!, cancellationToken);
+            parentComment = await _unitOfWork.Comments.GetByExternalCommentIdAsync(parentExternalId!, account.MenuType, cancellationToken);
 
         var comment = new Comment
         {
@@ -531,6 +534,7 @@ public class FacebookService : IFacebookService
             AuthorId = authorId,
             AuthorName = authorName,
             Message = message,
+            MenuType = account.MenuType,
             LikeCount = enriched?.LikeCount ?? 0,
             IsHidden = enriched?.IsHidden ?? false,
             PlatformCreatedAt = receivedAt
@@ -590,7 +594,7 @@ public class FacebookService : IFacebookService
             return;
         }
 
-        var post = await _unitOfWork.Posts.GetByExternalPostIdAsync(profile.Id, postExternalId!, cancellationToken);
+        var post = await _unitOfWork.Posts.GetByExternalPostIdAsync(profile.Id, postExternalId!, profile.MenuType, cancellationToken);
         if (post is null)
         {
             result.Skip($"Reaction ignored — post '{postExternalId}' is not stored.");
@@ -660,6 +664,7 @@ public class FacebookService : IFacebookService
             account.PlatformId,
             postExternalId,
             publishedAt,
+            account.MenuType,
             ct => GetPostSnapshotAsync(pageToken ?? string.Empty, postExternalId, ct),
             string.IsNullOrWhiteSpace(knownText) ? "Facebook post" : knownText!,
             requireMedia: false,
@@ -712,7 +717,7 @@ public class FacebookService : IFacebookService
             result.Skip("Message has no mid.");
             return;
         }
-        if (await _unitOfWork.Messages.GetByExternalMessageIdAsync(messageId, cancellationToken) is not null)
+        if (await _unitOfWork.Messages.GetByExternalMessageIdAsync(messageId, account.MenuType, cancellationToken) is not null)
         {
             result.Skip($"Message '{messageId}' already stored.");
             return;
@@ -737,7 +742,7 @@ public class FacebookService : IFacebookService
 
         var conversationKey = $"{profile.ExternalProfileId}:{customerId}";
         var conversation = await _unitOfWork.Conversations.GetByExternalConversationIdAsync(
-            profile.Id, conversationKey, cancellationToken);
+            profile.Id, conversationKey, account.MenuType, cancellationToken);
         var isNewConversation = conversation is null;
         if (conversation is null)
         {
@@ -747,6 +752,7 @@ public class FacebookService : IFacebookService
                 ExternalConversationId = conversationKey,
                 CustomerId = customerId,
                 CustomerName = customerId,
+                MenuType = account.MenuType,
                 Status = ConversationStatus.Open
             };
             await _unitOfWork.Conversations.AddAsync(conversation, cancellationToken);
@@ -760,7 +766,7 @@ public class FacebookService : IFacebookService
         var replyToMid = ReadReplyToMid(message);
         var quoted = string.IsNullOrWhiteSpace(replyToMid)
             ? null
-            : await _unitOfWork.Messages.GetByExternalMessageIdAsync(replyToMid!, cancellationToken);
+            : await _unitOfWork.Messages.GetByExternalMessageIdAsync(replyToMid!, account.MenuType, cancellationToken);
 
         var row = new Message
         {
@@ -771,6 +777,7 @@ public class FacebookService : IFacebookService
             Direction = outbound ? MessageDirection.Outbound : MessageDirection.Inbound,
             MessageType = MessageContentType.Text,
             Body = body,
+            MenuType = account.MenuType,
             Status = outbound ? MessageDeliveryStatus.Sent : MessageDeliveryStatus.Delivered,
             PlatformCreatedAt = receivedAt,
             ReplyToMessageId = quoted?.Id,
