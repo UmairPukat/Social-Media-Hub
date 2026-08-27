@@ -377,6 +377,34 @@ public class IntegrationService : IIntegrationService
         auth.UpdatedAt = DateTime.UtcNow;
         MarkUpdated(_unitOfWork.SocialAuths, auth, isNewAuth);
 
+        // Legacy duplicate rows (e.g. from App Connections) must share the same token so
+        // inbox replies work when webhooks land on a different profile/account pair.
+        var duplicateAccounts = await _unitOfWork.SocialAccounts.FindAsync(
+            a => a.UserId == userId && a.PlatformId == platform.Id && a.Id != account.Id,
+            cancellationToken);
+        foreach (var duplicate in duplicateAccounts)
+        {
+            duplicate.Status = SocialAccountStatus.Connected;
+            duplicate.ExternalAccountId = externalAccountId;
+            duplicate.DisplayName = displayName;
+            duplicate.ConnectedAt ??= DateTime.UtcNow;
+            duplicate.UpdatedAt = DateTime.UtcNow;
+            _unitOfWork.SocialAccounts.Update(duplicate);
+
+            var duplicateAuth = await _unitOfWork.SocialAuths.GetBySocialAccountIdAsync(duplicate.Id, cancellationToken);
+            if (duplicateAuth is null)
+            {
+                duplicateAuth = new SocialAuth { SocialAccountId = duplicate.Id };
+                await _unitOfWork.SocialAuths.AddAsync(duplicateAuth, cancellationToken);
+            }
+
+            duplicateAuth.AccessToken = accessToken;
+            duplicateAuth.RefreshToken = accessToken;
+            duplicateAuth.ExpiresAt = expiresAt;
+            duplicateAuth.UpdatedAt = DateTime.UtcNow;
+            _unitOfWork.SocialAuths.Update(duplicateAuth);
+        }
+
         await _unitOfWork.SaveChangesAsync(cancellationToken);
 
         var requiresPageSelection = SupportsPageSelection(platformCode);

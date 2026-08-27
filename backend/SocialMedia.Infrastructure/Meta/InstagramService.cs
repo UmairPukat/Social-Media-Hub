@@ -522,10 +522,10 @@ public class InstagramService : IInstagramService
         var connectionType = context.InstagramConnectionType;
         try
         {
-            // Instagram Login: POST graph.instagram.com/{ig-user-id}/messages with IG user token.
-            // Facebook Login: POST graph.facebook.com/{page-id}/messages with Page access token.
+            // Instagram Login: POST graph.instagram.com/me/messages with the IG user bearer token.
+            // Facebook Login: POST graph.facebook.com/{page-id}/messages with the page access token.
             var pathId = connectionType == InstagramConnectionType.InstagramLogin
-                ? context.ProfileExternalId
+                ? "me"
                 : (!string.IsNullOrWhiteSpace(context.PageExternalId)
                     ? context.PageExternalId
                     : context.ProfileExternalId);

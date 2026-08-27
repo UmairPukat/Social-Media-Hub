@@ -80,7 +80,9 @@ public class SocialAccountRepository : Repository<SocialAccount>, ISocialAccount
 
     public Task<SocialAccount?> GetByUserAndPlatformAsync(Guid userId, Guid platformId, CancellationToken cancellationToken = default)
         => DbSet.Include(a => a.Auth).Include(a => a.Profiles)
-            .FirstOrDefaultAsync(a => a.UserId == userId && a.PlatformId == platformId, cancellationToken);
+            .Where(a => a.UserId == userId && a.PlatformId == platformId)
+            .OrderByDescending(a => a.ConnectedAt ?? a.UpdatedAt ?? a.CreatedAt)
+            .FirstOrDefaultAsync(cancellationToken);
 
     public Task<SocialAccount?> GetByExternalAccountIdAsync(string externalAccountId, CancellationToken cancellationToken = default)
         => DbSet.Include(a => a.Auth).Include(a => a.Profiles)

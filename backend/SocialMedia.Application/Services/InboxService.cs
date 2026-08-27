@@ -190,10 +190,11 @@ public class InboxService : IInboxService
                 ?? throw new InvalidOperationException("Post not found.");
             var profile = await _unitOfWork.SocialProfiles.GetByIdAsync(post.SocialProfileId, cancellationToken)
                 ?? throw new InvalidOperationException("Profile not found.");
-            var account = await _unitOfWork.SocialAccounts.GetWithAuthAndProfilesAsync(profile.SocialAccountId, cancellationToken)
-                ?? throw new InvalidOperationException("Account not found.");
-            if (account.UserId != userId || account.Auth is null)
-                throw new InvalidOperationException("Comment not found.");
+            var resolvedAuth = await ResolveReplyAuthAsync(profile, userId, cancellationToken);
+            if (resolvedAuth is null)
+                return ApiResponse<object>.Fail("No access token is available. Reconnect the account.");
+
+            var (account, auth) = resolvedAuth.Value;
 
             var platform = await _unitOfWork.Platforms.GetByIdAsync(account.PlatformId, cancellationToken);
             var code = platform?.Code?.ToLowerInvariant() ?? string.Empty;
@@ -208,7 +209,7 @@ public class InboxService : IInboxService
                 return ApiResponse<object>.Fail("Cannot reply until the original comment is synced from Meta.");
 
             var connectionType = InstagramConnectionResolver.FromProfile(profile, code);
-            var tokens = CandidateTokens(account.Auth);
+            var tokens = CandidateTokens(auth);
             if (tokens.Count == 0)
                 return ApiResponse<object>.Fail("No access token is available. Reconnect the account.");
 
@@ -282,6 +283,106 @@ public class InboxService : IInboxService
         catch (Exception ex)
         {
             return ApiResponse<object>.Fail(ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// Resolves a token for inbox replies. Webhooks may store messages on a profile whose linked
+    /// account lost its token when duplicate platform rows exist (legacy App Connections data).
+    /// </summary>
+    private async Task<(SocialAccount Account, SocialAuth Auth)?> ResolveReplyAuthAsync(
+        SocialProfile profile,
+        Guid userId,
+        CancellationToken cancellationToken)
+    {
+        var linked = await _unitOfWork.SocialAccounts.GetWithAuthAndProfilesAsync(profile.SocialAccountId, cancellationToken);
+        if (linked is not null
+            && linked.UserId == userId
+            && linked.Auth is not null
+            && CandidateTokens(linked.Auth).Count > 0)
+            return (linked, linked.Auth);
+
+        var platformId = linked?.PlatformId;
+        if (!platformId.HasValue)
+            return null;
+
+        var accounts = await _unitOfWork.SocialAccounts.GetByUserAsync(userId, cancellationToken);
+        foreach (var row in accounts
+            .Where(a => a.Status == SocialAccountStatus.Connected && a.PlatformId == platformId.Value)
+            .OrderByDescending(a => a.ConnectedAt ?? a.UpdatedAt ?? a.CreatedAt))
+        {
+            var loaded = await _unitOfWork.SocialAccounts.GetWithAuthAndProfilesAsync(row.Id, cancellationToken);
+            if (loaded?.Auth is null || CandidateTokens(loaded.Auth).Count == 0)
+                continue;
+
+            if (loaded.Profiles.Any(p => ProfilesShareIdentity(p, profile)))
+                return (loaded, loaded.Auth);
+        }
+
+        foreach (var row in accounts
+            .Where(a => a.Status == SocialAccountStatus.Connected && a.PlatformId == platformId.Value)
+            .OrderByDescending(a => a.ConnectedAt ?? a.UpdatedAt ?? a.CreatedAt))
+        {
+            var loaded = await _unitOfWork.SocialAccounts.GetWithAuthAndProfilesAsync(row.Id, cancellationToken);
+            if (loaded?.Auth is not null && CandidateTokens(loaded.Auth).Count > 0)
+                return (loaded, loaded.Auth);
+        }
+
+        return null;
+    }
+
+    private static bool ProfilesShareIdentity(SocialProfile a, SocialProfile b)
+    {
+        if (string.Equals(a.ExternalProfileId, b.ExternalProfileId, StringComparison.Ordinal))
+            return true;
+
+        if (ProfileOwnsExternalId(a, b.ExternalProfileId) || ProfileOwnsExternalId(b, a.ExternalProfileId))
+            return true;
+
+        return false;
+    }
+
+    private static bool ProfileOwnsExternalId(SocialProfile profile, string? externalId)
+    {
+        if (string.IsNullOrWhiteSpace(externalId))
+            return false;
+
+        if (string.Equals(profile.ExternalProfileId, externalId, StringComparison.Ordinal))
+            return true;
+
+        var pageId = ReadPageId(profile.MetadataJson);
+        if (!string.IsNullOrWhiteSpace(pageId) && string.Equals(pageId, externalId, StringComparison.Ordinal))
+            return true;
+
+        foreach (var alternateId in ReadAlternateIds(profile.MetadataJson))
+        {
+            if (string.Equals(alternateId, externalId, StringComparison.Ordinal))
+                return true;
+        }
+
+        return false;
+    }
+
+    private static IReadOnlyList<string> ReadAlternateIds(string? metadataJson)
+    {
+        if (string.IsNullOrWhiteSpace(metadataJson))
+            return Array.Empty<string>();
+
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(metadataJson);
+            if (!doc.RootElement.TryGetProperty("alternateIds", out var ids) ||
+                ids.ValueKind != System.Text.Json.JsonValueKind.Array)
+                return Array.Empty<string>();
+
+            return ids.EnumerateArray()
+                .Select(id => id.ToString())
+                .Where(id => !string.IsNullOrWhiteSpace(id))
+                .ToList()!;
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return Array.Empty<string>();
         }
     }
 
@@ -455,10 +556,11 @@ public class InboxService : IInboxService
                 ?? throw new InvalidOperationException("Conversation not found.");
             var profile = await _unitOfWork.SocialProfiles.GetByIdAsync(conversation.SocialProfileId, cancellationToken)
                 ?? throw new InvalidOperationException("Profile not found.");
-            var account = await _unitOfWork.SocialAccounts.GetWithAuthAndProfilesAsync(profile.SocialAccountId, cancellationToken)
-                ?? throw new InvalidOperationException("Account not found.");
-            if (account.UserId != userId || account.Auth is null)
-                throw new InvalidOperationException("Message not found.");
+            var resolvedAuth = await ResolveReplyAuthAsync(profile, userId, cancellationToken);
+            if (resolvedAuth is null)
+                return ApiResponse<object>.Fail("No access token is available. Reconnect the account.");
+
+            var (account, auth) = resolvedAuth.Value;
 
             var platform = await _unitOfWork.Platforms.GetByIdAsync(account.PlatformId, cancellationToken);
             var code = platform?.Code?.ToLowerInvariant() ?? string.Empty;
@@ -485,7 +587,7 @@ public class InboxService : IInboxService
                 : null;
 
             var connectionType = InstagramConnectionResolver.FromProfile(profile, code);
-            var tokens = CandidateTokens(account.Auth);
+            var tokens = CandidateTokens(auth);
             if (tokens.Count == 0)
                 return ApiResponse<object>.Fail("No access token is available. Reconnect the account.");
 
