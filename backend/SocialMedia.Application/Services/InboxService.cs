@@ -304,6 +304,22 @@ public class InboxService : IInboxService
 
         var platformId = linked?.PlatformId;
         if (!platformId.HasValue)
+        {
+            var platformCode = profile.ProfileType switch
+            {
+                ProfileType.InstagramLogin => InstagramConnectionResolver.InstagramLoginPlatformCode,
+                ProfileType.InstagramBusiness => InstagramConnectionResolver.FacebookLoginPlatformCode,
+                ProfileType.FacebookPage => "facebook",
+                _ => null
+            };
+            if (!string.IsNullOrWhiteSpace(platformCode))
+            {
+                var platform = await _unitOfWork.Platforms.GetByCodeAsync(platformCode, cancellationToken);
+                platformId = platform?.Id;
+            }
+        }
+
+        if (!platformId.HasValue)
             return null;
 
         var accounts = await _unitOfWork.SocialAccounts.GetByUserAsync(userId, cancellationToken);

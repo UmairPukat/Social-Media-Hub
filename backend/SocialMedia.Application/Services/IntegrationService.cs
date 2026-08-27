@@ -63,7 +63,10 @@ public class IntegrationService : IIntegrationService
                 .GroupBy(a => a.PlatformId)
                 .ToDictionary(
                     g => g.Key,
-                    g => g.OrderByDescending(a => a.ConnectedAt ?? a.UpdatedAt ?? a.CreatedAt).First());
+                    g => g
+                        .OrderByDescending(AccountHasToken)
+                        .ThenByDescending(a => a.ConnectedAt ?? a.UpdatedAt ?? a.CreatedAt)
+                        .First());
 
             var cards = platforms
                 .Select(p =>
@@ -81,7 +84,7 @@ public class IntegrationService : IIntegrationService
                         CategoryLabel = def?.CategoryLabel ?? "Other",
                         SortOrder = def?.SortOrder ?? 9999,
                         CanConnect = def?.CanConnect ?? false,
-                        IsConnected = account is not null,
+                        IsConnected = account is not null && AccountHasToken(account),
                         AccountName = account?.DisplayName,
                         ConnectedAt = account?.ConnectedAt,
                         SupportsComments = def?.SupportsComments ?? false,
@@ -335,6 +338,9 @@ public class IntegrationService : IIntegrationService
         string displayName,
         CancellationToken cancellationToken)
     {
+        if (string.IsNullOrWhiteSpace(accessToken))
+            return ApiResponse<SocialAccountDto>.Fail("Meta did not return an access token. Try connecting again.");
+
         var platform = await _unitOfWork.Platforms.GetByCodeAsync(platformCode, cancellationToken);
         if (platform is null)
             return ApiResponse<SocialAccountDto>.Fail($"Unknown platform '{platformCode}'.");
@@ -379,33 +385,21 @@ public class IntegrationService : IIntegrationService
 
         // Legacy duplicate rows (e.g. from App Connections) must share the same token so
         // inbox replies work when webhooks land on a different profile/account pair.
-        var duplicateAccounts = await _unitOfWork.SocialAccounts.FindAsync(
-            a => a.UserId == userId && a.PlatformId == platform.Id && a.Id != account.Id,
+        await SyncTokenToDuplicateAccountsAsync(
+            userId,
+            platform.Id,
+            account.Id,
+            accessToken,
+            expiresAt,
+            externalAccountId,
+            displayName,
             cancellationToken);
-        foreach (var duplicate in duplicateAccounts)
-        {
-            duplicate.Status = SocialAccountStatus.Connected;
-            duplicate.ExternalAccountId = externalAccountId;
-            duplicate.DisplayName = displayName;
-            duplicate.ConnectedAt ??= DateTime.UtcNow;
-            duplicate.UpdatedAt = DateTime.UtcNow;
-            _unitOfWork.SocialAccounts.Update(duplicate);
-
-            var duplicateAuth = await _unitOfWork.SocialAuths.GetBySocialAccountIdAsync(duplicate.Id, cancellationToken);
-            if (duplicateAuth is null)
-            {
-                duplicateAuth = new SocialAuth { SocialAccountId = duplicate.Id };
-                await _unitOfWork.SocialAuths.AddAsync(duplicateAuth, cancellationToken);
-            }
-
-            duplicateAuth.AccessToken = accessToken;
-            duplicateAuth.RefreshToken = accessToken;
-            duplicateAuth.ExpiresAt = expiresAt;
-            duplicateAuth.UpdatedAt = DateTime.UtcNow;
-            _unitOfWork.SocialAuths.Update(duplicateAuth);
-        }
 
         await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        var persistedAuth = await _unitOfWork.SocialAuths.GetBySocialAccountIdAsync(account.Id, cancellationToken);
+        if (persistedAuth is null || string.IsNullOrWhiteSpace(persistedAuth.AccessToken))
+            return ApiResponse<SocialAccountDto>.Fail("The access token could not be saved. Disconnect and connect again.");
 
         var requiresPageSelection = SupportsPageSelection(platformCode);
         if (!requiresPageSelection)
@@ -575,6 +569,10 @@ public class IntegrationService : IIntegrationService
             if (account is null || account.Status != SocialAccountStatus.Connected)
                 return ApiResponse<ConnectionDetailsDto>.Fail($"{platform.Name} is not connected.");
 
+            var auth = account.Auth
+                ?? await _unitOfWork.SocialAuths.GetBySocialAccountIdAsync(account.Id, cancellationToken);
+            var effectiveToken = ResolveUserAccessToken(auth is null ? account : new SocialAccount { Auth = auth });
+
             var profile = account.Profiles.FirstOrDefault();
             var pageId = ResolveSelectedPageId(account, code);
             var isInstagram = code is "instagram" or "instagram_login";
@@ -594,9 +592,7 @@ public class IntegrationService : IIntegrationService
                 PageImage = profile?.ProfileImage,
                 InstagramId = isInstagram ? profile?.ExternalProfileId : null,
                 InstagramUsername = isInstagram ? profile?.Username : null,
-                AccessToken = string.IsNullOrWhiteSpace(account.Auth?.AccessToken)
-                    ? null
-                    : account.Auth!.AccessToken,
+                AccessToken = string.IsNullOrWhiteSpace(effectiveToken) ? null : effectiveToken,
                 Profiles = account.Profiles.Select(p => new SocialProfileDto
                 {
                     Id = p.Id,
@@ -607,7 +603,15 @@ public class IntegrationService : IIntegrationService
                 }).ToList()
             };
 
-            await ApplyWebhookStatusAsync(details, code, pageId, account.Auth?.AccessToken, cancellationToken);
+            if (string.IsNullOrWhiteSpace(effectiveToken))
+            {
+                details.WebhookError =
+                    "No access token is stored for this connection. Disconnect Instagram Login, then connect again to refresh the token.";
+            }
+            else
+            {
+                await ApplyWebhookStatusAsync(details, code, pageId, effectiveToken, cancellationToken);
+            }
             return ApiResponse<ConnectionDetailsDto>.Ok(details);
         }
         catch (Exception ex)
@@ -749,6 +753,11 @@ public class IntegrationService : IIntegrationService
         }
     }
 
+    private static bool AccountHasToken(SocialAccount account)
+        => account.Auth is not null
+           && (!string.IsNullOrWhiteSpace(account.Auth.AccessToken)
+               || !string.IsNullOrWhiteSpace(account.Auth.RefreshToken));
+
     private static bool SupportsPageSelection(string platformCode) =>
         platformCode.Equals("facebook", StringComparison.OrdinalIgnoreCase) ||
         platformCode.Equals("instagram", StringComparison.OrdinalIgnoreCase);
@@ -801,7 +810,36 @@ public class IntegrationService : IIntegrationService
         profile.UpdatedAt = DateTime.UtcNow;
         MarkUpdated(_unitOfWork.SocialProfiles, profile, isNew);
 
+        await ReassignOrphanProfilesAsync(account, profile.ExternalProfileId, cancellationToken);
+
         return profile;
+    }
+
+    /// <summary>
+    /// Legacy App Connections could leave profiles on a tokenless duplicate account.
+    /// Re-link matching profiles so inbox replies use the freshly connected account.
+    /// </summary>
+    private async Task ReassignOrphanProfilesAsync(
+        SocialAccount account,
+        string externalProfileId,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(externalProfileId))
+            return;
+
+        var orphans = await _unitOfWork.SocialProfiles.FindAsync(
+            p => p.ExternalProfileId == externalProfileId && p.SocialAccountId != account.Id,
+            cancellationToken);
+        foreach (var orphan in orphans)
+        {
+            var owner = await _unitOfWork.SocialAccounts.GetByIdAsync(orphan.SocialAccountId, cancellationToken);
+            if (owner is null || owner.UserId != account.UserId || owner.PlatformId != account.PlatformId)
+                continue;
+
+            orphan.SocialAccountId = account.Id;
+            orphan.UpdatedAt = DateTime.UtcNow;
+            _unitOfWork.SocialProfiles.Update(orphan);
+        }
     }
 
     private async Task QueueInitialSyncAsync(SocialAccount account, CancellationToken cancellationToken)
@@ -819,12 +857,53 @@ public class IntegrationService : IIntegrationService
     }
 
     private static string? ResolveUserAccessToken(SocialAccount? account)
+        => ResolveUserAccessToken(account?.Auth);
+
+    private static string? ResolveUserAccessToken(SocialAuth? auth)
     {
-        var auth = account?.Auth;
         if (auth is null)
             return null;
 
-        return !string.IsNullOrWhiteSpace(auth.RefreshToken) ? auth.RefreshToken : auth.AccessToken;
+        if (!string.IsNullOrWhiteSpace(auth.AccessToken))
+            return auth.AccessToken;
+        return !string.IsNullOrWhiteSpace(auth.RefreshToken) ? auth.RefreshToken : null;
+    }
+
+    private async Task SyncTokenToDuplicateAccountsAsync(
+        Guid userId,
+        Guid platformId,
+        Guid primaryAccountId,
+        string accessToken,
+        DateTime? expiresAt,
+        string externalAccountId,
+        string displayName,
+        CancellationToken cancellationToken)
+    {
+        var duplicateAccounts = await _unitOfWork.SocialAccounts.FindAsync(
+            a => a.UserId == userId && a.PlatformId == platformId && a.Id != primaryAccountId,
+            cancellationToken);
+        foreach (var duplicate in duplicateAccounts)
+        {
+            duplicate.Status = SocialAccountStatus.Connected;
+            duplicate.ExternalAccountId = externalAccountId;
+            duplicate.DisplayName = displayName;
+            duplicate.ConnectedAt ??= DateTime.UtcNow;
+            duplicate.UpdatedAt = DateTime.UtcNow;
+            _unitOfWork.SocialAccounts.Update(duplicate);
+
+            var duplicateAuth = await _unitOfWork.SocialAuths.GetBySocialAccountIdAsync(duplicate.Id, cancellationToken);
+            if (duplicateAuth is null)
+            {
+                duplicateAuth = new SocialAuth { SocialAccountId = duplicate.Id };
+                await _unitOfWork.SocialAuths.AddAsync(duplicateAuth, cancellationToken);
+            }
+
+            duplicateAuth.AccessToken = accessToken;
+            duplicateAuth.RefreshToken = accessToken;
+            duplicateAuth.ExpiresAt = expiresAt;
+            duplicateAuth.UpdatedAt = DateTime.UtcNow;
+            _unitOfWork.SocialAuths.Update(duplicateAuth);
+        }
     }
 
     private static HashSet<string> ResolveConnectedPageIds(SocialAccount? account, string platformCode)
@@ -889,27 +968,31 @@ public class IntegrationService : IIntegrationService
             if (platform is null)
                 return ApiResponse<object>.Fail("Unknown platform.");
 
-            var account = await _unitOfWork.SocialAccounts.GetByUserAndPlatformAsync(userId, platform.Id, cancellationToken);
-            if (account is null)
+            var accounts = await _unitOfWork.SocialAccounts.FindAsync(
+                a => a.UserId == userId && a.PlatformId == platform.Id,
+                cancellationToken);
+            if (accounts.Count == 0)
                 return ApiResponse<object>.Fail("Account not connected.");
 
             var code = platformCode.Trim().ToLowerInvariant();
-            var auth = await _unitOfWork.SocialAuths.GetBySocialAccountIdAsync(account.Id, cancellationToken);
-
-            // Stop Meta from sending webhooks for this page before the token is cleared.
-            if (SupportsPageSelection(code))
-                await UnsubscribePageWebhooksAsync(code, account, auth?.AccessToken, cancellationToken);
-
-            account.Status = SocialAccountStatus.Disconnected;
-            account.UpdatedAt = DateTime.UtcNow;
-            _unitOfWork.SocialAccounts.Update(account);
-
-            if (auth is not null)
+            foreach (var account in accounts)
             {
-                auth.AccessToken = string.Empty;
-                auth.RefreshToken = null;
-                auth.UpdatedAt = DateTime.UtcNow;
-                _unitOfWork.SocialAuths.Update(auth);
+                var auth = await _unitOfWork.SocialAuths.GetBySocialAccountIdAsync(account.Id, cancellationToken);
+
+                if (SupportsPageSelection(code) && account.Status == SocialAccountStatus.Connected)
+                    await UnsubscribePageWebhooksAsync(code, account, auth?.AccessToken, cancellationToken);
+
+                account.Status = SocialAccountStatus.Disconnected;
+                account.UpdatedAt = DateTime.UtcNow;
+                _unitOfWork.SocialAccounts.Update(account);
+
+                if (auth is not null)
+                {
+                    auth.AccessToken = string.Empty;
+                    auth.RefreshToken = null;
+                    auth.UpdatedAt = DateTime.UtcNow;
+                    _unitOfWork.SocialAuths.Update(auth);
+                }
             }
 
             await _unitOfWork.SaveChangesAsync(cancellationToken);

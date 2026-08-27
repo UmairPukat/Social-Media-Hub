@@ -74,6 +74,7 @@ public class SocialAccountRepository : Repository<SocialAccount>, ISocialAccount
     public async Task<IReadOnlyList<SocialAccount>> GetByUserAsync(Guid userId, CancellationToken cancellationToken = default)
         => await DbSet.AsNoTracking()
             .Include(a => a.Platform)
+            .Include(a => a.Auth)
             .Include(a => a.Profiles)
             .Where(a => a.UserId == userId)
             .ToListAsync(cancellationToken);
@@ -81,7 +82,11 @@ public class SocialAccountRepository : Repository<SocialAccount>, ISocialAccount
     public Task<SocialAccount?> GetByUserAndPlatformAsync(Guid userId, Guid platformId, CancellationToken cancellationToken = default)
         => DbSet.Include(a => a.Auth).Include(a => a.Profiles)
             .Where(a => a.UserId == userId && a.PlatformId == platformId)
-            .OrderByDescending(a => a.ConnectedAt ?? a.UpdatedAt ?? a.CreatedAt)
+            // Prefer a connected row that actually has a token (legacy duplicate rows may be tokenless).
+            .OrderByDescending(a => a.Status == Domain.Enums.SocialAccountStatus.Connected ? 1 : 0)
+            .ThenByDescending(a => a.Auth != null && a.Auth.AccessToken != null && a.Auth.AccessToken != "" ? 1 : 0)
+            .ThenByDescending(a => a.Auth != null && a.Auth.RefreshToken != null && a.Auth.RefreshToken != "" ? 1 : 0)
+            .ThenByDescending(a => a.ConnectedAt ?? a.UpdatedAt ?? a.CreatedAt)
             .FirstOrDefaultAsync(cancellationToken);
 
     public Task<SocialAccount?> GetByExternalAccountIdAsync(string externalAccountId, CancellationToken cancellationToken = default)
