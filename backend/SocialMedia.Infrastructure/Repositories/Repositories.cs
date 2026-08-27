@@ -128,9 +128,23 @@ public class SocialProfileRepository : Repository<SocialProfile>, ISocialProfile
     public async Task<IReadOnlyList<SocialProfile>> GetBySocialAccountAsync(Guid socialAccountId, CancellationToken cancellationToken = default)
         => await DbSet.AsNoTracking().Where(p => p.SocialAccountId == socialAccountId).ToListAsync(cancellationToken);
 
-    public Task<SocialProfile?> GetByExternalProfileIdAsync(string externalProfileId, CancellationToken cancellationToken = default)
-        => DbSet.Include(p => p.SocialAccount).ThenInclude(a => a!.Auth)
-            .FirstOrDefaultAsync(p => p.ExternalProfileId == externalProfileId, cancellationToken);
+    public async Task<SocialProfile?> GetByExternalProfileIdAsync(string externalProfileId, CancellationToken cancellationToken = default)
+    {
+        var profiles = await DbSet.Include(p => p.SocialAccount).ThenInclude(a => a!.Auth)
+            .Where(p => p.ExternalProfileId == externalProfileId)
+            .ToListAsync(cancellationToken);
+
+        // Prefer the profile whose account actually holds OAuth tokens (avoids stale duplicate rows).
+        return profiles
+            .OrderByDescending(p => p.SocialAccount?.Status == Domain.Enums.SocialAccountStatus.Connected ? 1 : 0)
+            .ThenByDescending(p => HasStoredOAuthTokens(p.SocialAccount?.Auth) ? 1 : 0)
+            .ThenByDescending(p => p.UpdatedAt ?? p.CreatedAt)
+            .FirstOrDefault();
+    }
+
+    private static bool HasStoredOAuthTokens(Domain.Entities.SocialAuth? auth)
+        => auth is not null
+           && (!string.IsNullOrWhiteSpace(auth.AccessToken) || !string.IsNullOrWhiteSpace(auth.RefreshToken));
 }
 
 public class PostRepository : Repository<Post>, IPostRepository

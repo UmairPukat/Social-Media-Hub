@@ -69,6 +69,7 @@ public class InboxService : IInboxService
 
             var kind = filter?.ItemKind?.ToLowerInvariant();
             var items = new List<InboxItemDto>();
+            var userAccounts = await _unitOfWork.SocialAccounts.GetByUserAsync(userId, cancellationToken);
 
             if (kind is null or "comment")
             {
@@ -108,7 +109,10 @@ public class InboxService : IInboxService
                         }
                     };
                     if (profile is not null && account is not null)
-                        InboxRoutingHelper.Apply(item, profile, account);
+                    {
+                        var routingAccount = PickRoutingAccount(profile, account, userAccounts) ?? account;
+                        InboxRoutingHelper.Apply(item, profile, routingAccount);
+                    }
                     return item;
                 }));
             }
@@ -144,7 +148,10 @@ public class InboxService : IInboxService
                             : null
                     };
                     if (profile is not null && account is not null)
-                        InboxRoutingHelper.Apply(item, profile, account);
+                    {
+                        var routingAccount = PickRoutingAccount(profile, account, userAccounts) ?? account;
+                        InboxRoutingHelper.Apply(item, profile, routingAccount);
+                    }
                     return item;
                 }));
             }
@@ -323,8 +330,7 @@ public class InboxService : IInboxService
         ReplyAuthHints hints,
         CancellationToken cancellationToken)
     {
-        if (!string.IsNullOrWhiteSpace(hints.MenuType)
-            && (!string.IsNullOrWhiteSpace(hints.PageId) || !string.IsNullOrWhiteSpace(hints.AccountId)))
+        if (!string.IsNullOrWhiteSpace(hints.MenuType))
         {
             var hinted = await FindAccountByRoutingHintsAsync(userId, profile, hints, cancellationToken);
             if (hinted is not null)
@@ -338,19 +344,26 @@ public class InboxService : IInboxService
             && CandidateTokens(linked.Auth).Count > 0)
             return (linked, linked.Auth);
 
-        var platformCode = linked?.Platform?.Code ?? InferPlatformCode(profile);
-        if (string.IsNullOrWhiteSpace(platformCode))
+        var accounts = await _unitOfWork.SocialAccounts.GetByUserAsync(userId, cancellationToken);
+        var routingAccount = PickRoutingAccount(profile, linked, accounts);
+        if (routingAccount?.Auth is not null && CandidateTokens(routingAccount.Auth).Count > 0)
+            return (routingAccount, routingAccount.Auth);
+
+        var platformCodes = ResolvePlatformCodes(profile, linked);
+        if (platformCodes.Count == 0)
             return null;
 
         var preferredMenu = string.IsNullOrWhiteSpace(hints.MenuType)
-            ? linked?.MenuType
+            ? linked?.MenuType ?? routingAccount?.MenuType
             : MenuTypes.Normalize(hints.MenuType);
 
-        var accounts = await _unitOfWork.SocialAccounts.GetByUserAsync(userId, cancellationToken);
         var candidates = accounts
-            .Where(a => a.Status == SocialAccountStatus.Connected
-                        && string.Equals(a.Platform?.Code, platformCode, StringComparison.OrdinalIgnoreCase))
-            .OrderByDescending(a => !string.IsNullOrWhiteSpace(preferredMenu)
+            .Where(a => a.UserId == userId
+                        && PlatformCodesOverlap(a.Platform?.Code, platformCodes)
+                        && (a.Status == SocialAccountStatus.Connected || HasStoredTokens(a.Auth)))
+            .OrderByDescending(a => HasStoredTokens(a.Auth))
+            .ThenByDescending(a => a.Status == SocialAccountStatus.Connected)
+            .ThenByDescending(a => !string.IsNullOrWhiteSpace(preferredMenu)
                                     && string.Equals(a.MenuType, preferredMenu, StringComparison.OrdinalIgnoreCase))
             .ThenByDescending(a => a.ConnectedAt ?? a.UpdatedAt ?? a.CreatedAt);
 
@@ -385,16 +398,19 @@ public class InboxService : IInboxService
         CancellationToken cancellationToken)
     {
         var menuType = MenuTypes.Normalize(hints.MenuType!);
-        var platformCode = InferPlatformCode(profile);
+        var platformCodes = ResolvePlatformCodes(profile, linkedAccount: null);
         var accounts = await _unitOfWork.SocialAccounts.GetByUserAsync(userId, cancellationToken);
 
         foreach (var row in accounts
-                     .Where(a => a.Status == SocialAccountStatus.Connected
-                                 && string.Equals(a.MenuType, menuType, StringComparison.OrdinalIgnoreCase))
-                     .OrderByDescending(a => a.ConnectedAt ?? a.UpdatedAt ?? a.CreatedAt))
+                     .Where(a => a.UserId == userId
+                                 && string.Equals(a.MenuType, menuType, StringComparison.OrdinalIgnoreCase)
+                                 && (a.Status == SocialAccountStatus.Connected || HasStoredTokens(a.Auth)))
+                     .OrderByDescending(a => HasStoredTokens(a.Auth))
+                     .ThenByDescending(a => a.Status == SocialAccountStatus.Connected)
+                     .ThenByDescending(a => a.ConnectedAt ?? a.UpdatedAt ?? a.CreatedAt))
         {
-            if (!string.IsNullOrWhiteSpace(platformCode)
-                && !string.Equals(row.Platform?.Code, platformCode, StringComparison.OrdinalIgnoreCase))
+            if (platformCodes.Count > 0
+                && !PlatformCodesOverlap(row.Platform?.Code, platformCodes))
                 continue;
 
             var loaded = await _unitOfWork.SocialAccounts.GetWithAuthAndProfilesAsync(row.Id, cancellationToken);
@@ -404,12 +420,97 @@ public class InboxService : IInboxService
             if (loaded.Profiles.Any(p => InboxRoutingHelper.ProfileMatchesRouting(p, hints.PageId, hints.AccountId)))
                 return (loaded, loaded.Auth);
 
-            if (InboxRoutingHelper.ProfileMatchesRouting(profile, hints.PageId, hints.AccountId))
+            if (loaded.Profiles.Any(p => ProfilesShareIdentity(p, profile)))
                 return (loaded, loaded.Auth);
+
+            if (!string.IsNullOrWhiteSpace(hints.PageId)
+                || !string.IsNullOrWhiteSpace(hints.AccountId))
+            {
+                if (InboxRoutingHelper.ProfileMatchesRouting(profile, hints.PageId, hints.AccountId))
+                    return (loaded, loaded.Auth);
+            }
         }
 
         return null;
     }
+
+    /// <summary>
+    /// Picks the connected account that owns OAuth tokens for this inbox profile when the linked
+    /// row is a stale duplicate (Integrations vs App Connections, or legacy reconnect rows).
+    /// </summary>
+    private static SocialAccount? PickRoutingAccount(
+        SocialProfile profile,
+        SocialAccount? linkedAccount,
+        IReadOnlyList<SocialAccount> userAccounts)
+    {
+        if (linkedAccount is not null
+            && linkedAccount.Auth is not null
+            && HasStoredTokens(linkedAccount.Auth))
+            return linkedAccount;
+
+        var platformCodes = ResolvePlatformCodes(profile, linkedAccount);
+        var preferredMenu = linkedAccount?.MenuType;
+
+        return userAccounts
+            .Where(a => HasStoredTokens(a.Auth)
+                        && PlatformCodesOverlap(a.Platform?.Code, platformCodes)
+                        && (a.Status == SocialAccountStatus.Connected || HasStoredTokens(a.Auth)))
+            .OrderByDescending(a => a.Profiles.Any(p => ProfilesShareIdentity(p, profile)))
+            .ThenByDescending(a => !string.IsNullOrWhiteSpace(preferredMenu)
+                                    && string.Equals(a.MenuType, preferredMenu, StringComparison.OrdinalIgnoreCase))
+            .ThenByDescending(a => a.Status == SocialAccountStatus.Connected)
+            .ThenByDescending(a => a.ConnectedAt ?? a.UpdatedAt ?? a.CreatedAt)
+            .FirstOrDefault();
+    }
+
+    private static HashSet<string> ResolvePlatformCodes(SocialProfile profile, SocialAccount? linkedAccount)
+    {
+        var codes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (!string.IsNullOrWhiteSpace(linkedAccount?.Platform?.Code))
+            codes.Add(linkedAccount.Platform.Code);
+
+        var inferred = InferPlatformCode(profile);
+        if (!string.IsNullOrWhiteSpace(inferred))
+            codes.Add(inferred);
+
+        switch (profile.ProfileType)
+        {
+            case ProfileType.InstagramLogin:
+                codes.Add(InstagramConnectionResolver.InstagramLoginPlatformCode);
+                break;
+            case ProfileType.InstagramBusiness:
+                codes.Add(InstagramConnectionResolver.FacebookLoginPlatformCode);
+                codes.Add(InstagramConnectionResolver.InstagramLoginPlatformCode);
+                break;
+            case ProfileType.FacebookPage:
+                codes.Add("facebook");
+                break;
+            case ProfileType.WhatsAppPhone:
+                codes.Add("whatsapp");
+                break;
+        }
+
+        return codes;
+    }
+
+    private static bool PlatformCodesOverlap(string? platformCode, IReadOnlyCollection<string> expectedCodes)
+    {
+        if (expectedCodes.Count == 0)
+            return true;
+
+        if (string.IsNullOrWhiteSpace(platformCode))
+            return false;
+
+        if (expectedCodes.Contains(platformCode))
+            return true;
+
+        return InstagramConnectionResolver.IsInstagramPlatform(platformCode)
+               && expectedCodes.Any(InstagramConnectionResolver.IsInstagramPlatform);
+    }
+
+    private static bool HasStoredTokens(SocialAuth? auth)
+        => auth is not null
+           && (!string.IsNullOrWhiteSpace(auth.AccessToken) || !string.IsNullOrWhiteSpace(auth.RefreshToken));
 
     private static string? InferPlatformCode(SocialProfile profile)
         => profile.ProfileType switch
@@ -417,6 +518,7 @@ public class InboxService : IInboxService
             ProfileType.InstagramLogin => InstagramConnectionResolver.InstagramLoginPlatformCode,
             ProfileType.InstagramBusiness => InstagramConnectionResolver.FacebookLoginPlatformCode,
             ProfileType.FacebookPage => "facebook",
+            ProfileType.WhatsAppPhone => "whatsapp",
             _ => null
         };
 

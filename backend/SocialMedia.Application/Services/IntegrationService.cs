@@ -900,8 +900,8 @@ public class IntegrationService : IIntegrationService
     }
 
     /// <summary>
-    /// Legacy App Connections could leave profiles on a tokenless duplicate account.
-    /// Re-link matching profiles so inbox replies use the freshly connected account.
+    /// Legacy rows can leave profiles on a tokenless duplicate account (same platform code,
+    /// Integrations vs App Connections, or reconnect leftovers). Re-link them to the live account.
     /// </summary>
     private async Task ReassignOrphanProfilesAsync(
         SocialAccount account,
@@ -911,21 +911,67 @@ public class IntegrationService : IIntegrationService
         if (string.IsNullOrWhiteSpace(externalProfileId))
             return;
 
+        var platform = await _unitOfWork.Platforms.GetByIdAsync(account.PlatformId, cancellationToken);
+        var platformCode = platform?.Code;
+        if (string.IsNullOrWhiteSpace(platformCode))
+            return;
+
         var orphans = await _unitOfWork.SocialProfiles.FindAsync(
             p => p.ExternalProfileId == externalProfileId && p.SocialAccountId != account.Id,
             cancellationToken);
+
+        var canonicalProfiles = await _unitOfWork.SocialProfiles.GetBySocialAccountAsync(account.Id, cancellationToken);
+        var canonical = canonicalProfiles.FirstOrDefault(p =>
+            string.Equals(p.ExternalProfileId, externalProfileId, StringComparison.Ordinal));
+
         foreach (var orphan in orphans)
         {
-            var owner = await _unitOfWork.SocialAccounts.GetByIdAsync(orphan.SocialAccountId, cancellationToken);
-            if (owner is null || owner.UserId != account.UserId || owner.PlatformId != account.PlatformId
-                || !string.Equals(owner.MenuType, account.MenuType, StringComparison.OrdinalIgnoreCase))
+            var owner = await _unitOfWork.SocialAccounts.GetWithAuthAndProfilesAsync(orphan.SocialAccountId, cancellationToken);
+            if (owner is null || owner.UserId != account.UserId)
                 continue;
+
+            var ownerPlatform = owner.Platform
+                ?? await _unitOfWork.Platforms.GetByIdAsync(owner.PlatformId, cancellationToken);
+            if (!string.Equals(ownerPlatform?.Code, platformCode, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            var ownerAuth = owner.Auth
+                ?? await _unitOfWork.SocialAuths.GetBySocialAccountIdAsync(owner.Id, cancellationToken);
+            if (owner.Status == SocialAccountStatus.Connected && HasStoredTokens(ownerAuth))
+                continue;
+
+            if (canonical is not null && canonical.Id != orphan.Id)
+            {
+                await MoveConversationsToProfileAsync(orphan.Id, canonical.Id, cancellationToken);
+                _unitOfWork.SocialProfiles.Remove(orphan);
+                continue;
+            }
 
             orphan.SocialAccountId = account.Id;
             orphan.UpdatedAt = DateTime.UtcNow;
             _unitOfWork.SocialProfiles.Update(orphan);
         }
     }
+
+    private async Task MoveConversationsToProfileAsync(
+        Guid fromProfileId,
+        Guid toProfileId,
+        CancellationToken cancellationToken)
+    {
+        var conversations = await _unitOfWork.Conversations.FindAsync(
+            c => c.SocialProfileId == fromProfileId,
+            cancellationToken);
+        foreach (var conversation in conversations)
+        {
+            conversation.SocialProfileId = toProfileId;
+            conversation.UpdatedAt = DateTime.UtcNow;
+            _unitOfWork.Conversations.Update(conversation);
+        }
+    }
+
+    private static bool HasStoredTokens(SocialAuth? auth)
+        => auth is not null
+           && (!string.IsNullOrWhiteSpace(auth.AccessToken) || !string.IsNullOrWhiteSpace(auth.RefreshToken));
 
     private async Task QueueInitialSyncAsync(SocialAccount account, CancellationToken cancellationToken)
     {
