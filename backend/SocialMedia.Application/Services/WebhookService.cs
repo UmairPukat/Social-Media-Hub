@@ -167,7 +167,7 @@ public class WebhookService : IWebhookService
     {
         try
         {
-            var platform = await _unitOfWork.Platforms.GetByCodeAsync(platformCode, cancellationToken);
+            var platform = await _unitOfWork.Platforms.GetByCodeAsync(platformCode, cancellationToken: cancellationToken);
             if (platform is null)
                 return ApiResponse<object>.Fail("Unknown platform.");
 
@@ -214,7 +214,7 @@ public class WebhookService : IWebhookService
     {
         try
         {
-            var platform = await _unitOfWork.Platforms.GetByCodeAsync(platformCode, cancellationToken);
+            var platform = await _unitOfWork.Platforms.GetByCodeAsync(platformCode, cancellationToken: cancellationToken);
 
             // 1) Always persist the full raw payload to WebhookLogs first.
             var log = new WebhookLog
@@ -235,7 +235,7 @@ public class WebhookService : IWebhookService
             var targetCode = descriptor.PlatformCode ?? platformCode;
             var targetPlatform = string.Equals(targetCode, platformCode, StringComparison.OrdinalIgnoreCase)
                 ? platform
-                : await _unitOfWork.Platforms.GetByCodeAsync(targetCode, cancellationToken);
+                : await _unitOfWork.Platforms.GetByCodeAsync(targetCode, cancellationToken: cancellationToken);
 
             var webhookEvent = new WebhookEvent
             {

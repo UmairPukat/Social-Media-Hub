@@ -50,7 +50,7 @@ public class InboxService : IInboxService
                 }
                 else
                 {
-                    var platform = await _unitOfWork.Platforms.GetByCodeAsync(filter.PlatformCode, cancellationToken);
+                    var platform = await _unitOfWork.Platforms.GetByCodeAsync(filter.PlatformCode, cancellationToken: cancellationToken);
                     platformId = platform?.Id;
                 }
 
@@ -314,7 +314,7 @@ public class InboxService : IInboxService
             };
             if (!string.IsNullOrWhiteSpace(platformCode))
             {
-                var platform = await _unitOfWork.Platforms.GetByCodeAsync(platformCode, cancellationToken);
+                var platform = await _unitOfWork.Platforms.GetByCodeAsync(platformCode, cancellationToken: cancellationToken);
                 platformId = platform?.Id;
             }
         }
