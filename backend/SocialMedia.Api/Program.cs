@@ -84,13 +84,26 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
-if (Environment.GetEnvironmentVariable("SEED_ON_STARTUP")?.ToLower() == "true")
+using (var scope = app.Services.CreateScope())
 {
-    using (var scope = app.Services.CreateScope())
-    {
-        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
 
+    try
+    {
+        await DbSeeder.EnsureSchemaWithRetryAsync(
+            db,
+            maxAttempts: 8,
+            delayBetweenAttempts: TimeSpan.FromSeconds(3),
+            logger: logger);
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "Database schema ensure failed after all retry attempts.");
+    }
+
+    if (Environment.GetEnvironmentVariable("SEED_ON_STARTUP")?.ToLower() == "true")
+    {
         try
         {
             await DbSeeder.SeedWithRetryAsync(

@@ -11,7 +11,7 @@ internal static class ModuleTableMigration
 {
     public static async Task MigrateAndDropLegacyAsync(AppDbContext db, ILogger? logger = null)
     {
-        if (!await LegacyTableExistsAsync(db, "Platforms"))
+        if (!await TableExistsAsync(db, "Platforms"))
             return;
 
         if (!await ModulePlatformsAlreadySeededAsync(db))
@@ -23,7 +23,7 @@ internal static class ModuleTableMigration
         await DropLegacyTablesAsync(db, logger);
     }
 
-    private static async Task<bool> LegacyTableExistsAsync(AppDbContext db, string tableName)
+    internal static async Task<bool> TableExistsAsync(AppDbContext db, string tableName)
     {
         await db.Database.OpenConnectionAsync();
         try
@@ -49,9 +49,14 @@ internal static class ModuleTableMigration
     }
 
     private static async Task<bool> ModulePlatformsAlreadySeededAsync(AppDbContext db)
-        => await db.IntegrationPlatforms.AnyAsync()
-           || await db.AppConnectionPlatforms.AnyAsync()
-           || await db.DeveloperAppPlatforms.AnyAsync();
+    {
+        if (!await TableExistsAsync(db, "IntegrationPlatforms"))
+            return false;
+
+        return await db.IntegrationPlatforms.AnyAsync()
+               || await db.AppConnectionPlatforms.AnyAsync()
+               || await db.DeveloperAppPlatforms.AnyAsync();
+    }
 
     private static async Task CopyLegacyDataAsync(AppDbContext db)
     {

@@ -62,16 +62,60 @@ public static class DbSeeder
         await SeedAsync(db);
     }
 
-    public static async Task SeedAsync(AppDbContext db, ILogger? logger = null)
+    /// <summary>
+    /// Ensures module tables exist and legacy data is migrated. Safe to run on every startup.
+    /// </summary>
+    public static async Task EnsureSchemaWithRetryAsync(
+        AppDbContext db,
+        int maxAttempts = 8,
+        TimeSpan? delayBetweenAttempts = null,
+        ILogger? logger = null)
+    {
+        var delay = delayBetweenAttempts ?? TimeSpan.FromSeconds(3);
+
+        for (var attempt = 1; attempt <= maxAttempts; attempt++)
+        {
+            try
+            {
+                await EnsureSchemaAsync(db, logger);
+                if (attempt > 1)
+                {
+                    logger?.LogInformation("Database schema ensure succeeded on attempt {Attempt}.", attempt);
+                }
+                return;
+            }
+            catch (Exception ex) when (attempt < maxAttempts)
+            {
+                logger?.LogWarning(
+                    ex,
+                    "Database schema ensure attempt {Attempt}/{MaxAttempts} failed. Retrying in {Delay}s...",
+                    attempt,
+                    maxAttempts,
+                    delay.TotalSeconds);
+
+                await Task.Delay(delay);
+            }
+        }
+
+        await EnsureSchemaAsync(db, logger);
+    }
+
+    public static async Task EnsureSchemaAsync(AppDbContext db, ILogger? logger = null)
     {
         await db.Database.EnsureCreatedAsync();
         await EnsureAppConnectionConfigsTableAsync(db);
         await EnsureIntegrationAppConfigsTableAsync(db);
         await EnsureDeveloperAppConfigsTableAsync(db);
 
+        await ModuleSchemaEnsurer.EnsureAsync(db, logger);
         await ModuleTableMigration.MigrateAndDropLegacyAsync(db, logger);
-
         await SeedModulePlatformsAsync(db);
+        await db.SaveChangesAsync();
+    }
+
+    public static async Task SeedAsync(AppDbContext db, ILogger? logger = null)
+    {
+        await EnsureSchemaAsync(db, logger);
 
         if (!db.AccessTokens.Any())
         {
