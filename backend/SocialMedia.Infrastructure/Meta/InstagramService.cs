@@ -688,7 +688,7 @@ public class InstagramService : IInstagramService
                     await ProcessChangesAsync(profile, entry, changes, result, cancellationToken);
 
                 foreach (var messaging in MetaWebhookEntryHelper.EnumerateMessageArrays(entry))
-                    await ProcessMessagesAsync(profile, messaging, result, cancellationToken);
+                    await ProcessMessagesAsync(profile, igUserId, messaging, result, cancellationToken);
             }
 
             await _store.SaveChangesAsync(cancellationToken);
@@ -801,10 +801,16 @@ public class InstagramService : IInstagramService
             if (field is "messages" or "messaging" or "messaging_postbacks" or "message_reactions")
             {
                 if (value.TryGetProperty("message", out _))
-                    await ProcessMessageAsync(profile, account, value, result, cancellationToken);
+                {
+                    var entryId = entry.TryGetProperty("id", out var idEl) ? idEl.ToString() : null;
+                    await ProcessMessageAsync(profile, account, entryId, value, result, cancellationToken);
+                }
                 else if (value.TryGetProperty("messaging", out var nestedMessaging) &&
                          nestedMessaging.ValueKind == JsonValueKind.Array)
-                    await ProcessMessagesAsync(profile, nestedMessaging, result, cancellationToken);
+                {
+                    var entryId = entry.TryGetProperty("id", out var idEl) ? idEl.ToString() : null;
+                    await ProcessMessagesAsync(profile, entryId, nestedMessaging, result, cancellationToken);
+                }
                 else
                     result.Skip($"Change '{field}' value has no message envelope.");
                 continue;
@@ -971,6 +977,7 @@ public class InstagramService : IInstagramService
 
     private async Task ProcessMessagesAsync(
         SocialProfileEntityBase profile,
+        string? entryBusinessId,
         JsonElement messaging,
         WebhookProcessResult result,
         CancellationToken cancellationToken)
@@ -983,7 +990,7 @@ public class InstagramService : IInstagramService
         }
 
         foreach (var item in messaging.EnumerateArray())
-            await ProcessMessageAsync(profile, account, item, result, cancellationToken);
+            await ProcessMessageAsync(profile, account, entryBusinessId, item, result, cancellationToken);
     }
 
     /// <summary>
@@ -993,6 +1000,7 @@ public class InstagramService : IInstagramService
     private async Task ProcessMessageAsync(
         SocialProfileEntityBase profile,
         SocialAccountEntityBase account,
+        string? entryBusinessId,
         JsonElement item,
         WebhookProcessResult result,
         CancellationToken cancellationToken)
@@ -1028,9 +1036,21 @@ public class InstagramService : IInstagramService
         var isEcho = IsEchoOrSelf(item, message);
         var outbound = isEcho || MetaMessagingHelper.ProfileOwnsSenderId(profile, senderId);
         var customerId = outbound ? receiverId : senderId;
+        if (string.IsNullOrWhiteSpace(customerId) && !outbound)
+        {
+            if (!string.IsNullOrWhiteSpace(receiverId) &&
+                !MetaMessagingHelper.ProfileOwnsSenderId(profile, receiverId) &&
+                !IdsMatchEntryBusiness(receiverId, entryBusinessId, profile))
+                customerId = receiverId;
+            else if (!string.IsNullOrWhiteSpace(senderId) &&
+                     !MetaMessagingHelper.ProfileOwnsSenderId(profile, senderId) &&
+                     !IdsMatchEntryBusiness(senderId, entryBusinessId, profile))
+                customerId = senderId;
+        }
+
         if (string.IsNullOrWhiteSpace(customerId))
         {
-            result.Skip($"Message '{messageId}' has no sender/recipient id.");
+            result.Skip($"Message '{messageId}' has no customer sender/recipient id.");
             return;
         }
 
@@ -1159,6 +1179,18 @@ public class InstagramService : IInstagramService
         return raw > 100_000_000_000L
             ? DateTimeOffset.FromUnixTimeMilliseconds(raw).UtcDateTime
             : DateTimeOffset.FromUnixTimeSeconds(raw).UtcDateTime;
+    }
+
+    private static bool IdsMatchEntryBusiness(string? actorId, string? entryBusinessId, SocialProfileEntityBase profile)
+    {
+        if (string.IsNullOrWhiteSpace(actorId))
+            return false;
+
+        if (!string.IsNullOrWhiteSpace(entryBusinessId) &&
+            string.Equals(actorId, entryBusinessId, StringComparison.Ordinal))
+            return true;
+
+        return MetaMessagingHelper.ProfileOwnsSenderId(profile, actorId);
     }
 
     private static bool IsEchoOrSelf(JsonElement item, JsonElement message)

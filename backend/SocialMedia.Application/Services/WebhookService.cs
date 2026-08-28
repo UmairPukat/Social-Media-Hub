@@ -254,17 +254,14 @@ public class WebhookService : IWebhookService
             var effectiveMenu = normalizedMenu ?? MenuTypes.Integration;
             var store = _processData.ForMenu(effectiveMenu);
 
-            var platform = await store.GetPlatformByCodeAsync(platformCode, cancellationToken);
-
             // Meta names the source in "object", which is trusted over the endpoint that was hit.
             var descriptor = Describe(payloadJson);
             var targetCode = descriptor.PlatformCode ?? platformCode;
-            var targetPlatform = string.Equals(targetCode, platformCode, StringComparison.OrdinalIgnoreCase)
-                ? platform
-                : await store.GetPlatformByCodeAsync(targetCode, cancellationToken);
+            var targetPlatform = await ResolveWebhookPlatformAsync(
+                store, targetCode, platformCode, descriptor.EntryId, cancellationToken);
 
             var webhookEvent = store.NewWebhookEvent();
-            webhookEvent.PlatformId = targetPlatform?.Id ?? platform?.Id;
+            webhookEvent.PlatformId = targetPlatform?.Id;
             webhookEvent.EventType = descriptor.EventType;
             webhookEvent.ObjectType = targetCode;
             webhookEvent.ExternalObjectId = descriptor.EntryId;
@@ -274,30 +271,52 @@ public class WebhookService : IWebhookService
             webhookEvent.Status = WebhookEventStatus.Received;
             webhookEvent.ReceivedAt = DateTime.UtcNow;
 
-            if (!MetaWebhookContentClassifier.ContainsRealUserInboundContent(payloadJson))
-            {
-                _logger.LogInformation(
-                    "Webhook ignored for module {MenuType} — not a real user message/comment. Object={ObjectType}, EntryId={EntryId}",
-                    normalizedMenu,
-                    descriptor.PlatformCode ?? platformCode,
-                    descriptor.EntryId);
-                return ApiResponse<object>.Ok(new
-                {
-                    stored = false,
-                    handled = 0,
-                    note = "Ignored — not an inbound user message or comment."
-                }, "Webhook ignored — not from a real user.");
-            }
-
             await store.AddWebhookEventAsync(webhookEvent, cancellationToken);
+
+            var log = store.NewWebhookLog();
+            log.PlatformId = webhookEvent.PlatformId;
+            log.PlatformCode = platformCode;
+            log.Signature = signature;
+            log.HeadersJson = headersJson;
+            log.PayloadJson = payloadJson;
+            log.ReceivedAt = webhookEvent.ReceivedAt;
+            await store.AddWebhookLogAsync(log, cancellationToken);
             await store.SaveChangesAsync(cancellationToken);
 
             _logger.LogInformation(
-                "Real-user webhook saved for module {MenuType}. WebhookEventId={WebhookEventId}, Object={ObjectType}, EntryId={EntryId}",
+                "Webhook stored for module {MenuType}. WebhookEventId={WebhookEventId}, Object={ObjectType}, EntryId={EntryId}, Summary={Summary}",
                 normalizedMenu,
                 webhookEvent.Id,
                 targetCode,
-                descriptor.EntryId);
+                descriptor.EntryId,
+                MetaWebhookContentClassifier.DescribePayload(payloadJson));
+
+            if (!MetaWebhookContentClassifier.ShouldProcessForInbox(payloadJson))
+            {
+                webhookEvent.Status = WebhookEventStatus.Processed;
+                webhookEvent.ProcessedAt = DateTime.UtcNow;
+                webhookEvent.Error =
+                    "Ignored — not an inbox message/comment payload. " +
+                    MetaWebhookContentClassifier.DescribePayload(payloadJson);
+                store.UpdateWebhookEvent(webhookEvent);
+                await store.SaveChangesAsync(cancellationToken);
+
+                _logger.LogInformation(
+                    "Webhook ignored for module {MenuType} after storing audit row. Object={ObjectType}, EntryId={EntryId}, Summary={Summary}",
+                    normalizedMenu,
+                    descriptor.PlatformCode ?? platformCode,
+                    descriptor.EntryId,
+                    MetaWebhookContentClassifier.DescribePayload(payloadJson));
+
+                return ApiResponse<object>.Ok(new
+                {
+                    stored = true,
+                    webhookEventId = webhookEvent.Id,
+                    logId = log.Id,
+                    handled = 0,
+                    note = webhookEvent.Error
+                }, "Webhook stored — not processed for inbox.");
+            }
 
             webhookEvent.Status = WebhookEventStatus.Processing;
             store.UpdateWebhookEvent(webhookEvent);
@@ -330,14 +349,6 @@ public class WebhookService : IWebhookService
                     : webhookEvent.Error ?? "Nothing stored.";
             }
 
-            var log = store.NewWebhookLog();
-            log.PlatformId = webhookEvent.PlatformId;
-            log.PlatformCode = platformCode;
-            log.Signature = signature;
-            log.HeadersJson = headersJson;
-            log.PayloadJson = payloadJson;
-            log.ReceivedAt = webhookEvent.ReceivedAt;
-            await store.AddWebhookLogAsync(log, cancellationToken);
             store.UpdateWebhookEvent(webhookEvent);
             await store.SaveChangesAsync(cancellationToken);
 
@@ -372,9 +383,9 @@ public class WebhookService : IWebhookService
         var processors = targetCode.ToLowerInvariant() switch
         {
             "facebook" => new[] { "facebook", "instagram" },
-            "instagram" => new[] { "instagram", "facebook" },
+            "instagram" => new[] { "instagram", "instagram_login", "facebook" },
             "whatsapp" => new[] { "whatsapp" },
-            _ => new[] { "instagram", "facebook", "whatsapp" }
+            _ => new[] { "instagram", "instagram_login", "facebook", "whatsapp" }
         };
 
         WebhookProcessResult? last = null;
@@ -402,6 +413,41 @@ public class WebhookService : IWebhookService
         }
 
         return last;
+    }
+
+    /// <summary>
+    /// Maps object=instagram deliveries to instagram_login when that is the connected platform in this module.
+    /// </summary>
+    private static async Task<PlatformEntityBase?> ResolveWebhookPlatformAsync(
+        IProcessDataStore store,
+        string targetCode,
+        string platformCode,
+        string? entryId,
+        CancellationToken cancellationToken)
+    {
+        var platform = await store.GetPlatformByCodeAsync(platformCode, cancellationToken);
+        if (!string.Equals(targetCode, platformCode, StringComparison.OrdinalIgnoreCase))
+            platform = await store.GetPlatformByCodeAsync(targetCode, cancellationToken);
+
+        if (!string.Equals(targetCode, "instagram", StringComparison.OrdinalIgnoreCase))
+            return platform;
+
+        var instagramLogin = await store.GetPlatformByCodeAsync("instagram_login", cancellationToken);
+        if (instagramLogin is null)
+            return platform;
+
+        if (!string.IsNullOrWhiteSpace(entryId))
+        {
+            var profile = await store.GetProfileByExternalIdAsync(entryId, cancellationToken);
+            if (profile is not null)
+            {
+                var account = await store.GetSocialAccountByIdAsync(profile.SocialAccountId, cancellationToken);
+                if (account?.PlatformId == instagramLogin.Id)
+                    return instagramLogin;
+            }
+        }
+
+        return platform ?? instagramLogin;
     }
 
     /// <summary>

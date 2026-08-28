@@ -25,48 +25,191 @@ public static class MetaWebhookContentClassifier
         try
         {
             using var doc = JsonDocument.Parse(payloadJson);
-            if (!doc.RootElement.TryGetProperty("entry", out var entries) ||
-                entries.ValueKind != JsonValueKind.Array)
-                return false;
-
-            foreach (var entry in entries.EnumerateArray())
-            {
-                var entryId = entry.TryGetProperty("id", out var idElement) ? idElement.ToString() : null;
-
-                foreach (var item in EnumerateMessagingItems(entry))
-                {
-                    if (IsRealUserMessageItem(item, entryId))
-                        return true;
-                }
-
-                if (entry.TryGetProperty("changes", out var changes) &&
-                    changes.ValueKind == JsonValueKind.Array)
-                {
-                    foreach (var change in changes.EnumerateArray())
-                    {
-                        if (!change.TryGetProperty("value", out var value))
-                            continue;
-
-                        if (IsRealUserChange(change, value, entryId))
-                            return true;
-                    }
-                }
-
-                if (entry.TryGetProperty("field", out var directField) &&
-                    entry.TryGetProperty("value", out var directValue))
-                {
-                    var fieldName = directField.GetString();
-                    if (IsRealUserDirectField(fieldName, directValue, entryId))
-                        return true;
-                }
-            }
+            return ContainsRealUserInboundContent(doc.RootElement);
         }
         catch (JsonException)
         {
             return false;
         }
+    }
+
+    /// <summary>
+    /// True when the payload has a DM or comment shape worth running through inbox processors.
+    /// Looser than <see cref="ContainsRealUserInboundContent"/> — echoes/outbound are filtered during processing.
+    /// </summary>
+    public static bool ShouldProcessForInbox(string payloadJson)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(payloadJson);
+            if (ContainsRealUserInboundContent(doc.RootElement))
+                return true;
+
+            return HasInboxCandidatePayload(doc.RootElement);
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>Human-readable summary for stored-but-skipped webhook rows.</summary>
+    public static string DescribePayload(string payloadJson)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(payloadJson);
+            if (!doc.RootElement.TryGetProperty("entry", out var entries) ||
+                entries.ValueKind != JsonValueKind.Array)
+                return "No entry array.";
+
+            var parts = new List<string>();
+            foreach (var entry in entries.EnumerateArray())
+            {
+                var entryId = entry.TryGetProperty("id", out var idElement) ? idElement.ToString() : "?";
+
+                if (entry.TryGetProperty("messaging", out var messaging) && messaging.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var item in messaging.EnumerateArray())
+                    {
+                        var kinds = DescribeMessagingItemKinds(item);
+                        parts.Add($"entry:{entryId} messaging:[{kinds}]");
+                    }
+                }
+
+                if (entry.TryGetProperty("changes", out var changes) && changes.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var change in changes.EnumerateArray())
+                    {
+                        var field = change.TryGetProperty("field", out var f) ? f.GetString() : "?";
+                        parts.Add($"entry:{entryId} change:{field}");
+                    }
+                }
+            }
+
+            return parts.Count > 0 ? string.Join("; ", parts) : "No messaging/changes fields.";
+        }
+        catch (JsonException ex)
+        {
+            return $"Invalid JSON: {ex.Message}";
+        }
+    }
+
+    private static bool ContainsRealUserInboundContent(JsonElement root)
+    {
+        if (!root.TryGetProperty("entry", out var entries) ||
+            entries.ValueKind != JsonValueKind.Array)
+            return false;
+
+        foreach (var entry in entries.EnumerateArray())
+        {
+            var entryId = entry.TryGetProperty("id", out var idElement) ? idElement.ToString() : null;
+
+            foreach (var item in EnumerateMessagingItems(entry))
+            {
+                if (IsRealUserMessageItem(item, entryId))
+                    return true;
+            }
+
+            if (entry.TryGetProperty("changes", out var changes) &&
+                changes.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var change in changes.EnumerateArray())
+                {
+                    if (!change.TryGetProperty("value", out var value))
+                        continue;
+
+                    if (IsRealUserChange(change, value, entryId))
+                        return true;
+                }
+            }
+
+            if (entry.TryGetProperty("field", out var directField) &&
+                entry.TryGetProperty("value", out var directValue))
+            {
+                var fieldName = directField.GetString();
+                if (IsRealUserDirectField(fieldName, directValue, entryId))
+                    return true;
+            }
+        }
 
         return false;
+    }
+
+    private static bool HasInboxCandidatePayload(JsonElement root)
+    {
+        if (!root.TryGetProperty("entry", out var entries) ||
+            entries.ValueKind != JsonValueKind.Array)
+            return false;
+
+        foreach (var entry in entries.EnumerateArray())
+        {
+            foreach (var item in EnumerateMessagingItems(entry))
+            {
+                if (IsInboxMessageCandidate(item))
+                    return true;
+            }
+
+            if (entry.TryGetProperty("changes", out var changes) &&
+                changes.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var change in changes.EnumerateArray())
+                {
+                    var field = change.TryGetProperty("field", out var fieldElement) ? fieldElement.GetString() : null;
+                    if (field is "comments" or "live_comments")
+                        return true;
+
+                    if (field is not ("messages" or "messaging") ||
+                        !change.TryGetProperty("value", out var value))
+                        continue;
+
+                    if (IsInboxMessageCandidate(value))
+                        return true;
+
+                    if (value.TryGetProperty("messaging", out var nested) && nested.ValueKind == JsonValueKind.Array)
+                    {
+                        foreach (var item in nested.EnumerateArray())
+                        {
+                            if (IsInboxMessageCandidate(item))
+                                return true;
+                        }
+                    }
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private static bool IsInboxMessageCandidate(JsonElement item)
+    {
+        if (!item.TryGetProperty("message", out var message))
+            return false;
+
+        if (string.IsNullOrWhiteSpace(ReadMessageId(message)))
+            return false;
+
+        return !(message.TryGetProperty("is_deleted", out var deleted) && deleted.ValueKind == JsonValueKind.True);
+    }
+
+    private static string DescribeMessagingItemKinds(JsonElement item)
+    {
+        if (item.TryGetProperty("message", out _))
+            return "message";
+
+        if (item.TryGetProperty("read", out _))
+            return "read";
+
+        if (item.TryGetProperty("delivery", out _))
+            return "delivery";
+
+        if (item.TryGetProperty("reaction", out _))
+            return "reaction";
+
+        if (item.TryGetProperty("postback", out _))
+            return "postback";
+
+        return "other";
     }
 
     private static IEnumerable<JsonElement> EnumerateMessagingItems(JsonElement entry)
@@ -187,20 +330,21 @@ public static class MetaWebhookContentClassifier
         var senderId = ReadActorId(item, "sender") ?? ReadActorId(item, "from");
         var recipientId = ReadActorId(item, "recipient") ?? ReadActorId(item, "to");
 
-        // Inbound DM to the connected Instagram professional account.
+        if (!string.IsNullOrWhiteSpace(entryId) &&
+            !string.IsNullOrWhiteSpace(senderId) &&
+            string.Equals(senderId, entryId, StringComparison.Ordinal))
+            return false;
+
         if (!string.IsNullOrWhiteSpace(entryId) &&
             !string.IsNullOrWhiteSpace(recipientId) &&
             string.Equals(recipientId, entryId, StringComparison.Ordinal))
-        {
-            return string.IsNullOrWhiteSpace(senderId) ||
-                   !string.Equals(senderId, entryId, StringComparison.Ordinal);
-        }
+            return true;
 
-        if (string.IsNullOrWhiteSpace(senderId))
-            return false;
+        if (!string.IsNullOrWhiteSpace(senderId) &&
+            (string.IsNullOrWhiteSpace(entryId) || !string.Equals(senderId, entryId, StringComparison.Ordinal)))
+            return true;
 
-        return string.IsNullOrWhiteSpace(entryId) ||
-               !string.Equals(senderId, entryId, StringComparison.Ordinal);
+        return string.IsNullOrWhiteSpace(senderId) && string.IsNullOrWhiteSpace(recipientId);
     }
 
     private static bool IsEchoOrSelf(JsonElement item, JsonElement message)
