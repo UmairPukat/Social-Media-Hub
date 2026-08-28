@@ -141,51 +141,15 @@ public class IntegrationService : IIntegrationService
         if (platformCode is not ("facebook" or "instagram" or "instagram_login" or "whatsapp"))
             return ApiResponse<BeginOAuthResponse>.Fail($"Unsupported platform '{request.PlatformCode}'.");
 
-        string appId;
-        string redirectUri;
-        string version;
-        string scopes;
-        string authBase;
+        var config = await LoadStoredAppConfigAsync(userId, platformCode, menuType, cancellationToken);
+        if (config is null)
+            return ApiResponse<BeginOAuthResponse>.Fail("Save this platform's app configuration before connecting.");
 
-        if (menuType == MenuTypes.AppConnection)
-        {
-            var config = await _unitOfWork.AppConnectionConfigs.GetByUserAndPlatformCodeAsync(
-                userId, platformCode, menuType, cancellationToken);
-            if (config is null)
-                return ApiResponse<BeginOAuthResponse>.Fail("Save this platform's app configuration before connecting.");
-
-            appId = config.ClientId;
-            redirectUri = ResolveProcessRedirectUri(platformCode, menuType, config.RedirectUri);
-            version = config.GraphApiVersion;
-            scopes = config.Scopes ?? PlatformScopes[platformCode];
-            authBase = config.AuthUrl ?? PlatformCatalog.DefaultAuthUrl(platformCode, version);
-        }
-        else if (menuType == MenuTypes.DeveloperApp)
-        {
-            var config = await _unitOfWork.DeveloperAppConfigs.GetByUserAndPlatformCodeAsync(
-                userId, platformCode, menuType, cancellationToken);
-            if (config is null)
-                return ApiResponse<BeginOAuthResponse>.Fail("Save this platform's app configuration before connecting.");
-
-            appId = config.ClientId;
-            redirectUri = ResolveProcessRedirectUri(platformCode, menuType, config.RedirectUri);
-            version = config.GraphApiVersion;
-            scopes = config.Scopes ?? PlatformScopes[platformCode];
-            authBase = config.AuthUrl ?? PlatformCatalog.DefaultAuthUrl(platformCode, version);
-        }
-        else
-        {
-            var config = await _unitOfWork.IntegrationAppConfigs.GetByUserAndPlatformCodeAsync(
-                userId, platformCode, menuType, cancellationToken);
-            if (config is null)
-                return ApiResponse<BeginOAuthResponse>.Fail("Save this platform's app configuration before connecting.");
-
-            appId = config.ClientId;
-            redirectUri = ResolveProcessRedirectUri(platformCode, menuType, config.RedirectUri);
-            version = config.GraphApiVersion;
-            scopes = config.Scopes ?? PlatformScopes[platformCode];
-            authBase = config.AuthUrl ?? PlatformCatalog.DefaultAuthUrl(platformCode, version);
-        }
+        var appId = config.ClientId.Trim();
+        var version = string.IsNullOrWhiteSpace(config.GraphApiVersion) ? "v21.0" : config.GraphApiVersion.Trim();
+        var redirectUri = ResolveProcessRedirectUri(platformCode, menuType, config.RedirectUri);
+        var scopes = string.IsNullOrWhiteSpace(config.Scopes) ? PlatformScopes[platformCode] : config.Scopes!;
+        var authBase = ResolveAuthBase(platformCode, config.AuthUrl, version);
 
         if (string.IsNullOrWhiteSpace(appId) || appId.StartsWith("YOUR_", StringComparison.OrdinalIgnoreCase))
             return ApiResponse<BeginOAuthResponse>.Fail($"Meta App Id is not configured for {platformCode}.");
@@ -348,13 +312,24 @@ public class IntegrationService : IIntegrationService
 
     private string ResolveProcessRedirectUri(string platformCode, string? menuType, string? configRedirectUri)
     {
-        if (!string.IsNullOrWhiteSpace(configRedirectUri))
-            return configRedirectUri.Trim();
-
         var normalizedMenu = MenuTypes.Normalize(menuType);
         var backendBase = FirstNonEmpty(
             _configuration["BackendBaseUrl"],
             _configuration["backendBaseUrl"]);
+
+        if (!string.IsNullOrWhiteSpace(configRedirectUri))
+        {
+            var trimmed = configRedirectUri.Trim();
+            if (trimmed.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+                trimmed.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+                return trimmed;
+
+            if (!string.IsNullOrWhiteSpace(backendBase))
+            {
+                var path = trimmed.StartsWith('/') ? trimmed : $"/{trimmed}";
+                return $"{backendBase.TrimEnd('/')}{path}";
+            }
+        }
 
         if (!string.IsNullOrWhiteSpace(backendBase))
             return $"{backendBase.TrimEnd('/')}{ProcessModules.CallbackRouteFor(normalizedMenu)}";
@@ -370,54 +345,25 @@ public class IntegrationService : IIntegrationService
         string fallbackRedirectUri,
         CancellationToken cancellationToken)
     {
-        string? clientId = null;
-        string? clientSecret = null;
-        string? redirect = null;
-        string? version = null;
-        string? baseUrl = null;
+        var config = await LoadStoredAppConfigAsync(userId, platformCode, menuType, cancellationToken);
+        if (config is null)
+            return null;
 
-        if (menuType == MenuTypes.AppConnection)
-        {
-            var config = await _unitOfWork.AppConnectionConfigs.GetByUserAndPlatformCodeAsync(
-                userId, platformCode, menuType, cancellationToken);
-            if (config is null) return null;
-            clientId = config.ClientId;
-            clientSecret = config.ClientSecret;
-            redirect = config.RedirectUri ?? fallbackRedirectUri;
-            version = config.GraphApiVersion;
-            baseUrl = config.BaseUrl;
-        }
-        else if (menuType == MenuTypes.DeveloperApp)
-        {
-            var config = await _unitOfWork.DeveloperAppConfigs.GetByUserAndPlatformCodeAsync(
-                userId, platformCode, menuType, cancellationToken);
-            if (config is null) return null;
-            clientId = config.ClientId;
-            clientSecret = config.ClientSecret;
-            redirect = config.RedirectUri ?? fallbackRedirectUri;
-            version = config.GraphApiVersion;
-            baseUrl = config.BaseUrl;
-        }
-        else
-        {
-            var config = await _unitOfWork.IntegrationAppConfigs.GetByUserAndPlatformCodeAsync(
-                userId, platformCode, menuType, cancellationToken);
-            if (config is null) return null;
-            clientId = config.ClientId;
-            clientSecret = config.ClientSecret;
-            redirect = config.RedirectUri ?? fallbackRedirectUri;
-            version = config.GraphApiVersion;
-            baseUrl = config.BaseUrl;
-        }
+        var redirect = ResolveProcessRedirectUri(platformCode, menuType, config.RedirectUri);
+        if (string.IsNullOrWhiteSpace(redirect))
+            redirect = fallbackRedirectUri;
+
+        var version = string.IsNullOrWhiteSpace(config.GraphApiVersion) ? "v21.0" : config.GraphApiVersion.Trim();
+        var baseUrl = ResolveApiBaseUrl(platformCode, config.BaseUrl);
 
         var token = await _metaOAuthExchange.ExchangeAuthorizationCodeAsync(
             new MetaOAuthCredentials(
                 platformCode,
                 request.Code,
-                redirect!,
-                clientId!,
-                clientSecret!,
-                version!,
+                redirect,
+                config.ClientId.Trim(),
+                config.ClientSecret.Trim(),
+                version,
                 baseUrl),
             cancellationToken);
 
@@ -442,29 +388,129 @@ public class IntegrationService : IIntegrationService
         string menuType,
         CancellationToken cancellationToken)
     {
-        if (menuType == MenuTypes.AppConnection)
-        {
-            var config = await _unitOfWork.AppConnectionConfigs.GetByUserAndPlatformCodeAsync(
-                userId, platformCode, menuType, cancellationToken);
-            if (config is not null)
-                return (config.PhoneNumberId, config.WabaId);
-        }
-        else if (menuType == MenuTypes.DeveloperApp)
-        {
-            var config = await _unitOfWork.DeveloperAppConfigs.GetByUserAndPlatformCodeAsync(
-                userId, platformCode, menuType, cancellationToken);
-            if (config is not null)
-                return (config.PhoneNumberId, config.WabaId);
-        }
-        else
-        {
-            var config = await _unitOfWork.IntegrationAppConfigs.GetByUserAndPlatformCodeAsync(
-                userId, platformCode, menuType, cancellationToken);
-            if (config is not null)
-                return (config.PhoneNumberId, config.WabaId);
-        }
+        var config = await LoadStoredAppConfigAsync(userId, platformCode, menuType, cancellationToken);
+        return config is null ? (null, null) : (config.PhoneNumberId, config.WabaId);
+    }
 
-        return (null, null);
+    private sealed record StoredProcessAppConfig(
+        string ClientId,
+        string ClientSecret,
+        string? RedirectUri,
+        string? AuthUrl,
+        string? BaseUrl,
+        string? Scopes,
+        string GraphApiVersion,
+        string? PhoneNumberId = null,
+        string? WabaId = null);
+
+    private async Task<StoredProcessAppConfig?> LoadStoredAppConfigAsync(
+        Guid userId,
+        string platformCode,
+        string menuType,
+        CancellationToken cancellationToken)
+    {
+        var normalizedMenu = MenuTypes.Normalize(menuType);
+        return normalizedMenu switch
+        {
+            MenuTypes.AppConnection => MapAppConnection(await FindAppConnectionConfigAsync(userId, platformCode, normalizedMenu, cancellationToken)),
+            MenuTypes.DeveloperApp => MapDeveloper(await FindDeveloperAppConfigAsync(userId, platformCode, normalizedMenu, cancellationToken)),
+            _ => MapIntegration(await FindIntegrationConfigAsync(userId, platformCode, normalizedMenu, cancellationToken))
+        };
+
+        static StoredProcessAppConfig? MapIntegration(IntegrationAppConfig? config) =>
+            config is null ? null : new StoredProcessAppConfig(
+                config.ClientId, config.ClientSecret, config.RedirectUri, config.AuthUrl, config.BaseUrl,
+                config.Scopes, config.GraphApiVersion, config.PhoneNumberId, config.WabaId);
+
+        static StoredProcessAppConfig? MapAppConnection(AppConnectionConfig? config) =>
+            config is null ? null : new StoredProcessAppConfig(
+                config.ClientId, config.ClientSecret, config.RedirectUri, config.AuthUrl, config.BaseUrl,
+                config.Scopes, config.GraphApiVersion, config.PhoneNumberId, config.WabaId);
+
+        static StoredProcessAppConfig? MapDeveloper(DeveloperAppConfig? config) =>
+            config is null ? null : new StoredProcessAppConfig(
+                config.ClientId, config.ClientSecret, config.RedirectUri, config.AuthUrl, config.BaseUrl,
+                config.Scopes, config.GraphApiVersion, config.PhoneNumberId, config.WabaId);
+    }
+
+    private async Task<IntegrationAppConfig?> FindIntegrationConfigAsync(
+        Guid userId,
+        string platformCode,
+        string menuType,
+        CancellationToken cancellationToken)
+    {
+        var config = await _unitOfWork.IntegrationAppConfigs.GetByUserAndPlatformCodeAsync(
+            userId, platformCode, menuType, cancellationToken);
+        if (config is not null)
+            return config;
+
+        var store = _processData.ForMenu(menuType);
+        var platform = await store.GetPlatformByCodeAsync(platformCode, cancellationToken);
+        if (platform is null)
+            return null;
+
+        return await _unitOfWork.IntegrationAppConfigs.GetByUserAndPlatformAsync(
+            userId, platform.Id, menuType, cancellationToken);
+    }
+
+    private async Task<AppConnectionConfig?> FindAppConnectionConfigAsync(
+        Guid userId,
+        string platformCode,
+        string menuType,
+        CancellationToken cancellationToken)
+    {
+        var config = await _unitOfWork.AppConnectionConfigs.GetByUserAndPlatformCodeAsync(
+            userId, platformCode, menuType, cancellationToken);
+        if (config is not null)
+            return config;
+
+        var store = _processData.ForMenu(menuType);
+        var platform = await store.GetPlatformByCodeAsync(platformCode, cancellationToken);
+        if (platform is null)
+            return null;
+
+        return await _unitOfWork.AppConnectionConfigs.GetByUserAndPlatformAsync(
+            userId, platform.Id, menuType, cancellationToken);
+    }
+
+    private async Task<DeveloperAppConfig?> FindDeveloperAppConfigAsync(
+        Guid userId,
+        string platformCode,
+        string menuType,
+        CancellationToken cancellationToken)
+    {
+        var config = await _unitOfWork.DeveloperAppConfigs.GetByUserAndPlatformCodeAsync(
+            userId, platformCode, menuType, cancellationToken);
+        if (config is not null)
+            return config;
+
+        var store = _processData.ForMenu(menuType);
+        var platform = await store.GetPlatformByCodeAsync(platformCode, cancellationToken);
+        if (platform is null)
+            return null;
+
+        return await _unitOfWork.DeveloperAppConfigs.GetByUserAndPlatformAsync(
+            userId, platform.Id, menuType, cancellationToken);
+    }
+
+    private static string ResolveAuthBase(string platformCode, string? storedAuthUrl, string graphVersion)
+    {
+        if (platformCode == "instagram_login")
+            return PlatformCatalog.DefaultAuthUrl(platformCode, graphVersion);
+
+        return string.IsNullOrWhiteSpace(storedAuthUrl)
+            ? PlatformCatalog.DefaultAuthUrl(platformCode, graphVersion)
+            : storedAuthUrl.Trim();
+    }
+
+    private static string ResolveApiBaseUrl(string platformCode, string? storedBaseUrl)
+    {
+        if (platformCode == "instagram_login")
+            return PlatformCatalog.DefaultBaseUrl(platformCode);
+
+        return string.IsNullOrWhiteSpace(storedBaseUrl)
+            ? PlatformCatalog.DefaultBaseUrl(platformCode)
+            : storedBaseUrl.Trim();
     }
 
     private async Task<ApiResponse<SocialAccountDto>> PersistConnectedAccountAsync(

@@ -572,7 +572,7 @@ export class IntegrationsComponent implements OnInit {
       menuType: this.menuType,
       clientId: '',
       clientSecret: '',
-      redirectUri: PROCESS_MODULES.integrations.callbackPath,
+      redirectUri: '',
       authUrl: DEFAULT_AUTH_URLS[code] || '',
       baseUrl: DEFAULT_BASE_URLS[code] || 'https://graph.facebook.com',
       scopes: '',

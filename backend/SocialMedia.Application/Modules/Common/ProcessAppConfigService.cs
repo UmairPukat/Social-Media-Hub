@@ -271,8 +271,8 @@ public class ProcessAppConfigService : IProcessAppConfigService
             throw new InvalidOperationException("Client Secret is required.");
 
         config.RedirectUri = NullIfEmpty(request.RedirectUri);
-        config.AuthUrl = NullIfEmpty(request.AuthUrl) ?? PlatformCatalog.DefaultAuthUrl(code, version);
-        config.BaseUrl = NullIfEmpty(request.BaseUrl) ?? PlatformCatalog.DefaultBaseUrl(code);
+        config.AuthUrl = ResolveStoredAuthUrl(code, NullIfEmpty(request.AuthUrl), version);
+        config.BaseUrl = ResolveStoredBaseUrl(code, NullIfEmpty(request.BaseUrl));
         config.Scopes = NullIfEmpty(request.Scopes) ?? DefaultScopes(code);
         config.GraphApiVersion = version;
         config.WebhookVerifyToken = NullIfEmpty(request.WebhookVerifyToken);
@@ -291,8 +291,8 @@ public class ProcessAppConfigService : IProcessAppConfigService
             throw new InvalidOperationException("Client Secret is required.");
 
         config.RedirectUri = NullIfEmpty(request.RedirectUri);
-        config.AuthUrl = NullIfEmpty(request.AuthUrl) ?? PlatformCatalog.DefaultAuthUrl(code, version);
-        config.BaseUrl = NullIfEmpty(request.BaseUrl) ?? PlatformCatalog.DefaultBaseUrl(code);
+        config.AuthUrl = ResolveStoredAuthUrl(code, NullIfEmpty(request.AuthUrl), version);
+        config.BaseUrl = ResolveStoredBaseUrl(code, NullIfEmpty(request.BaseUrl));
         config.Scopes = NullIfEmpty(request.Scopes) ?? DefaultScopes(code);
         config.GraphApiVersion = version;
         config.WebhookVerifyToken = NullIfEmpty(request.WebhookVerifyToken);
@@ -311,8 +311,8 @@ public class ProcessAppConfigService : IProcessAppConfigService
             throw new InvalidOperationException("Client Secret is required.");
 
         config.RedirectUri = NullIfEmpty(request.RedirectUri);
-        config.AuthUrl = NullIfEmpty(request.AuthUrl) ?? PlatformCatalog.DefaultAuthUrl(code, version);
-        config.BaseUrl = NullIfEmpty(request.BaseUrl) ?? PlatformCatalog.DefaultBaseUrl(code);
+        config.AuthUrl = ResolveStoredAuthUrl(code, NullIfEmpty(request.AuthUrl), version);
+        config.BaseUrl = ResolveStoredBaseUrl(code, NullIfEmpty(request.BaseUrl));
         config.Scopes = NullIfEmpty(request.Scopes) ?? DefaultScopes(code);
         config.GraphApiVersion = version;
         config.WebhookVerifyToken = NullIfEmpty(request.WebhookVerifyToken);
@@ -405,4 +405,20 @@ public class ProcessAppConfigService : IProcessAppConfigService
         "whatsapp" => "whatsapp_business_management,whatsapp_business_messaging,business_management",
         _ => string.Empty
     };
+
+    private static string ResolveStoredAuthUrl(string platformCode, string? storedAuthUrl, string graphVersion)
+    {
+        if (platformCode == "instagram_login")
+            return PlatformCatalog.DefaultAuthUrl(platformCode, graphVersion);
+
+        return storedAuthUrl ?? PlatformCatalog.DefaultAuthUrl(platformCode, graphVersion);
+    }
+
+    private static string ResolveStoredBaseUrl(string platformCode, string? storedBaseUrl)
+    {
+        if (platformCode == "instagram_login")
+            return PlatformCatalog.DefaultBaseUrl(platformCode);
+
+        return storedBaseUrl ?? PlatformCatalog.DefaultBaseUrl(platformCode);
+    }
 }
