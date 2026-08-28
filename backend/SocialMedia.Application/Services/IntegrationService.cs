@@ -18,7 +18,8 @@ using SocialMedia.Domain.Modules.Integrations.Entities;
 namespace SocialMedia.Application.Services;
 
 /// <summary>
-/// OAuth: Meta redirects to the shared backend Callback, which exchanges the code and stores the account.
+/// OAuth connect flow per module. Each menu loads Meta app credentials from its own config table
+/// (IntegrationAppConfigs, AppConnectionConfigs, DeveloperAppConfigs) — not from environment variables.
 /// </summary>
 public class IntegrationService : IIntegrationService
 {
@@ -36,7 +37,6 @@ public class IntegrationService : IIntegrationService
     private readonly IInstagramService _instagramService;
     private readonly IWhatsAppService _whatsAppService;
     private readonly IMetaOAuthExchange _metaOAuthExchange;
-    private readonly MetaSettings _meta;
     private readonly JwtSettings _jwt;
     private readonly IConfiguration _configuration;
 
@@ -47,7 +47,6 @@ public class IntegrationService : IIntegrationService
         IInstagramService instagramService,
         IWhatsAppService whatsAppService,
         IMetaOAuthExchange metaOAuthExchange,
-        IOptions<MetaSettings> metaOptions,
         IOptions<JwtSettings> jwtOptions,
         IConfiguration configuration)
     {
@@ -57,7 +56,6 @@ public class IntegrationService : IIntegrationService
         _instagramService = instagramService;
         _whatsAppService = whatsAppService;
         _metaOAuthExchange = metaOAuthExchange;
-        _meta = metaOptions.Value;
         _jwt = jwtOptions.Value;
         _configuration = configuration;
     }
@@ -179,29 +177,21 @@ public class IntegrationService : IIntegrationService
         {
             var config = await _unitOfWork.IntegrationAppConfigs.GetByUserAndPlatformCodeAsync(
                 userId, platformCode, menuType, cancellationToken);
-            if (config is not null)
-            {
-                appId = config.ClientId;
-                redirectUri = ResolveProcessRedirectUri(platformCode, menuType, config.RedirectUri);
-                version = config.GraphApiVersion;
-                scopes = config.Scopes ?? PlatformScopes[platformCode];
-                authBase = config.AuthUrl ?? PlatformCatalog.DefaultAuthUrl(platformCode, version);
-            }
-            else
-            {
-                appId = ResolveAppId(platformCode);
-                redirectUri = ResolveProcessRedirectUri(platformCode, menuType, null);
-                version = ResolveGraphVersion(platformCode);
-                scopes = PlatformScopes[platformCode];
-                authBase = PlatformCatalog.DefaultAuthUrl(platformCode, version);
-            }
+            if (config is null)
+                return ApiResponse<BeginOAuthResponse>.Fail("Save this platform's app configuration before connecting.");
+
+            appId = config.ClientId;
+            redirectUri = ResolveProcessRedirectUri(platformCode, menuType, config.RedirectUri);
+            version = config.GraphApiVersion;
+            scopes = config.Scopes ?? PlatformScopes[platformCode];
+            authBase = config.AuthUrl ?? PlatformCatalog.DefaultAuthUrl(platformCode, version);
         }
 
         if (string.IsNullOrWhiteSpace(appId) || appId.StartsWith("YOUR_", StringComparison.OrdinalIgnoreCase))
             return ApiResponse<BeginOAuthResponse>.Fail($"Meta App Id is not configured for {platformCode}.");
 
         if (string.IsNullOrWhiteSpace(redirectUri))
-            return ApiResponse<BeginOAuthResponse>.Fail("Redirect URI is not configured. Set metaRedirectUri to the backend Callback URL.");
+            return ApiResponse<BeginOAuthResponse>.Fail("Redirect URI is not configured. Save a callback URL in platform configuration or set backendBaseUrl.");
 
         var state = MetaOAuthState.Create(userId, platformCode, menuType, _jwt.SecretKey);
 
@@ -295,24 +285,6 @@ public class IntegrationService : IIntegrationService
             : Task.FromResult(ApiResponse<SocialAccountDto>.Fail($"Unsupported platform '{request.PlatformCode}'."));
     }
 
-    private string ResolveAppId(string platformCode) => platformCode switch
-    {
-        "facebook" => _meta.Facebook.AppId,
-        "instagram" => string.IsNullOrWhiteSpace(_meta.Instagram.AppId) ? _meta.Facebook.AppId : _meta.Instagram.AppId,
-        "instagram_login" => FirstNonEmpty(_meta.InstagramLogin.AppId, _meta.Instagram.AppId),
-        "whatsapp" => _meta.WhatsApp.AppId,
-        _ => string.Empty
-    };
-
-    private string ResolveGraphVersion(string platformCode) => platformCode switch
-    {
-        "facebook" => FirstNonEmpty(_meta.Facebook.GraphApiVersion, "v21.0"),
-        "instagram" => FirstNonEmpty(_meta.Instagram.GraphApiVersion, _meta.Facebook.GraphApiVersion, "v21.0"),
-        "instagram_login" => FirstNonEmpty(_meta.InstagramLogin.GraphApiVersion, _meta.Instagram.GraphApiVersion, "v21.0"),
-        "whatsapp" => FirstNonEmpty(_meta.WhatsApp.GraphApiVersion, "v21.0"),
-        _ => "v21.0"
-    };
-
     private IReadOnlyList<string> ResolveFrontendOrigins()
     {
         var fromConfig = _configuration.GetSection("Cors:Origins").GetChildren()
@@ -352,44 +324,11 @@ public class IntegrationService : IIntegrationService
             OAuthTokenResult token;
             (string Id, string Name) me;
 
-            if (normalizedMenu is MenuTypes.AppConnection or MenuTypes.DeveloperApp)
-            {
-                var configured = await TryExchangeWithStoredConfigAsync(
-                    userId, platformCode, normalizedMenu, request, redirectUri, cancellationToken);
-                if (configured is null)
-                    return ApiResponse<SocialAccountDto>.Fail("Save this platform's app configuration before connecting.");
-                (token, me) = configured.Value;
-            }
-            else if (await TryExchangeWithStoredConfigAsync(
-                         userId, platformCode, normalizedMenu, request, redirectUri, cancellationToken)
-                     is { } integrationConfigured)
-            {
-                (token, me) = integrationConfigured;
-            }
-            else
-            {
-                switch (platformCode)
-                {
-                    case "facebook":
-                        token = await _facebookService.ExchangeCodeAsync(request.Code, redirectUri, cancellationToken);
-                        me = await _facebookService.GetMeAsync(token.AccessToken, cancellationToken);
-                        break;
-                    case "instagram":
-                        token = await _instagramService.ExchangeCodeAsync(request.Code, redirectUri, cancellationToken);
-                        me = await _instagramService.GetMeAsync(token.AccessToken, cancellationToken);
-                        break;
-                    case "instagram_login":
-                        token = await _instagramService.ExchangeInstagramLoginCodeAsync(request.Code, redirectUri, cancellationToken);
-                        me = await _instagramService.GetInstagramLoginMeAsync(token.AccessToken, cancellationToken);
-                        break;
-                    case "whatsapp":
-                        token = await _whatsAppService.ExchangeCodeAsync(request.Code, redirectUri, cancellationToken);
-                        me = await _whatsAppService.GetMeAsync(token.AccessToken, cancellationToken);
-                        break;
-                    default:
-                        return ApiResponse<SocialAccountDto>.Fail($"Unsupported platform '{platformCode}'.");
-                }
-            }
+            var configured = await TryExchangeWithStoredConfigAsync(
+                userId, platformCode, normalizedMenu, request, redirectUri, cancellationToken);
+            if (configured is null)
+                return ApiResponse<SocialAccountDto>.Fail("Save this platform's app configuration before connecting.");
+            (token, me) = configured.Value;
 
             return await PersistConnectedAccountAsync(
                 userId,
@@ -415,29 +354,12 @@ public class IntegrationService : IIntegrationService
         var normalizedMenu = MenuTypes.Normalize(menuType);
         var backendBase = FirstNonEmpty(
             _configuration["BackendBaseUrl"],
-            _configuration["backendBaseUrl"],
-            ExtractBackendBaseFromMetaRedirect());
+            _configuration["backendBaseUrl"]);
 
         if (!string.IsNullOrWhiteSpace(backendBase))
             return $"{backendBase.TrimEnd('/')}{ProcessModules.CallbackRouteFor(normalizedMenu)}";
 
-        if (normalizedMenu == MenuTypes.Integration)
-            return ResolveRedirectUri(platformCode, null);
-
         return string.Empty;
-    }
-
-    private string? ExtractBackendBaseFromMetaRedirect()
-    {
-        var shared = FirstNonEmpty(
-            _meta.Facebook.RedirectUri,
-            _meta.Instagram.RedirectUri,
-            _meta.InstagramLogin.RedirectUri,
-            _meta.WhatsApp.RedirectUri);
-        if (string.IsNullOrWhiteSpace(shared) || !Uri.TryCreate(shared, UriKind.Absolute, out var uri))
-            return null;
-
-        return $"{uri.Scheme}://{uri.Authority}";
     }
 
     private async Task<(OAuthTokenResult Token, (string Id, string Name) Me)?> TryExchangeWithStoredConfigAsync(
@@ -511,28 +433,6 @@ public class IntegrationService : IIntegrationService
         return (token, me);
     }
 
-    private string ResolveRedirectUri(string platformCode, string? fromRequest)
-    {
-        if (!string.IsNullOrWhiteSpace(fromRequest))
-            return fromRequest!;
-
-        // Prefer a single shared callback URI; fall back to the first configured value.
-        var shared = FirstNonEmpty(
-            _meta.Facebook.RedirectUri,
-            _meta.Instagram.RedirectUri,
-            _meta.InstagramLogin.RedirectUri,
-            _meta.WhatsApp.RedirectUri);
-
-        return platformCode switch
-        {
-            "facebook" => FirstNonEmpty(_meta.Facebook.RedirectUri, shared),
-            "instagram" => FirstNonEmpty(_meta.Instagram.RedirectUri, _meta.Facebook.RedirectUri, shared),
-            "instagram_login" => FirstNonEmpty(_meta.InstagramLogin.RedirectUri, _meta.Instagram.RedirectUri, shared),
-            "whatsapp" => FirstNonEmpty(_meta.WhatsApp.RedirectUri, shared),
-            _ => string.Empty
-        };
-    }
-
     private static string FirstNonEmpty(params string?[] values)
         => values.FirstOrDefault(v => !string.IsNullOrWhiteSpace(v)) ?? string.Empty;
 
@@ -564,7 +464,7 @@ public class IntegrationService : IIntegrationService
                 return (config.PhoneNumberId, config.WabaId);
         }
 
-        return (_meta.WhatsApp.PhoneNumberId, _meta.WhatsApp.WabaId);
+        return (null, null);
     }
 
     private async Task<ApiResponse<SocialAccountDto>> PersistConnectedAccountAsync(
