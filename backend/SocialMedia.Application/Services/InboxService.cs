@@ -383,13 +383,7 @@ public class InboxService : IInboxService
     {
         var preferredMenu = string.IsNullOrWhiteSpace(hints.MenuType) ? defaultMenuType : hints.MenuType!;
 
-        if (!string.IsNullOrWhiteSpace(hints.MenuType))
-        {
-            var hinted = await FindAccountByRoutingHintsAsync(userId, profile, hints, cancellationToken);
-            if (hinted is not null)
-                return new ReplyAuthResolution(hinted.Value.Account, hinted.Value.Auth, preferredMenu);
-        }
-
+        // Same as Integration: prefer the profile owner in the message's module store.
         var linkedStore = _processData.ForMenu(defaultMenuType);
         var linked = await linkedStore.GetSocialAccountWithAuthAndProfilesAsync(profile.SocialAccountId, cancellationToken);
         if (linked is not null
@@ -397,6 +391,13 @@ public class InboxService : IInboxService
             && ProcessEntityNav.Auth(linked) is { } linkedAuth
             && CandidateTokens(linkedAuth).Count > 0)
             return new ReplyAuthResolution(linked, linkedAuth, defaultMenuType);
+
+        if (!string.IsNullOrWhiteSpace(hints.MenuType))
+        {
+            var hinted = await FindAccountByRoutingHintsAsync(userId, profile, hints, cancellationToken);
+            if (hinted is not null)
+                return new ReplyAuthResolution(hinted.Value.Account, hinted.Value.Auth, preferredMenu);
+        }
 
         var userAccounts = await LoadUserAccountsAsync(userId, null, cancellationToken);
         var routingAccount = PickRoutingAccount(profile, linked, userAccounts.Select(a => a.Account).ToList());

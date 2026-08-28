@@ -24,7 +24,11 @@ public interface IWebhookService
     string? DetectPlatformFromPayload(string payloadJson);
 
     /// <summary>Registers webhook subscription intent (stores verify config status).</summary>
-    Task<ApiResponse<object>> SubscribeAsync(string platformCode, string? callbackUrl, CancellationToken cancellationToken = default);
+    Task<ApiResponse<object>> SubscribeAsync(
+        string platformCode,
+        string? callbackUrl,
+        string? menuType = null,
+        CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Processes a delivery and persists WebhookLog/WebhookEvent only when inbox rows are stored.

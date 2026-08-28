@@ -172,11 +172,16 @@ public class WebhookService : IWebhookService
         return secrets;
     }
 
-    public async Task<ApiResponse<object>> SubscribeAsync(string platformCode, string? callbackUrl, CancellationToken cancellationToken = default)
+    public async Task<ApiResponse<object>> SubscribeAsync(
+        string platformCode,
+        string? callbackUrl,
+        string? menuType = null,
+        CancellationToken cancellationToken = default)
     {
         try
         {
-            var store = _processData.ForMenu(MenuTypes.Integration);
+            var normalizedMenu = MenuTypes.Normalize(menuType);
+            var store = _processData.ForMenu(normalizedMenu);
             var platform = await store.GetPlatformByCodeAsync(platformCode, cancellationToken);
             if (platform is null)
                 return ApiResponse<object>.Fail("Unknown platform.");
@@ -185,24 +190,23 @@ public class WebhookService : IWebhookService
             webhookEvent.PlatformId = platform.Id;
             webhookEvent.EventType = "subscribe";
             webhookEvent.ObjectType = "webhook";
-            webhookEvent.PayloadJson = $"{{\"callbackUrl\":\"{callbackUrl}\",\"platform\":\"{platformCode}\"}}";
+            webhookEvent.PayloadJson =
+                $"{{\"callbackUrl\":\"{callbackUrl}\",\"platform\":\"{platformCode}\",\"menuType\":\"{normalizedMenu}\"}}";
             webhookEvent.Status = WebhookEventStatus.Processed;
             webhookEvent.ReceivedAt = DateTime.UtcNow;
             webhookEvent.ProcessedAt = DateTime.UtcNow;
             await store.AddWebhookEventAsync(webhookEvent, cancellationToken);
             await store.SaveChangesAsync(cancellationToken);
 
+            var verifyTokens = await LoadVerifyTokensForProcessAsync(normalizedMenu, cancellationToken);
+            var verifyToken = verifyTokens.FirstOrDefault() ?? string.Empty;
+
             return ApiResponse<object>.Ok(new
             {
                 platform = platformCode,
-                verifyToken = platformCode.ToLowerInvariant() switch
-                {
-                    "facebook" => _meta.Facebook.WebhookVerifyToken,
-                    "instagram" => _meta.Instagram.WebhookVerifyToken,
-                    "instagram_login" => _meta.InstagramLogin.WebhookVerifyToken,
-                    "whatsapp" => _meta.WhatsApp.WebhookVerifyToken,
-                    _ => string.Empty
-                },
+                menuType = normalizedMenu,
+                callbackUrl,
+                verifyToken,
                 message = "Use this verify token in Meta Developer Console webhook settings."
             }, "Webhook subscribe recorded.");
         }
@@ -394,7 +398,7 @@ public class WebhookService : IWebhookService
             var attempt = code switch
             {
                 "facebook" => await _facebookService.ProcessWebhookPayloadAsync(webhookEvent, menuType, cancellationToken),
-                "instagram" => await _instagramService.ProcessWebhookPayloadAsync(webhookEvent, menuType, cancellationToken),
+                "instagram" or "instagram_login" => await _instagramService.ProcessWebhookPayloadAsync(webhookEvent, menuType, cancellationToken),
                 "whatsapp" => await _whatsAppService.ProcessWebhookPayloadAsync(webhookEvent, menuType, cancellationToken),
                 _ => null
             };
@@ -568,10 +572,7 @@ public class WebhookService : IWebhookService
 
         if (normalized == MenuTypes.Integration)
         {
-            Add(_meta.Facebook.WebhookVerifyToken);
-            Add(_meta.Instagram.WebhookVerifyToken);
-            Add(_meta.InstagramLogin.WebhookVerifyToken);
-            Add(_meta.WhatsApp.WebhookVerifyToken);
+            AddGlobalVerifyTokens(Add);
             foreach (var token in await _unitOfWork.IntegrationAppConfigs.GetWebhookVerifyTokensAsync(normalized, cancellationToken))
                 Add(token);
         }
@@ -579,14 +580,24 @@ public class WebhookService : IWebhookService
         {
             foreach (var token in await _unitOfWork.AppConnectionConfigs.GetWebhookVerifyTokensAsync(normalized, cancellationToken))
                 Add(token);
+            AddGlobalVerifyTokens(Add);
         }
         else
         {
             foreach (var token in await _unitOfWork.DeveloperAppConfigs.GetWebhookVerifyTokensAsync(normalized, cancellationToken))
                 Add(token);
+            AddGlobalVerifyTokens(Add);
         }
 
         return tokens;
+    }
+
+    private void AddGlobalVerifyTokens(Action<string?> add)
+    {
+        add(_meta.Facebook.WebhookVerifyToken);
+        add(_meta.Instagram.WebhookVerifyToken);
+        add(_meta.InstagramLogin.WebhookVerifyToken);
+        add(_meta.WhatsApp.WebhookVerifyToken);
     }
 
     private async Task<IReadOnlyList<string>> LoadSecretsForProcessAsync(

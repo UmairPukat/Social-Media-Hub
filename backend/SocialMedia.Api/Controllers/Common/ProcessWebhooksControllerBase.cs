@@ -57,7 +57,7 @@ public abstract class ProcessWebhooksControllerBase : ControllerBase
     public async Task<IActionResult> Subscribe(string platformCode, [FromQuery] string? callbackUrl = null)
     {
         var url = callbackUrl ?? WebhookRoute;
-        var response = await _webhookService.SubscribeAsync(platformCode, url);
+        var response = await _webhookService.SubscribeAsync(platformCode, url, MenuType);
         return Ok(response);
     }
 }

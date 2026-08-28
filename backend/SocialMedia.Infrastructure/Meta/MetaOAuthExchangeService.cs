@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
 using SocialMedia.Application.DTOs.Meta;
 using SocialMedia.Application.Interfaces;
 
@@ -7,10 +8,12 @@ namespace SocialMedia.Infrastructure.Meta;
 public class MetaOAuthExchangeService : IMetaOAuthExchange
 {
     private readonly MetaGraphClient _graph;
+    private readonly ILogger<MetaOAuthExchangeService> _logger;
 
-    public MetaOAuthExchangeService(MetaGraphClient graph)
+    public MetaOAuthExchangeService(MetaGraphClient graph, ILogger<MetaOAuthExchangeService> logger)
     {
         _graph = graph;
+        _logger = logger;
     }
 
     public async Task<OAuthTokenResult> ExchangeAuthorizationCodeAsync(
@@ -58,7 +61,7 @@ public class MetaOAuthExchangeService : IMetaOAuthExchange
         MetaOAuthCredentials credentials,
         CancellationToken cancellationToken)
     {
-        using var doc = await _graph.PostInstagramOAuthAsync(new Dictionary<string, string>
+        using var shortLived = await _graph.PostInstagramOAuthAsync(new Dictionary<string, string>
         {
             ["client_id"] = credentials.ClientId,
             ["client_secret"] = credentials.ClientSecret,
@@ -67,7 +70,25 @@ public class MetaOAuthExchangeService : IMetaOAuthExchange
             ["code"] = credentials.Code
         }, cancellationToken);
 
-        return ParseToken(doc.RootElement);
+        var shortToken = shortLived.RootElement.GetProperty("access_token").GetString()
+            ?? throw new InvalidOperationException("Instagram did not return an access token.");
+
+        try
+        {
+            using var longLived = await _graph.GetInstagramTokenAsync(
+                "access_token",
+                cancellationToken,
+                ("grant_type", "ig_exchange_token"),
+                ("client_secret", credentials.ClientSecret),
+                ("access_token", shortToken));
+
+            return ParseToken(longLived.RootElement);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Instagram Login long-lived token exchange failed; using short-lived token.");
+            return ParseToken(shortLived.RootElement);
+        }
     }
 
     private static OAuthTokenResult ParseToken(JsonElement root)
