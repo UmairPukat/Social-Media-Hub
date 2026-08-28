@@ -318,7 +318,7 @@ public static class MetaWebhookContentClassifier
         if (string.IsNullOrWhiteSpace(ReadMessageId(message)))
             return false;
 
-        if (IsEchoOrSelf(item, message))
+        if (MetaWebhookEchoHelper.IsEcho(item, message))
             return false;
 
         if (message.TryGetProperty("is_deleted", out var deleted) && deleted.ValueKind == JsonValueKind.True)
@@ -345,20 +345,6 @@ public static class MetaWebhookContentClassifier
             return true;
 
         return string.IsNullOrWhiteSpace(senderId) && string.IsNullOrWhiteSpace(recipientId);
-    }
-
-    private static bool IsEchoOrSelf(JsonElement item, JsonElement message)
-    {
-        if (message.TryGetProperty("is_echo", out var echo) && echo.ValueKind == JsonValueKind.True)
-            return true;
-
-        if (item.TryGetProperty("is_echo", out var itemEcho) && itemEcho.ValueKind == JsonValueKind.True)
-            return true;
-
-        if (message.TryGetProperty("is_self", out var self) && self.ValueKind == JsonValueKind.True)
-            return true;
-
-        return item.TryGetProperty("is_self", out var itemSelf) && itemSelf.ValueKind == JsonValueKind.True;
     }
 
     private static bool IsRealUserComment(JsonElement value, string? entryId)

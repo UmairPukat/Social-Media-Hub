@@ -687,6 +687,12 @@ public class FacebookService : IFacebookService
             return;
         }
 
+        if (MetaWebhookEchoHelper.IsEcho(item, message))
+        {
+            result.Skip("Message is echo — not stored from webhook.");
+            return;
+        }
+
         var messageId = MetaMessagingHelper.ReadMessageId(message);
         if (string.IsNullOrWhiteSpace(messageId))
         {
@@ -706,9 +712,7 @@ public class FacebookService : IFacebookService
             ? recipientValue.ToString()
             : string.Empty;
 
-        // Echoes are the page's own replies coming back through the webhook.
-        var isEcho = message.TryGetProperty("is_echo", out var echo) && echo.ValueKind == JsonValueKind.True;
-        var outbound = isEcho || MetaMessagingHelper.ProfileOwnsSenderId(profile, senderId);
+        var outbound = MetaMessagingHelper.ProfileOwnsSenderId(profile, senderId);
         var customerId = outbound ? receiverId : senderId;
         if (string.IsNullOrWhiteSpace(customerId))
         {

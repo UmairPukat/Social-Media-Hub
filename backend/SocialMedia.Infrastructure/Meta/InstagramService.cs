@@ -1011,6 +1011,12 @@ public class InstagramService : IInstagramService
             return;
         }
 
+        if (MetaWebhookEchoHelper.IsEcho(item, message))
+        {
+            result.Skip("Message is echo — not stored from webhook.");
+            return;
+        }
+
         var messageId = MetaMessagingHelper.ReadMessageId(message);
         if (string.IsNullOrWhiteSpace(messageId))
         {
@@ -1033,8 +1039,7 @@ public class InstagramService : IInstagramService
                 ? recipientValue.ToString()
                 : null,
             item.TryGetProperty("to", out var to) ? to.ToString() : null);
-        var isEcho = IsEchoOrSelf(item, message);
-        var outbound = isEcho || MetaMessagingHelper.ProfileOwnsSenderId(profile, senderId);
+        var outbound = MetaMessagingHelper.ProfileOwnsSenderId(profile, senderId);
         var customerId = outbound ? receiverId : senderId;
         if (string.IsNullOrWhiteSpace(customerId) && !outbound)
         {
@@ -1193,17 +1198,4 @@ public class InstagramService : IInstagramService
         return MetaMessagingHelper.ProfileOwnsSenderId(profile, actorId);
     }
 
-    private static bool IsEchoOrSelf(JsonElement item, JsonElement message)
-    {
-        if (message.TryGetProperty("is_echo", out var echo) && echo.ValueKind == JsonValueKind.True)
-            return true;
-
-        if (item.TryGetProperty("is_echo", out var itemEcho) && itemEcho.ValueKind == JsonValueKind.True)
-            return true;
-
-        if (message.TryGetProperty("is_self", out var self) && self.ValueKind == JsonValueKind.True)
-            return true;
-
-        return item.TryGetProperty("is_self", out var itemSelf) && itemSelf.ValueKind == JsonValueKind.True;
-    }
 }
