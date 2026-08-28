@@ -28,6 +28,8 @@ public static class RailwayEnvConfiguration
 
         Map(mapped, "whatsappPhoneNumberId", "MetaSettings:WhatsApp:PhoneNumberId");
         Map(mapped, "whatsappWabaId", "MetaSettings:WhatsApp:WabaId");
+        Map(mapped, "backendBaseUrl", "BackendBaseUrl");
+        Map(mapped, "frontendBaseUrl", "frontendBaseUrl");
 
         // Frontend-style META_* App Ids also accepted on the API service.
         Map(mapped, "META_FACEBOOK_APP_ID", "MetaSettings:Facebook:AppId");

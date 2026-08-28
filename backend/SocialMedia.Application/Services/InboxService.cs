@@ -265,8 +265,10 @@ public class InboxService : IInboxService
             if (string.IsNullOrWhiteSpace(request.Message))
                 return ApiResponse<object>.Fail("Message is required.");
 
-            var located = await ProcessStoreLocator.FindAsync(
+            var menuType = MenuTypes.Normalize(request.MenuType);
+            var located = await ProcessStoreLocator.FindInMenuAsync(
                 _processData,
+                menuType,
                 store => store.GetCommentByIdAsync(commentId, cancellationToken),
                 cancellationToken);
             if (located is null)
@@ -381,33 +383,35 @@ public class InboxService : IInboxService
         ReplyAuthHints hints,
         CancellationToken cancellationToken)
     {
-        var preferredMenu = string.IsNullOrWhiteSpace(hints.MenuType) ? defaultMenuType : hints.MenuType!;
+        var moduleMenu = MenuTypes.Normalize(
+            string.IsNullOrWhiteSpace(hints.MenuType) ? defaultMenuType : hints.MenuType);
 
-        // Same as Integration: prefer the profile owner in the message's module store.
-        var linkedStore = _processData.ForMenu(defaultMenuType);
-        var linked = await linkedStore.GetSocialAccountWithAuthAndProfilesAsync(profile.SocialAccountId, cancellationToken);
+        var store = _processData.ForMenu(moduleMenu);
+        var linked = await store.GetSocialAccountWithAuthAndProfilesAsync(profile.SocialAccountId, cancellationToken);
         if (linked is not null
             && linked.UserId == userId
             && ProcessEntityNav.Auth(linked) is { } linkedAuth
             && CandidateTokens(linkedAuth).Count > 0)
-            return new ReplyAuthResolution(linked, linkedAuth, defaultMenuType);
+            return new ReplyAuthResolution(linked, linkedAuth, moduleMenu);
 
-        if (!string.IsNullOrWhiteSpace(hints.MenuType))
-        {
-            var hinted = await FindAccountByRoutingHintsAsync(userId, profile, hints, cancellationToken);
-            if (hinted is not null)
-                return new ReplyAuthResolution(hinted.Value.Account, hinted.Value.Auth, preferredMenu);
-        }
+        var hinted = await FindAccountByRoutingHintsAsync(
+            userId,
+            profile,
+            ReplyAuthHints.FromRequest(moduleMenu, hints.PageId, hints.AccountId),
+            cancellationToken);
+        if (hinted is not null)
+            return new ReplyAuthResolution(hinted.Value.Account, hinted.Value.Auth, moduleMenu);
 
-        var userAccounts = await LoadUserAccountsAsync(userId, null, cancellationToken);
-        var routingAccount = PickRoutingAccount(profile, linked, userAccounts.Select(a => a.Account).ToList());
+        var userAccounts = await LoadUserAccountsAsync(userId, moduleMenu, cancellationToken);
+        var routingAccount = PickRoutingAccount(
+            profile,
+            linked,
+            userAccounts.Select(a => a.Account).ToList(),
+            moduleMenu);
         if (routingAccount is not null
             && ProcessEntityNav.Auth(routingAccount) is { } routingAuth
             && CandidateTokens(routingAuth).Count > 0)
-        {
-            var routingMenu = FindMenuTypeForAccount(userAccounts, routingAccount) ?? defaultMenuType;
-            return new ReplyAuthResolution(routingAccount, routingAuth, routingMenu);
-        }
+            return new ReplyAuthResolution(routingAccount, routingAuth, moduleMenu);
 
         var platformCodes = ResolvePlatformCodes(profile, linked);
         if (platformCodes.Count == 0)
@@ -416,7 +420,6 @@ public class InboxService : IInboxService
         foreach (var (menuType, row) in userAccounts
                      .OrderByDescending(a => HasStoredTokens(ProcessEntityNav.Auth(a.Account)))
                      .ThenByDescending(a => a.Account.Status == SocialAccountStatus.Connected)
-                     .ThenByDescending(a => string.Equals(a.MenuType, preferredMenu, StringComparison.OrdinalIgnoreCase))
                      .ThenByDescending(a => a.Account.ConnectedAt ?? a.Account.UpdatedAt ?? a.Account.CreatedAt))
         {
             if (row.UserId != userId
@@ -424,7 +427,6 @@ public class InboxService : IInboxService
                 || (row.Status != SocialAccountStatus.Connected && !HasStoredTokens(ProcessEntityNav.Auth(row))))
                 continue;
 
-            var store = _processData.ForMenu(menuType);
             var loaded = await store.GetSocialAccountWithAuthAndProfilesAsync(row.Id, cancellationToken);
             var auth = loaded is null ? null : ProcessEntityNav.Auth(loaded);
             if (auth is null || CandidateTokens(auth).Count == 0)
@@ -448,28 +450,12 @@ public class InboxService : IInboxService
         string accountMenuType,
         CancellationToken cancellationToken)
     {
+        if (!string.Equals(messageStore.MenuType, accountMenuType, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("Reply account must belong to the same module as the inbox item.");
+
         var platform = await messageStore.GetPlatformByIdAsync(account.PlatformId, cancellationToken);
         if (!string.IsNullOrWhiteSpace(platform?.Code))
             return platform.Code.ToLowerInvariant();
-
-        var accountStore = _processData.ForMenu(accountMenuType);
-        if (!string.Equals(accountStore.MenuType, messageStore.MenuType, StringComparison.OrdinalIgnoreCase))
-        {
-            platform = await accountStore.GetPlatformByIdAsync(account.PlatformId, cancellationToken);
-            if (!string.IsNullOrWhiteSpace(platform?.Code))
-                return platform.Code.ToLowerInvariant();
-        }
-
-        foreach (var store in _processData.AllStores())
-        {
-            if (string.Equals(store.MenuType, messageStore.MenuType, StringComparison.OrdinalIgnoreCase)
-                || string.Equals(store.MenuType, accountMenuType, StringComparison.OrdinalIgnoreCase))
-                continue;
-
-            platform = await store.GetPlatformByIdAsync(account.PlatformId, cancellationToken);
-            if (!string.IsNullOrWhiteSpace(platform?.Code))
-                return platform.Code.ToLowerInvariant();
-        }
 
         var fromNav = ProcessEntityNav.PlatformCode(account);
         if (!string.IsNullOrWhiteSpace(fromNav))
@@ -795,7 +781,7 @@ public class InboxService : IInboxService
     {
         try
         {
-            var (context, code, store, comment) = await ResolveCommentContextAsync(userId, commentId, cancellationToken);
+            var (context, code, store, comment) = await ResolveCommentContextAsync(userId, commentId, request.MenuType, cancellationToken);
 
             if (code == "facebook")
                 await _facebookService.HideCommentAsync(context, comment!.ExternalCommentId, request.Hide, cancellationToken);
@@ -818,11 +804,12 @@ public class InboxService : IInboxService
     public async Task<ApiResponse<object>> DeleteCommentAsync(
         Guid userId,
         Guid commentId,
+        string? menuType = null,
         CancellationToken cancellationToken = default)
     {
         try
         {
-            var (context, code, store, comment) = await ResolveCommentContextAsync(userId, commentId, cancellationToken);
+            var (context, code, store, comment) = await ResolveCommentContextAsync(userId, commentId, menuType, cancellationToken);
 
             if (code == "facebook")
                 await _facebookService.DeleteCommentAsync(context, comment!.ExternalCommentId, cancellationToken);
@@ -853,8 +840,10 @@ public class InboxService : IInboxService
             if (string.IsNullOrWhiteSpace(request.Message))
                 return ApiResponse<object>.Fail("Message is required.");
 
-            var located = await ProcessStoreLocator.FindAsync(
+            var menuType = MenuTypes.Normalize(request.MenuType);
+            var located = await ProcessStoreLocator.FindInMenuAsync(
                 _processData,
+                menuType,
                 store => store.GetMessageByIdAsync(messageId, cancellationToken),
                 cancellationToken);
             if (located is null)
@@ -1022,12 +1011,15 @@ public class InboxService : IInboxService
     public async Task<ApiResponse<object>> DeleteMessageAsync(
         Guid userId,
         Guid messageId,
+        string? menuType = null,
         CancellationToken cancellationToken = default)
     {
         try
         {
-            var located = await ProcessStoreLocator.FindAsync(
+            var normalizedMenu = MenuTypes.Normalize(menuType);
+            var located = await ProcessStoreLocator.FindInMenuAsync(
                 _processData,
+                normalizedMenu,
                 store => store.GetMessageByIdAsync(messageId, cancellationToken),
                 cancellationToken);
             if (located is null)
@@ -1057,12 +1049,15 @@ public class InboxService : IInboxService
     public async Task<ApiResponse<object>> MarkReadAsync(
         Guid userId,
         Guid conversationId,
+        string? menuType = null,
         CancellationToken cancellationToken = default)
     {
         try
         {
-            var located = await ProcessStoreLocator.FindAsync(
+            var normalizedMenu = MenuTypes.Normalize(menuType);
+            var located = await ProcessStoreLocator.FindInMenuAsync(
                 _processData,
+                normalizedMenu,
                 store => store.GetConversationByIdAsync(conversationId, cancellationToken),
                 cancellationToken);
             if (located is null)
@@ -1116,10 +1111,13 @@ public class InboxService : IInboxService
     private async Task<(MetaCallContext Context, string Code, IProcessDataStore Store, CommentEntityBase Comment)> ResolveCommentContextAsync(
         Guid userId,
         Guid commentId,
+        string? menuType,
         CancellationToken cancellationToken)
     {
-        var located = await ProcessStoreLocator.FindAsync(
+        var normalizedMenu = MenuTypes.Normalize(menuType);
+        var located = await ProcessStoreLocator.FindInMenuAsync(
             _processData,
+            normalizedMenu,
             store => store.GetCommentByIdAsync(commentId, cancellationToken),
             cancellationToken)
             ?? throw new InvalidOperationException("Comment not found.");
@@ -1133,7 +1131,7 @@ public class InboxService : IInboxService
             store.MenuType,
             profile,
             userId,
-            ReplyAuthHints.FromRequest(null, null, null),
+            ReplyAuthHints.FromRequest(normalizedMenu, null, null),
             cancellationToken)
             ?? throw new InvalidOperationException("Comment not found.");
 

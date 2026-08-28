@@ -83,17 +83,22 @@ public class IntegrationService : IIntegrationService
                         .ThenByDescending(a => a.ConnectedAt ?? a.UpdatedAt ?? a.CreatedAt)
                         .First());
 
-            var configByPlatform = normalizedMenu == MenuTypes.AppConnection
-                ? (await _unitOfWork.AppConnectionConfigs.GetByUserAsync(userId, normalizedMenu, cancellationToken))
-                    .ToDictionary(c => c.PlatformId)
-                : new Dictionary<Guid, AppConnectionConfig>();
+            var configByPlatform = normalizedMenu switch
+            {
+                MenuTypes.AppConnection => (await _unitOfWork.AppConnectionConfigs.GetByUserAsync(userId, normalizedMenu, cancellationToken))
+                    .ToDictionary(c => c.PlatformId, c => c.Id),
+                MenuTypes.DeveloperApp => (await _unitOfWork.DeveloperAppConfigs.GetByUserAsync(userId, normalizedMenu, cancellationToken))
+                    .ToDictionary(c => c.PlatformId, c => c.Id),
+                _ => (await _unitOfWork.IntegrationAppConfigs.GetByUserAsync(userId, normalizedMenu, cancellationToken))
+                    .ToDictionary(c => c.PlatformId, c => c.Id)
+            };
 
             var cards = platforms
                 .Select(p =>
                 {
                     var def = PlatformCatalog.Find(p.Code);
                     byPlatform.TryGetValue(p.Id, out var account);
-                    configByPlatform.TryGetValue(p.Id, out var appConfig);
+                    var hasAppConfig = configByPlatform.TryGetValue(p.Id, out var appConfigId);
                     return new PlatformCardDto
                     {
                         PlatformId = p.Id,
@@ -112,8 +117,8 @@ public class IntegrationService : IIntegrationService
                         SupportsComments = def?.SupportsComments ?? false,
                         SupportsMessages = def?.SupportsMessages ?? false,
                         SupportsPosts = def?.SupportsPosts ?? false,
-                        HasAppConfig = appConfig is not null,
-                        AppConfigId = appConfig?.Id
+                        HasAppConfig = hasAppConfig,
+                        AppConfigId = hasAppConfig ? appConfigId : null
                     };
                 })
                 .OrderBy(c => c.SortOrder)
@@ -407,15 +412,19 @@ public class IntegrationService : IIntegrationService
         if (!string.IsNullOrWhiteSpace(configRedirectUri))
             return configRedirectUri.Trim();
 
-        var processCallback = ProcessModules.CallbackRouteFor(menuType);
+        var normalizedMenu = MenuTypes.Normalize(menuType);
         var backendBase = FirstNonEmpty(
             _configuration["BackendBaseUrl"],
+            _configuration["backendBaseUrl"],
             ExtractBackendBaseFromMetaRedirect());
 
         if (!string.IsNullOrWhiteSpace(backendBase))
-            return $"{backendBase.TrimEnd('/')}{processCallback}";
+            return $"{backendBase.TrimEnd('/')}{ProcessModules.CallbackRouteFor(normalizedMenu)}";
 
-        return ResolveRedirectUri(platformCode, null);
+        if (normalizedMenu == MenuTypes.Integration)
+            return ResolveRedirectUri(platformCode, null);
+
+        return string.Empty;
     }
 
     private string? ExtractBackendBaseFromMetaRedirect()
@@ -527,6 +536,37 @@ public class IntegrationService : IIntegrationService
     private static string FirstNonEmpty(params string?[] values)
         => values.FirstOrDefault(v => !string.IsNullOrWhiteSpace(v)) ?? string.Empty;
 
+    private async Task<(string? PhoneNumberId, string? WabaId)> ResolveWhatsAppRoutingIdsAsync(
+        Guid userId,
+        string platformCode,
+        string menuType,
+        CancellationToken cancellationToken)
+    {
+        if (menuType == MenuTypes.AppConnection)
+        {
+            var config = await _unitOfWork.AppConnectionConfigs.GetByUserAndPlatformCodeAsync(
+                userId, platformCode, menuType, cancellationToken);
+            if (config is not null)
+                return (config.PhoneNumberId, config.WabaId);
+        }
+        else if (menuType == MenuTypes.DeveloperApp)
+        {
+            var config = await _unitOfWork.DeveloperAppConfigs.GetByUserAndPlatformCodeAsync(
+                userId, platformCode, menuType, cancellationToken);
+            if (config is not null)
+                return (config.PhoneNumberId, config.WabaId);
+        }
+        else
+        {
+            var config = await _unitOfWork.IntegrationAppConfigs.GetByUserAndPlatformCodeAsync(
+                userId, platformCode, menuType, cancellationToken);
+            if (config is not null)
+                return (config.PhoneNumberId, config.WabaId);
+        }
+
+        return (_meta.WhatsApp.PhoneNumberId, _meta.WhatsApp.WabaId);
+    }
+
     private async Task<ApiResponse<SocialAccountDto>> PersistConnectedAccountAsync(
         Guid userId,
         string platformCode,
@@ -592,11 +632,12 @@ public class IntegrationService : IIntegrationService
         var requiresPageSelection = SupportsPageSelection(platformCode);
         if (!requiresPageSelection)
         {
+            var whatsAppIds = await ResolveWhatsAppRoutingIdsAsync(userId, platformCode, normalizedMenu, cancellationToken);
             IReadOnlyList<SocialProfileDraft> drafts = platformCode switch
             {
                 "instagram_login" => await _instagramService.DiscoverInstagramLoginProfilesAsync(accessToken, cancellationToken),
                 "whatsapp" => await _whatsAppService.DiscoverProfilesAsync(
-                    accessToken, _meta.WhatsApp.PhoneNumberId, _meta.WhatsApp.WabaId, cancellationToken),
+                    accessToken, whatsAppIds.PhoneNumberId, whatsAppIds.WabaId, cancellationToken),
                 _ => Array.Empty<SocialProfileDraft>()
             };
 

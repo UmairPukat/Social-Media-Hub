@@ -78,4 +78,5 @@ public class ReplyMessageRequest
 public class HideCommentRequest
 {
     public bool Hide { get; set; } = true;
+    public string? MenuType { get; set; }
 }

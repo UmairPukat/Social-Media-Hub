@@ -48,6 +48,7 @@ public abstract class ProcessInboxControllerBase : ControllerBase
     [HttpPost("inbox/comments/{id:guid}/hide")]
     public async Task<IActionResult> HideComment(Guid id, [FromBody] HideCommentRequest model)
     {
+        model.MenuType ??= MenuType;
         var response = await _inboxService.HideCommentAsync(User.GetUserId(), id, model);
         return Ok(response);
     }
@@ -55,21 +56,21 @@ public abstract class ProcessInboxControllerBase : ControllerBase
     [HttpDelete("inbox/comments/{id:guid}")]
     public async Task<IActionResult> DeleteComment(Guid id)
     {
-        var response = await _inboxService.DeleteCommentAsync(User.GetUserId(), id);
+        var response = await _inboxService.DeleteCommentAsync(User.GetUserId(), id, MenuType);
         return Ok(response);
     }
 
     [HttpDelete("inbox/messages/{id:guid}")]
     public async Task<IActionResult> DeleteMessage(Guid id)
     {
-        var response = await _inboxService.DeleteMessageAsync(User.GetUserId(), id);
+        var response = await _inboxService.DeleteMessageAsync(User.GetUserId(), id, MenuType);
         return Ok(response);
     }
 
     [HttpPost("inbox/conversations/{id:guid}/read")]
     public async Task<IActionResult> MarkRead(Guid id)
     {
-        var response = await _inboxService.MarkReadAsync(User.GetUserId(), id);
+        var response = await _inboxService.MarkReadAsync(User.GetUserId(), id, MenuType);
         return Ok(response);
     }
 }

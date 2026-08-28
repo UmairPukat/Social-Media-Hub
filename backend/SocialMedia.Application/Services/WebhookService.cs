@@ -580,13 +580,11 @@ public class WebhookService : IWebhookService
         {
             foreach (var token in await _unitOfWork.AppConnectionConfigs.GetWebhookVerifyTokensAsync(normalized, cancellationToken))
                 Add(token);
-            AddGlobalVerifyTokens(Add);
         }
         else
         {
             foreach (var token in await _unitOfWork.DeveloperAppConfigs.GetWebhookVerifyTokensAsync(normalized, cancellationToken))
                 Add(token);
-            AddGlobalVerifyTokens(Add);
         }
 
         return tokens;
@@ -622,9 +620,6 @@ public class WebhookService : IWebhookService
             : await _unitOfWork.DeveloperAppConfigs.GetClientSecretsAsync(normalized, cancellationToken);
 
         foreach (var secret in dbSecrets)
-            Add(secret);
-
-        foreach (var secret in ResolveAppSecrets(platformCode, payloadJson))
             Add(secret);
 
         return secrets;
