@@ -164,15 +164,15 @@ public sealed class ProcessDataStore : IProcessDataStore
         {
             MenuTypes.AppConnection => AsBase<AppConnectionSocialAccount, SocialAccountEntityBase>(
                 _context.AppConnectionSocialAccounts
-                    .Include(a => a.Auth).Include(a => a.Profiles)
+                    .Include(a => a.Platform).Include(a => a.Auth).Include(a => a.Profiles)
                     .FirstOrDefaultAsync(a => a.Id == id, cancellationToken)),
             MenuTypes.DeveloperApp => AsBase<DeveloperAppSocialAccount, SocialAccountEntityBase>(
                 _context.DeveloperAppSocialAccounts
-                    .Include(a => a.Auth).Include(a => a.Profiles)
+                    .Include(a => a.Platform).Include(a => a.Auth).Include(a => a.Profiles)
                     .FirstOrDefaultAsync(a => a.Id == id, cancellationToken)),
             _ => AsBase<IntegrationSocialAccount, SocialAccountEntityBase>(
                 _context.IntegrationSocialAccounts
-                    .Include(a => a.Auth).Include(a => a.Profiles)
+                    .Include(a => a.Platform).Include(a => a.Auth).Include(a => a.Profiles)
                     .FirstOrDefaultAsync(a => a.Id == id, cancellationToken))
         };
 

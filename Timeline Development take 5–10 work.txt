@@ -1,0 +1,2 @@
+Timeline: Development take 5–10 working days for the development and submission. This includes building the moderator/demo web app, implementing and testing all requested permissions, preparing the demo video/use cases, submitting to Meta, and handling any review feedback or resubmissions.
+Changing the URL: If we keep the same Meta app, permissions, and functionality, changing the website/domain after approval normally won’t trigger a full re-review. We’ll just update the relevant Meta settings like redirect URLs and domains.
