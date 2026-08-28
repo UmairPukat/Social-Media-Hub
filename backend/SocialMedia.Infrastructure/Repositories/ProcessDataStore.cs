@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using SocialMedia.Application.Catalog;
 using SocialMedia.Application.Interfaces;
+using SocialMedia.Domain.Common;
 using SocialMedia.Domain.Enums;
 using SocialMedia.Domain.Modules.AppConnections.Entities;
 using SocialMedia.Domain.Modules.Common.Entities;
@@ -196,13 +197,13 @@ public sealed class ProcessDataStore : IProcessDataStore
         switch (_menuType)
         {
             case MenuTypes.AppConnection:
-                _context.AppConnectionSocialAccounts.Update((AppConnectionSocialAccount)account);
+                UpdateTracked(_context.AppConnectionSocialAccounts, (AppConnectionSocialAccount)account);
                 break;
             case MenuTypes.DeveloperApp:
-                _context.DeveloperAppSocialAccounts.Update((DeveloperAppSocialAccount)account);
+                UpdateTracked(_context.DeveloperAppSocialAccounts, (DeveloperAppSocialAccount)account);
                 break;
             default:
-                _context.IntegrationSocialAccounts.Update((IntegrationSocialAccount)account);
+                UpdateTracked(_context.IntegrationSocialAccounts, (IntegrationSocialAccount)account);
                 break;
         }
     }
@@ -212,13 +213,13 @@ public sealed class ProcessDataStore : IProcessDataStore
         switch (_menuType)
         {
             case MenuTypes.AppConnection:
-                _context.AppConnectionSocialAccounts.Remove((AppConnectionSocialAccount)account);
+                RemoveTracked(_context.AppConnectionSocialAccounts, (AppConnectionSocialAccount)account);
                 break;
             case MenuTypes.DeveloperApp:
-                _context.DeveloperAppSocialAccounts.Remove((DeveloperAppSocialAccount)account);
+                RemoveTracked(_context.DeveloperAppSocialAccounts, (DeveloperAppSocialAccount)account);
                 break;
             default:
-                _context.IntegrationSocialAccounts.Remove((IntegrationSocialAccount)account);
+                RemoveTracked(_context.IntegrationSocialAccounts, (IntegrationSocialAccount)account);
                 break;
         }
     }
@@ -257,13 +258,13 @@ public sealed class ProcessDataStore : IProcessDataStore
         switch (_menuType)
         {
             case MenuTypes.AppConnection:
-                _context.AppConnectionSocialAuths.Update((AppConnectionSocialAuth)auth);
+                UpdateTracked(_context.AppConnectionSocialAuths, (AppConnectionSocialAuth)auth);
                 break;
             case MenuTypes.DeveloperApp:
-                _context.DeveloperAppSocialAuths.Update((DeveloperAppSocialAuth)auth);
+                UpdateTracked(_context.DeveloperAppSocialAuths, (DeveloperAppSocialAuth)auth);
                 break;
             default:
-                _context.IntegrationSocialAuths.Update((IntegrationSocialAuth)auth);
+                UpdateTracked(_context.IntegrationSocialAuths, (IntegrationSocialAuth)auth);
                 break;
         }
     }
@@ -323,13 +324,13 @@ public sealed class ProcessDataStore : IProcessDataStore
         switch (_menuType)
         {
             case MenuTypes.AppConnection:
-                _context.AppConnectionSocialProfiles.Update((AppConnectionSocialProfile)profile);
+                UpdateTracked(_context.AppConnectionSocialProfiles, (AppConnectionSocialProfile)profile);
                 break;
             case MenuTypes.DeveloperApp:
-                _context.DeveloperAppSocialProfiles.Update((DeveloperAppSocialProfile)profile);
+                UpdateTracked(_context.DeveloperAppSocialProfiles, (DeveloperAppSocialProfile)profile);
                 break;
             default:
-                _context.IntegrationSocialProfiles.Update((IntegrationSocialProfile)profile);
+                UpdateTracked(_context.IntegrationSocialProfiles, (IntegrationSocialProfile)profile);
                 break;
         }
     }
@@ -339,13 +340,13 @@ public sealed class ProcessDataStore : IProcessDataStore
         switch (_menuType)
         {
             case MenuTypes.AppConnection:
-                _context.AppConnectionSocialProfiles.Remove((AppConnectionSocialProfile)profile);
+                RemoveTracked(_context.AppConnectionSocialProfiles, (AppConnectionSocialProfile)profile);
                 break;
             case MenuTypes.DeveloperApp:
-                _context.DeveloperAppSocialProfiles.Remove((DeveloperAppSocialProfile)profile);
+                RemoveTracked(_context.DeveloperAppSocialProfiles, (DeveloperAppSocialProfile)profile);
                 break;
             default:
-                _context.IntegrationSocialProfiles.Remove((IntegrationSocialProfile)profile);
+                RemoveTracked(_context.IntegrationSocialProfiles, (IntegrationSocialProfile)profile);
                 break;
         }
     }
@@ -458,13 +459,13 @@ public sealed class ProcessDataStore : IProcessDataStore
         switch (_menuType)
         {
             case MenuTypes.AppConnection:
-                _context.AppConnectionPosts.Update((AppConnectionPost)post);
+                UpdateTracked(_context.AppConnectionPosts, (AppConnectionPost)post);
                 break;
             case MenuTypes.DeveloperApp:
-                _context.DeveloperAppPosts.Update((DeveloperAppPost)post);
+                UpdateTracked(_context.DeveloperAppPosts, (DeveloperAppPost)post);
                 break;
             default:
-                _context.IntegrationPosts.Update((IntegrationPost)post);
+                UpdateTracked(_context.IntegrationPosts, (IntegrationPost)post);
                 break;
         }
     }
@@ -474,13 +475,13 @@ public sealed class ProcessDataStore : IProcessDataStore
         switch (_menuType)
         {
             case MenuTypes.AppConnection:
-                _context.AppConnectionPosts.Remove((AppConnectionPost)post);
+                RemoveTracked(_context.AppConnectionPosts, (AppConnectionPost)post);
                 break;
             case MenuTypes.DeveloperApp:
-                _context.DeveloperAppPosts.Remove((DeveloperAppPost)post);
+                RemoveTracked(_context.DeveloperAppPosts, (DeveloperAppPost)post);
                 break;
             default:
-                _context.IntegrationPosts.Remove((IntegrationPost)post);
+                RemoveTracked(_context.IntegrationPosts, (IntegrationPost)post);
                 break;
         }
     }
@@ -574,13 +575,13 @@ public sealed class ProcessDataStore : IProcessDataStore
         switch (_menuType)
         {
             case MenuTypes.AppConnection:
-                _context.AppConnectionComments.Update((AppConnectionComment)comment);
+                UpdateTracked(_context.AppConnectionComments, (AppConnectionComment)comment);
                 break;
             case MenuTypes.DeveloperApp:
-                _context.DeveloperAppComments.Update((DeveloperAppComment)comment);
+                UpdateTracked(_context.DeveloperAppComments, (DeveloperAppComment)comment);
                 break;
             default:
-                _context.IntegrationComments.Update((IntegrationComment)comment);
+                UpdateTracked(_context.IntegrationComments, (IntegrationComment)comment);
                 break;
         }
     }
@@ -702,13 +703,13 @@ public sealed class ProcessDataStore : IProcessDataStore
         switch (_menuType)
         {
             case MenuTypes.AppConnection:
-                _context.AppConnectionConversations.Update((AppConnectionConversation)conversation);
+                UpdateTracked(_context.AppConnectionConversations, (AppConnectionConversation)conversation);
                 break;
             case MenuTypes.DeveloperApp:
-                _context.DeveloperAppConversations.Update((DeveloperAppConversation)conversation);
+                UpdateTracked(_context.DeveloperAppConversations, (DeveloperAppConversation)conversation);
                 break;
             default:
-                _context.IntegrationConversations.Update((IntegrationConversation)conversation);
+                UpdateTracked(_context.IntegrationConversations, (IntegrationConversation)conversation);
                 break;
         }
     }
@@ -758,13 +759,13 @@ public sealed class ProcessDataStore : IProcessDataStore
         switch (_menuType)
         {
             case MenuTypes.AppConnection:
-                _context.AppConnectionMessages.Update((AppConnectionMessage)message);
+                UpdateTracked(_context.AppConnectionMessages, (AppConnectionMessage)message);
                 break;
             case MenuTypes.DeveloperApp:
-                _context.DeveloperAppMessages.Update((DeveloperAppMessage)message);
+                UpdateTracked(_context.DeveloperAppMessages, (DeveloperAppMessage)message);
                 break;
             default:
-                _context.IntegrationMessages.Update((IntegrationMessage)message);
+                UpdateTracked(_context.IntegrationMessages, (IntegrationMessage)message);
                 break;
         }
     }
@@ -774,13 +775,13 @@ public sealed class ProcessDataStore : IProcessDataStore
         switch (_menuType)
         {
             case MenuTypes.AppConnection:
-                _context.AppConnectionMessages.Remove((AppConnectionMessage)message);
+                RemoveTracked(_context.AppConnectionMessages, (AppConnectionMessage)message);
                 break;
             case MenuTypes.DeveloperApp:
-                _context.DeveloperAppMessages.Remove((DeveloperAppMessage)message);
+                RemoveTracked(_context.DeveloperAppMessages, (DeveloperAppMessage)message);
                 break;
             default:
-                _context.IntegrationMessages.Remove((IntegrationMessage)message);
+                RemoveTracked(_context.IntegrationMessages, (IntegrationMessage)message);
                 break;
         }
     }
@@ -806,13 +807,13 @@ public sealed class ProcessDataStore : IProcessDataStore
         switch (_menuType)
         {
             case MenuTypes.AppConnection:
-                _context.AppConnectionWebhookEvents.Update((AppConnectionWebhookEvent)webhookEvent);
+                UpdateTracked(_context.AppConnectionWebhookEvents, (AppConnectionWebhookEvent)webhookEvent);
                 break;
             case MenuTypes.DeveloperApp:
-                _context.DeveloperAppWebhookEvents.Update((DeveloperAppWebhookEvent)webhookEvent);
+                UpdateTracked(_context.DeveloperAppWebhookEvents, (DeveloperAppWebhookEvent)webhookEvent);
                 break;
             default:
-                _context.IntegrationWebhookEvents.Update((IntegrationWebhookEvent)webhookEvent);
+                UpdateTracked(_context.IntegrationWebhookEvents, (IntegrationWebhookEvent)webhookEvent);
                 break;
         }
     }
@@ -1080,6 +1081,30 @@ public sealed class ProcessDataStore : IProcessDataStore
             .ThenByDescending(p => p.ProfileType == ProfileType.InstagramLogin ? 1 : 0)
             .ThenByDescending(p => p.ProfileType == ProfileType.FacebookPage ? 1 : 0)
             .FirstOrDefault();
+    }
+
+    /// <summary>
+    /// Applies updates to an entity already tracked in this context, avoiding duplicate-key tracking errors
+    /// when callers load rows with AsNoTracking and then call Update.
+    /// </summary>
+    private void UpdateTracked<TEntity>(DbSet<TEntity> set, TEntity entity)
+        where TEntity : BaseEntity
+    {
+        var tracked = set.Local.FirstOrDefault(e => e.Id == entity.Id);
+        if (tracked is not null)
+        {
+            _context.Entry(tracked).CurrentValues.SetValues(entity);
+            return;
+        }
+
+        set.Update(entity);
+    }
+
+    private static void RemoveTracked<TEntity>(DbSet<TEntity> set, TEntity entity)
+        where TEntity : BaseEntity
+    {
+        var tracked = set.Local.FirstOrDefault(e => e.Id == entity.Id);
+        set.Remove(tracked ?? entity);
     }
 }
 
