@@ -2,8 +2,8 @@ using SocialMedia.Application.Catalog;
 using SocialMedia.Application.DTOs.Common;
 using SocialMedia.Application.DTOs.Process;
 using SocialMedia.Application.Interfaces;
-using SocialMedia.Domain.Entities;
 using SocialMedia.Domain.Modules.AppConnections.Entities;
+using SocialMedia.Domain.Modules.Common.Entities;
 using SocialMedia.Domain.Modules.DeveloperApps.Entities;
 using SocialMedia.Domain.Modules.Integrations.Entities;
 using SocialMedia.Domain.Interfaces;
@@ -16,10 +16,12 @@ namespace SocialMedia.Application.Modules.Common;
 public class ProcessAppConfigService : IProcessAppConfigService
 {
     private readonly IUnitOfWork _unitOfWork;
+    private readonly IProcessDataStoreFactory _processData;
 
-    public ProcessAppConfigService(IUnitOfWork unitOfWork)
+    public ProcessAppConfigService(IUnitOfWork unitOfWork, IProcessDataStoreFactory processData)
     {
         _unitOfWork = unitOfWork;
+        _processData = processData;
     }
 
     public async Task<ApiResponse<ProcessAppConfigDto>> GetConfigAsync(
@@ -58,7 +60,8 @@ public class ProcessAppConfigService : IProcessAppConfigService
                 return ApiResponse<ProcessAppConfigDto>.Fail("Client Id is required.");
 
             var normalizedMenu = MenuTypes.Normalize(request.MenuType);
-            var platform = await _unitOfWork.Platforms.GetByCodeAsync(code, normalizedMenu, cancellationToken);
+            var store = _processData.ForMenu(normalizedMenu);
+            var platform = await store.GetPlatformByCodeAsync(code, cancellationToken);
             if (platform is null)
                 return ApiResponse<ProcessAppConfigDto>.Fail($"Unknown platform '{code}' for process '{normalizedMenu}'.");
 
@@ -158,7 +161,7 @@ public class ProcessAppConfigService : IProcessAppConfigService
 
     private async Task<ApiResponse<ProcessAppConfigDto>> SaveIntegrationAsync(
         Guid userId,
-        Platform platform,
+        PlatformEntityBase platform,
         string code,
         string menuType,
         SaveProcessAppConfigRequest request,
@@ -192,7 +195,7 @@ public class ProcessAppConfigService : IProcessAppConfigService
 
     private async Task<ApiResponse<ProcessAppConfigDto>> SaveAppConnectionAsync(
         Guid userId,
-        Platform platform,
+        PlatformEntityBase platform,
         string code,
         string menuType,
         SaveProcessAppConfigRequest request,
@@ -226,7 +229,7 @@ public class ProcessAppConfigService : IProcessAppConfigService
 
     private async Task<ApiResponse<ProcessAppConfigDto>> SaveDeveloperAsync(
         Guid userId,
-        Platform platform,
+        PlatformEntityBase platform,
         string code,
         string menuType,
         SaveProcessAppConfigRequest request,

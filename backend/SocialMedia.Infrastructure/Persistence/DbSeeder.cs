@@ -2,6 +2,9 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using SocialMedia.Application.Catalog;
 using SocialMedia.Domain.Entities;
+using SocialMedia.Domain.Modules.AppConnections.Entities;
+using SocialMedia.Domain.Modules.DeveloperApps.Entities;
+using SocialMedia.Domain.Modules.Integrations.Entities;
 
 namespace SocialMedia.Infrastructure.Persistence;
 
@@ -35,7 +38,7 @@ public static class DbSeeder
         {
             try
             {
-                await SeedAsync(db);
+                await SeedAsync(db, logger);
                 if (attempt > 1)
                 {
                     logger?.LogInformation("Database seeding succeeded on attempt {Attempt}.", attempt);
@@ -59,56 +62,16 @@ public static class DbSeeder
         await SeedAsync(db);
     }
 
-    public static async Task SeedAsync(AppDbContext db)
+    public static async Task SeedAsync(AppDbContext db, ILogger? logger = null)
     {
         await db.Database.EnsureCreatedAsync();
-        await EnsureWebhookLogsTableAsync(db);
-        await EnsureMessageReplyColumnsAsync(db);
-        await EnsureMenuTypeColumnsAsync(db);
-        await EnsureProcessDataMenuTypeColumnsAsync(db);
         await EnsureAppConnectionConfigsTableAsync(db);
         await EnsureIntegrationAppConfigsTableAsync(db);
         await EnsureDeveloperAppConfigsTableAsync(db);
 
-        var catalogCodes = new HashSet<string>(
-            PlatformCatalog.All.Select(p => p.Code),
-            StringComparer.OrdinalIgnoreCase);
+        await ModuleTableMigration.MigrateAndDropLegacyAsync(db, logger);
 
-        foreach (var def in PlatformCatalog.All)
-        {
-            foreach (var menuType in ProcessModules.AllMenuTypes)
-            {
-                var platformId = PlatformCatalog.IdForMenu(def.Id, menuType);
-                var existing = db.Platforms.FirstOrDefault(p => p.Id == platformId)
-                    ?? db.Platforms.FirstOrDefault(p => p.Code == def.Code && p.MenuType == menuType);
-
-                if (existing is null)
-                {
-                    db.Platforms.Add(new Platform
-                    {
-                        Id = platformId,
-                        Name = def.Name,
-                        Code = def.Code,
-                        Icon = def.Icon,
-                        MenuType = menuType,
-                        IsActive = true
-                    });
-                }
-                else
-                {
-                    existing.Name = def.Name;
-                    existing.Icon = def.Icon;
-                    existing.MenuType = menuType;
-                    existing.IsActive = true;
-                }
-            }
-        }
-
-        // Hide platforms that are no longer in the catalog.
-        foreach (var orphan in db.Platforms.Where(p => !catalogCodes.Contains(p.Code)))
-        {
-            orphan.IsActive = false;
-        }
+        await SeedModulePlatformsAsync(db);
 
         if (!db.AccessTokens.Any())
         {
@@ -135,6 +98,89 @@ public static class DbSeeder
         }
 
         await db.SaveChangesAsync();
+    }
+
+    private static async Task SeedModulePlatformsAsync(AppDbContext db)
+    {
+        var catalogCodes = new HashSet<string>(
+            PlatformCatalog.All.Select(p => p.Code),
+            StringComparer.OrdinalIgnoreCase);
+
+        foreach (var def in PlatformCatalog.All)
+        {
+            SeedPlatformSet(
+                db.IntegrationPlatforms,
+                PlatformCatalog.IdForMenu(def.Id, MenuTypes.Integration),
+                def);
+            SeedPlatformSet(
+                db.AppConnectionPlatforms,
+                PlatformCatalog.IdForMenu(def.Id, MenuTypes.AppConnection),
+                def);
+            SeedPlatformSet(
+                db.DeveloperAppPlatforms,
+                PlatformCatalog.IdForMenu(def.Id, MenuTypes.DeveloperApp),
+                def);
+        }
+
+        foreach (var p in db.IntegrationPlatforms.Where(p => !catalogCodes.Contains(p.Code)))
+            p.IsActive = false;
+        foreach (var p in db.AppConnectionPlatforms.Where(p => !catalogCodes.Contains(p.Code)))
+            p.IsActive = false;
+        foreach (var p in db.DeveloperAppPlatforms.Where(p => !catalogCodes.Contains(p.Code)))
+            p.IsActive = false;
+
+        await Task.CompletedTask;
+    }
+
+    private static void SeedPlatformSet(
+        DbSet<IntegrationPlatform> set,
+        Guid id,
+        PlatformDefinition def)
+    {
+        var existing = set.Local.FirstOrDefault(p => p.Id == id) ?? set.FirstOrDefault(p => p.Id == id);
+        if (existing is null)
+        {
+            set.Add(new IntegrationPlatform { Id = id, Name = def.Name, Code = def.Code, Icon = def.Icon, IsActive = true });
+            return;
+        }
+        existing.Name = def.Name;
+        existing.Code = def.Code;
+        existing.Icon = def.Icon;
+        existing.IsActive = true;
+    }
+
+    private static void SeedPlatformSet(
+        DbSet<AppConnectionPlatform> set,
+        Guid id,
+        PlatformDefinition def)
+    {
+        var existing = set.Local.FirstOrDefault(p => p.Id == id) ?? set.FirstOrDefault(p => p.Id == id);
+        if (existing is null)
+        {
+            set.Add(new AppConnectionPlatform { Id = id, Name = def.Name, Code = def.Code, Icon = def.Icon, IsActive = true });
+            return;
+        }
+        existing.Name = def.Name;
+        existing.Code = def.Code;
+        existing.Icon = def.Icon;
+        existing.IsActive = true;
+    }
+
+    private static void SeedPlatformSet(
+        DbSet<DeveloperAppPlatform> set,
+        Guid id,
+        PlatformDefinition def)
+    {
+        var existing = set.Local.FirstOrDefault(p => p.Id == id) ?? set.FirstOrDefault(p => p.Id == id);
+        if (existing is null)
+        {
+            set.Add(new DeveloperAppPlatform { Id = id, Name = def.Name, Code = def.Code, Icon = def.Icon, IsActive = true });
+            return;
+        }
+        existing.Name = def.Name;
+        existing.Code = def.Code;
+        existing.Icon = def.Icon;
+        existing.IsActive = true;
     }
 
     /// <summary>

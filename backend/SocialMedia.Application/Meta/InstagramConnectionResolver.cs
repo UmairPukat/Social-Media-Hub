@@ -1,5 +1,5 @@
-using SocialMedia.Domain.Entities;
 using SocialMedia.Domain.Enums;
+using SocialMedia.Domain.Modules.Common.Entities;
 
 namespace SocialMedia.Application.Meta;
 
@@ -25,7 +25,7 @@ public static class InstagramConnectionResolver
             ? InstagramConnectionType.InstagramLogin
             : InstagramConnectionType.FacebookLogin;
 
-    public static InstagramConnectionType FromProfile(SocialProfile profile, string? platformCode = null)
+    public static InstagramConnectionType FromProfile(SocialProfileEntityBase profile, string? platformCode = null)
     {
         if (profile.ProfileType == ProfileType.InstagramLogin)
             return InstagramConnectionType.InstagramLogin;

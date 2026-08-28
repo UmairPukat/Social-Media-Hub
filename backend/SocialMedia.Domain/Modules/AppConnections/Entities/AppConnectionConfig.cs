@@ -26,5 +26,5 @@ public class AppConnectionConfig : BaseEntity
     public string? WabaId { get; set; }
 
     public User? User { get; set; }
-    public Platform? Platform { get; set; }
+    public AppConnectionPlatform? Platform { get; set; }
 }

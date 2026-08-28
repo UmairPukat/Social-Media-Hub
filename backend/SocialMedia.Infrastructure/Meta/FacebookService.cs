@@ -6,9 +6,8 @@ using SocialMedia.Application.DTOs.Meta;
 using SocialMedia.Application.Interfaces;
 using SocialMedia.Application.Meta;
 using SocialMedia.Application.Settings;
-using SocialMedia.Domain.Entities;
 using SocialMedia.Domain.Enums;
-using SocialMedia.Domain.Interfaces;
+using SocialMedia.Domain.Modules.Common.Entities;
 
 namespace SocialMedia.Infrastructure.Meta;
 
@@ -19,20 +18,22 @@ public class FacebookService : IFacebookService
 {
     private readonly MetaGraphClient _graph;
     private readonly FacebookSettings _settings;
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IProcessDataStoreFactory _processData;
+    private IProcessDataStore? _store;
+    private string _menuType = string.Empty;
     private readonly IInboxRealtimeNotifier _inboxRealtime;
     private readonly ILogger<FacebookService> _logger;
 
     public FacebookService(
         MetaGraphClient graph,
         IOptions<MetaSettings> options,
-        IUnitOfWork unitOfWork,
+        IProcessDataStoreFactory processData,
         IInboxRealtimeNotifier inboxRealtime,
         ILogger<FacebookService> logger)
     {
         _graph = graph;
         _settings = options.Value.Facebook;
-        _unitOfWork = unitOfWork;
+        _processData = processData;
         _inboxRealtime = inboxRealtime;
         _logger = logger;
     }
@@ -274,8 +275,13 @@ public class FacebookService : IFacebookService
     /// <c>messaging[]</c> carries Messenger threads. Rows are persisted, then pushed to the
     /// connected Angular client over SignalR.
     /// </summary>
-    public async Task<WebhookProcessResult> ProcessWebhookPayloadAsync(WebhookEvent webhookEvent, CancellationToken cancellationToken = default)
+    public async Task<WebhookProcessResult> ProcessWebhookPayloadAsync(
+        WebhookEventEntityBase webhookEvent,
+        string menuType,
+        CancellationToken cancellationToken = default)
     {
+        _store = _processData.ForMenu(menuType);
+        _menuType = menuType;
         var result = new WebhookProcessResult();
         try
         {
@@ -296,24 +302,23 @@ public class FacebookService : IFacebookService
                 }
 
                 var profile = await MetaWebhookEntryHelper.ResolveProfileForEntryAsync(
-                    _unitOfWork, entry, webhookEvent.MenuType, result, cancellationToken);
+                    _store, entry, result, cancellationToken);
                 if (profile is null)
                     continue;
 
-                var account = await _unitOfWork.SocialAccounts.GetByIdAsync(profile.SocialAccountId, cancellationToken);
+                var account = await _store.GetSocialAccountByIdAsync(profile.SocialAccountId, cancellationToken);
                 if (account is null)
                 {
                     result.Skip($"Page '{pageId}' has no owning account.");
                     continue;
                 }
 
-                if (!WebhookProfileGuard.CanProcess(profile, account, webhookEvent, result))
+                if (!WebhookProfileGuard.CanProcess(profile, account, _menuType, result))
                     continue;
 
                 if (entry.TryGetProperty("changes", out var changes))
                     await ProcessChangesAsync(profile, account, entry, changes, result, cancellationToken);
 
-                // Messenger / Instagram DMs — Meta may use messaging or standby arrays.
                 foreach (var messaging in MetaWebhookEntryHelper.EnumerateMessageArrays(entry))
                     await ProcessMessagesAsync(profile, account, messaging, result, cancellationToken);
             }
@@ -325,11 +330,16 @@ public class FacebookService : IFacebookService
             _logger.LogError(ex, "Facebook webhook processing failed for {Id}", webhookEvent.Id);
             throw;
         }
+        finally
+        {
+            _store = null;
+            _menuType = string.Empty;
+        }
     }
 
     private async Task ProcessChangesAsync(
-        SocialProfile profile,
-        SocialAccount account,
+        SocialProfileEntityBase profile,
+        SocialAccountEntityBase account,
         JsonElement entry,
         JsonElement changes,
         WebhookProcessResult result,
@@ -379,8 +389,8 @@ public class FacebookService : IFacebookService
     }
 
     private async Task ProcessCommentAsync(
-        SocialProfile profile,
-        SocialAccount account,
+        SocialProfileEntityBase profile,
+        SocialAccountEntityBase account,
         JsonElement entry,
         JsonElement value,
         string? verb,
@@ -397,7 +407,7 @@ public class FacebookService : IFacebookService
                 return;
             }
 
-            var removed = await _unitOfWork.Comments.GetByExternalCommentIdAsync(removeId, account.MenuType, cancellationToken);
+            var removed = await _store!.GetCommentByExternalIdAsync(removeId, cancellationToken);
             if (removed is null)
             {
                 result.Skip($"Comment '{removeId}' was removed but is not stored.");
@@ -406,8 +416,8 @@ public class FacebookService : IFacebookService
 
             removed.IsDeleted = true;
             removed.UpdatedAt = DateTime.UtcNow;
-            _unitOfWork.Comments.Update(removed);
-            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            _store!.UpdateComment(removed);
+            await _store!.SaveChangesAsync(cancellationToken);
             result.Handled++;
             return;
         }
@@ -441,7 +451,7 @@ public class FacebookService : IFacebookService
             enriched?.Message,
             value.TryGetProperty("message", out var messageElement) ? messageElement.GetString() : null) ?? string.Empty;
 
-        var existing = await _unitOfWork.Comments.GetByExternalCommentIdAsync(commentId, account.MenuType, cancellationToken);
+        var existing = await _store!.GetCommentByExternalIdAsync(commentId, cancellationToken);
         if (existing is not null)
         {
             if (existing.Message == message && verb != "edited")
@@ -454,8 +464,8 @@ public class FacebookService : IFacebookService
             if (enriched?.LikeCount > 0) existing.LikeCount = enriched.LikeCount;
             existing.IsHidden = enriched?.IsHidden ?? existing.IsHidden;
             existing.UpdatedAt = DateTime.UtcNow;
-            _unitOfWork.Comments.Update(existing);
-            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            _store!.UpdateComment(existing);
+            await _store!.SaveChangesAsync(cancellationToken);
             result.Handled++;
             return;
         }
@@ -491,33 +501,30 @@ public class FacebookService : IFacebookService
         }
 
         // parent_id equals post_id for a top-level comment; only a real reply has a parent comment.
-        Comment? parentComment = null;
+        CommentEntityBase? parentComment = null;
         var parentExternalId = FirstNonEmpty(
             enriched?.ParentExternalId,
             value.TryGetProperty("parent_id", out var parentIdElement) ? parentIdElement.ToString() : null);
         if (!string.IsNullOrWhiteSpace(parentExternalId) && parentExternalId != postExternalId)
-            parentComment = await _unitOfWork.Comments.GetByExternalCommentIdAsync(parentExternalId!, account.MenuType, cancellationToken);
+            parentComment = await _store!.GetCommentByExternalIdAsync(parentExternalId!, cancellationToken);
 
-        var comment = new Comment
-        {
-            PostId = post.Id,
-            ParentCommentId = parentComment?.Id,
-            ExternalCommentId = commentId!,
-            AuthorId = authorId,
-            AuthorName = authorName,
-            Message = message,
-            MenuType = account.MenuType,
-            LikeCount = enriched?.LikeCount ?? 0,
-            IsHidden = enriched?.IsHidden ?? false,
-            PlatformCreatedAt = receivedAt
-        };
-        await _unitOfWork.Comments.AddAsync(comment, cancellationToken);
+        var comment = _store!.NewComment();
+        comment.PostId = post.Id;
+        comment.ParentCommentId = parentComment?.Id;
+        comment.ExternalCommentId = commentId!;
+        comment.AuthorId = authorId;
+        comment.AuthorName = authorName;
+        comment.Message = message;
+        comment.LikeCount = enriched?.LikeCount ?? 0;
+        comment.IsHidden = enriched?.IsHidden ?? false;
+        comment.PlatformCreatedAt = receivedAt;
+        await _store!.AddCommentAsync(comment, cancellationToken);
 
         post.CommentCount += 1;
         post.UpdatedAt = DateTime.UtcNow;
-        _unitOfWork.Posts.Update(post);
+        _store!.UpdatePost(post);
 
-        await _unitOfWork.SaveChangesAsync(cancellationToken);
+        await _store!.SaveChangesAsync(cancellationToken);
         result.Handled++;
 
         var inboxItem = new InboxItemDto
@@ -541,19 +548,19 @@ public class FacebookService : IFacebookService
                 PostId = post.ExternalPostId ?? post.Id.ToString(),
                 PageName = profile.Name ?? profile.Username ?? "Facebook",
                 PostText = FirstNonEmpty(post.Text, post.Caption),
-                PostImageUrl = post.MediaItems.FirstOrDefault()?.Url,
+                PostImageUrl = ProcessEntityNav.FirstMediaUrl(post),
                 LikesCount = post.LikeCount,
                 CommentsCount = post.CommentCount,
                 SharesCount = post.ShareCount,
                 PostedAt = post.PublishedAt ?? post.CreatedAt
             }
         };
-        InboxRoutingHelper.Apply(inboxItem, profile, account);
+        InboxRoutingHelper.Apply(inboxItem, profile, account, _menuType);
         await _inboxRealtime.NotifyInboxItemAsync(account.UserId, inboxItem, cancellationToken);
     }
 
     private async Task ProcessReactionAsync(
-        SocialProfile profile,
+        SocialProfileEntityBase profile,
         JsonElement value,
         string? verb,
         WebhookProcessResult result,
@@ -566,7 +573,7 @@ public class FacebookService : IFacebookService
             return;
         }
 
-        var post = await _unitOfWork.Posts.GetByExternalPostIdAsync(profile.Id, postExternalId!, profile.MenuType, cancellationToken);
+        var post = await _store!.GetPostByExternalIdAsync(profile.Id, postExternalId!, cancellationToken);
         if (post is null)
         {
             result.Skip($"Reaction ignored — post '{postExternalId}' is not stored.");
@@ -575,14 +582,14 @@ public class FacebookService : IFacebookService
 
         post.LikeCount = verb == "remove" ? Math.Max(0, post.LikeCount - 1) : post.LikeCount + 1;
         post.UpdatedAt = DateTime.UtcNow;
-        _unitOfWork.Posts.Update(post);
-        await _unitOfWork.SaveChangesAsync(cancellationToken);
+        _store!.UpdatePost(post);
+        await _store!.SaveChangesAsync(cancellationToken);
         result.Handled++;
     }
 
     private async Task UpsertPostAsync(
-        SocialProfile profile,
-        SocialAccount account,
+        SocialProfileEntityBase profile,
+        SocialAccountEntityBase account,
         JsonElement value,
         WebhookProcessResult result,
         CancellationToken cancellationToken)
@@ -610,9 +617,9 @@ public class FacebookService : IFacebookService
         post.Status = ContentPostStatus.Published;
         post.PublishedAt ??= publishedAt;
         post.UpdatedAt = DateTime.UtcNow;
-        _unitOfWork.Posts.Update(post);
+        _store!.UpdatePost(post);
 
-        await _unitOfWork.SaveChangesAsync(cancellationToken);
+        await _store!.SaveChangesAsync(cancellationToken);
         result.Handled++;
     }
 
@@ -620,9 +627,9 @@ public class FacebookService : IFacebookService
     /// Comments can arrive before the post is stored, so the post is read from Graph and saved
     /// first. Placeholder ids from the webhook test tool keep a readable stub instead.
     /// </summary>
-    private async Task<Post> ResolvePostAsync(
-        SocialProfile profile,
-        SocialAccount account,
+    private async Task<PostEntityBase> ResolvePostAsync(
+        SocialProfileEntityBase profile,
+        SocialAccountEntityBase account,
         string postExternalId,
         DateTime publishedAt,
         string? knownText = null,
@@ -631,24 +638,21 @@ public class FacebookService : IFacebookService
         var pageToken = await ResolvePageTokenAsync(account, cancellationToken);
 
         return await MetaPostStore.ResolveAsync(
-            _unitOfWork,
+            _store!,
             profile,
             account.PlatformId,
             postExternalId,
             publishedAt,
-            account.MenuType,
             ct => GetPostSnapshotAsync(pageToken ?? string.Empty, postExternalId, ct),
             string.IsNullOrWhiteSpace(knownText) ? "Facebook post" : knownText!,
             requireMedia: false,
             cancellationToken: cancellationToken);
     }
 
-    private async Task<string?> ResolvePageTokenAsync(SocialAccount account, CancellationToken cancellationToken)
+    private async Task<string?> ResolvePageTokenAsync(SocialAccountEntityBase account, CancellationToken cancellationToken)
     {
-        if (!string.IsNullOrWhiteSpace(account.Auth?.AccessToken))
-            return account.Auth!.AccessToken;
-
-        var auth = await _unitOfWork.SocialAuths.GetBySocialAccountIdAsync(account.Id, cancellationToken);
+        var auth = ProcessEntityNav.Auth(account)
+            ?? await _store!.GetSocialAuthByAccountIdAsync(account.Id, cancellationToken);
         return string.IsNullOrWhiteSpace(auth?.AccessToken) ? null : auth!.AccessToken;
     }
 
@@ -656,8 +660,8 @@ public class FacebookService : IFacebookService
         => values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)) ?? string.Empty;
 
     private async Task ProcessMessagesAsync(
-        SocialProfile profile,
-        SocialAccount account,
+        SocialProfileEntityBase profile,
+        SocialAccountEntityBase account,
         JsonElement messaging,
         WebhookProcessResult result,
         CancellationToken cancellationToken)
@@ -671,8 +675,8 @@ public class FacebookService : IFacebookService
     /// <c>entry.messaging[]</c> and the <c>changes[field=messages].value</c> object.
     /// </summary>
     private async Task ProcessMessageAsync(
-        SocialProfile profile,
-        SocialAccount account,
+        SocialProfileEntityBase profile,
+        SocialAccountEntityBase account,
         JsonElement item,
         WebhookProcessResult result,
         CancellationToken cancellationToken)
@@ -689,7 +693,7 @@ public class FacebookService : IFacebookService
             result.Skip("Message has no mid.");
             return;
         }
-        if (await _unitOfWork.Messages.GetByExternalMessageIdAsync(messageId, account.MenuType, cancellationToken) is not null)
+        if (await _store!.GetMessageByExternalIdAsync(messageId, cancellationToken) is not null)
         {
             result.Skip($"Message '{messageId}' already stored.");
             return;
@@ -720,21 +724,18 @@ public class FacebookService : IFacebookService
         }
 
         var conversationKey = $"{profile.ExternalProfileId}:{customerId}";
-        var conversation = await _unitOfWork.Conversations.GetByExternalConversationIdAsync(
-            profile.Id, conversationKey, account.MenuType, cancellationToken);
+        var conversation = await _store!.GetConversationByExternalIdAsync(
+            profile.Id, conversationKey, cancellationToken);
         var isNewConversation = conversation is null;
         if (conversation is null)
         {
-            conversation = new Conversation
-            {
-                SocialProfileId = profile.Id,
-                ExternalConversationId = conversationKey,
-                CustomerId = customerId,
-                CustomerName = customerId,
-                MenuType = account.MenuType,
-                Status = ConversationStatus.Open
-            };
-            await _unitOfWork.Conversations.AddAsync(conversation, cancellationToken);
+            conversation = _store!.NewConversation();
+            conversation.SocialProfileId = profile.Id;
+            conversation.ExternalConversationId = conversationKey;
+            conversation.CustomerId = customerId;
+            conversation.CustomerName = customerId;
+            conversation.Status = ConversationStatus.Open;
+            await _store!.AddConversationAsync(conversation, cancellationToken);
         }
 
         var receivedAt = ReadTimestamp(item) ?? DateTime.UtcNow;
@@ -745,31 +746,28 @@ public class FacebookService : IFacebookService
         var replyToMid = ReadReplyToMid(message);
         var quoted = string.IsNullOrWhiteSpace(replyToMid)
             ? null
-            : await _unitOfWork.Messages.GetByExternalMessageIdAsync(replyToMid!, account.MenuType, cancellationToken);
+            : await _store!.GetMessageByExternalIdAsync(replyToMid!, cancellationToken);
 
-        var row = new Message
-        {
-            ConversationId = conversation.Id,
-            ExternalMessageId = messageId!,
-            SenderId = senderId,
-            ReceiverId = receiverId,
-            Direction = outbound ? MessageDirection.Outbound : MessageDirection.Inbound,
-            MessageType = MessageContentType.Text,
-            Body = body,
-            MenuType = account.MenuType,
-            Status = outbound ? MessageDeliveryStatus.Sent : MessageDeliveryStatus.Delivered,
-            PlatformCreatedAt = receivedAt,
-            ReplyToMessageId = quoted?.Id,
-            ReplyToExternalId = replyToMid
-        };
-        await _unitOfWork.Messages.AddAsync(row, cancellationToken);
+        var row = _store!.NewMessage();
+        row.ConversationId = conversation.Id;
+        row.ExternalMessageId = messageId!;
+        row.SenderId = senderId;
+        row.ReceiverId = receiverId;
+        row.Direction = outbound ? MessageDirection.Outbound : MessageDirection.Inbound;
+        row.MessageType = MessageContentType.Text;
+        row.Body = body;
+        row.Status = outbound ? MessageDeliveryStatus.Sent : MessageDeliveryStatus.Delivered;
+        row.PlatformCreatedAt = receivedAt;
+        row.ReplyToMessageId = quoted?.Id;
+        row.ReplyToExternalId = replyToMid;
+        await _store!.AddMessageAsync(row, cancellationToken);
 
         conversation.LastMessageAt = receivedAt;
         conversation.UpdatedAt = DateTime.UtcNow;
         if (!outbound) conversation.UnreadCount += 1;
-        if (!isNewConversation) _unitOfWork.Conversations.Update(conversation);
+        if (!isNewConversation) _store!.UpdateConversation(conversation);
 
-        await _unitOfWork.SaveChangesAsync(cancellationToken);
+        await _store!.SaveChangesAsync(cancellationToken);
         result.Handled++;
 
         var inboxItem = new InboxItemDto
@@ -792,7 +790,7 @@ public class FacebookService : IFacebookService
                 : quoted.Direction == MessageDirection.Outbound ? "You" : conversation.CustomerName ?? quoted.SenderId,
             ReplyToContent = quoted?.Body
         };
-        InboxRoutingHelper.Apply(inboxItem, profile, account);
+        InboxRoutingHelper.Apply(inboxItem, profile, account, _menuType);
 
         await _inboxRealtime.NotifyInboxItemAsync(account.UserId, inboxItem, cancellationToken);
     }

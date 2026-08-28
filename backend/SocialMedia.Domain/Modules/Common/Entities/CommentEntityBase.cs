@@ -1,15 +1,11 @@
 using SocialMedia.Domain.Common;
 
-namespace SocialMedia.Domain.Entities;
+namespace SocialMedia.Domain.Modules.Common.Entities;
 
-/// <summary>
-/// Comment on a Post. Replies use ParentCommentId (same table).
-/// </summary>
-public class Comment : BaseEntity
+public abstract class CommentEntityBase : BaseEntity
 {
     public Guid PostId { get; set; }
     public Guid? ParentCommentId { get; set; }
-
     public string ExternalCommentId { get; set; } = string.Empty;
     public string? AuthorId { get; set; }
     public string AuthorName { get; set; } = string.Empty;
@@ -19,11 +15,4 @@ public class Comment : BaseEntity
     public bool IsDeleted { get; set; }
     public bool IsHidden { get; set; }
     public DateTime? PlatformCreatedAt { get; set; }
-
-    /// <summary>Process module that owns this comment (integration, app_connection, developer_app).</summary>
-    public string MenuType { get; set; } = "integration";
-
-    public Post? Post { get; set; }
-    public Comment? ParentComment { get; set; }
-    public ICollection<Comment> Replies { get; set; } = new List<Comment>();
 }

@@ -1,5 +1,5 @@
 using System.Text.Json;
-using SocialMedia.Domain.Entities;
+using SocialMedia.Domain.Modules.Common.Entities;
 
 namespace SocialMedia.Infrastructure.Meta;
 
@@ -19,7 +19,7 @@ internal static class MetaMessagingHelper
         return null;
     }
 
-    public static bool ProfileOwnsSenderId(SocialProfile profile, string? senderId)
+    public static bool ProfileOwnsSenderId(SocialProfileEntityBase profile, string? senderId)
     {
         if (string.IsNullOrWhiteSpace(senderId))
             return false;

@@ -1,9 +1,7 @@
 using System.Text.Json;
-using SocialMedia.Application.Catalog;
 using SocialMedia.Application.Interfaces;
-using SocialMedia.Domain.Entities;
 using SocialMedia.Domain.Enums;
-using SocialMedia.Domain.Interfaces;
+using SocialMedia.Domain.Modules.Common.Entities;
 
 namespace SocialMedia.Infrastructure.Meta;
 
@@ -13,20 +11,17 @@ namespace SocialMedia.Infrastructure.Meta;
 /// </summary>
 internal static class MetaWebhookProfileResolver
 {
-    public static async Task<SocialProfile?> ResolveAsync(
-        IUnitOfWork unitOfWork,
+    public static async Task<SocialProfileEntityBase?> ResolveAsync(
+        IProcessDataStore store,
         string entryId,
-        string? menuType,
         WebhookProcessResult result,
         CancellationToken cancellationToken)
     {
-        var normalizedMenu = string.IsNullOrWhiteSpace(menuType) ? null : MenuTypes.Normalize(menuType);
-
-        var profile = await unitOfWork.SocialProfiles.GetByExternalProfileIdAsync(entryId, normalizedMenu, cancellationToken);
+        var profile = await store.GetProfileByExternalIdAsync(entryId, cancellationToken);
         if (profile is not null)
             return profile;
 
-        profile = await ScanConnectedProfilesAsync(unitOfWork, entryId, normalizedMenu, cancellationToken);
+        profile = await ScanConnectedProfilesAsync(store, entryId, cancellationToken);
         if (profile is not null)
             return profile;
 
@@ -42,84 +37,51 @@ internal static class MetaWebhookProfileResolver
     }
 
     /// <summary>Profile lookup without adding skip notes (used while probing alternate ids).</summary>
-    public static async Task<SocialProfile?> TryResolveAsync(
-        IUnitOfWork unitOfWork,
+    public static async Task<SocialProfileEntityBase?> TryResolveAsync(
+        IProcessDataStore store,
         string entryId,
-        string? menuType,
         CancellationToken cancellationToken)
     {
-        var normalizedMenu = string.IsNullOrWhiteSpace(menuType) ? null : MenuTypes.Normalize(menuType);
-
-        var profile = await unitOfWork.SocialProfiles.GetByExternalProfileIdAsync(entryId, normalizedMenu, cancellationToken);
+        var profile = await store.GetProfileByExternalIdAsync(entryId, cancellationToken);
         if (profile is not null)
             return profile;
 
-        profile = await ScanConnectedProfilesAsync(unitOfWork, entryId, normalizedMenu, cancellationToken);
-        return profile;
+        return await ScanConnectedProfilesAsync(store, entryId, cancellationToken);
     }
 
-    private static async Task<SocialProfile?> ScanConnectedProfilesAsync(
-        IUnitOfWork unitOfWork,
+    private static async Task<SocialProfileEntityBase?> ScanConnectedProfilesAsync(
+        IProcessDataStore store,
         string entryId,
-        string? normalizedMenu,
         CancellationToken cancellationToken)
     {
-        var accounts = await unitOfWork.SocialAccounts.FindAsync(
-            a => a.Status == SocialAccountStatus.Connected
-                 && (normalizedMenu == null || a.MenuType == normalizedMenu),
-            cancellationToken);
+        var accounts = await store.FindConnectedSocialAccountsAsync(cancellationToken);
 
         foreach (var accountSnapshot in accounts.OrderByDescending(a => a.ConnectedAt ?? a.UpdatedAt))
         {
             if (!SelectedPageIdMatches(accountSnapshot.MetadataJson, entryId))
                 continue;
 
-            var profile = await PickProfileForAccountAsync(unitOfWork, accountSnapshot.Id, normalizedMenu, cancellationToken);
+            var profile = await store.PickBestProfileForAccountAsync(accountSnapshot.Id, cancellationToken);
             if (profile is not null)
                 return profile;
         }
 
         foreach (var accountSnapshot in accounts)
         {
-            var profiles = await unitOfWork.SocialProfiles.GetBySocialAccountAsync(accountSnapshot.Id, cancellationToken);
+            var profiles = await store.GetProfilesByAccountAsync(accountSnapshot.Id, cancellationToken);
             foreach (var snapshot in profiles)
             {
                 if (PageIdMatches(snapshot.MetadataJson, entryId) ||
                     ReadAlternateIds(snapshot.MetadataJson).Contains(entryId))
                 {
-                    return await ReloadProfileAsync(unitOfWork, snapshot, normalizedMenu, cancellationToken);
+                    return await store.GetProfileByExternalIdAsync(snapshot.ExternalProfileId, cancellationToken)
+                           ?? await store.GetProfileByIdAsync(snapshot.Id, cancellationToken);
                 }
             }
         }
 
         return null;
     }
-
-    private static async Task<SocialProfile?> PickProfileForAccountAsync(
-        IUnitOfWork unitOfWork,
-        Guid accountId,
-        string? normalizedMenu,
-        CancellationToken cancellationToken)
-    {
-        var profiles = await unitOfWork.SocialProfiles.GetBySocialAccountAsync(accountId, cancellationToken);
-        var snapshot = profiles
-            .OrderByDescending(p => p.ProfileType == ProfileType.InstagramBusiness ? 1 : 0)
-            .ThenByDescending(p => p.ProfileType == ProfileType.InstagramLogin ? 1 : 0)
-            .ThenByDescending(p => p.ProfileType == ProfileType.FacebookPage ? 1 : 0)
-            .FirstOrDefault();
-
-        return snapshot is null
-            ? null
-            : await ReloadProfileAsync(unitOfWork, snapshot, normalizedMenu, cancellationToken);
-    }
-
-    private static async Task<SocialProfile?> ReloadProfileAsync(
-        IUnitOfWork unitOfWork,
-        SocialProfile snapshot,
-        string? menuType,
-        CancellationToken cancellationToken)
-        => await unitOfWork.SocialProfiles.GetByExternalProfileIdAsync(snapshot.ExternalProfileId, menuType, cancellationToken)
-           ?? await unitOfWork.SocialProfiles.GetByIdAsync(snapshot.Id, cancellationToken);
 
     private static bool PageIdMatches(string? metadataJson, string pageId)
     {

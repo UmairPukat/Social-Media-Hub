@@ -28,20 +28,10 @@ public static class DependencyInjection
 
         services.AddScoped<IUserRepository, UserRepository>();
         services.AddScoped<IAccessTokenRepository, AccessTokenRepository>();
-        services.AddScoped<IPlatformRepository, PlatformRepository>();
-        services.AddScoped<ISocialAccountRepository, SocialAccountRepository>();
-        services.AddScoped<ISocialAuthRepository, SocialAuthRepository>();
-        services.AddScoped<ISocialProfileRepository, SocialProfileRepository>();
-        services.AddScoped<IPostRepository, PostRepository>();
-        services.AddScoped<ICommentRepository, CommentRepository>();
-        services.AddScoped<IConversationRepository, ConversationRepository>();
-        services.AddScoped<IMessageRepository, MessageRepository>();
-        services.AddScoped<IWebhookEventRepository, WebhookEventRepository>();
-        services.AddScoped<IWebhookLogRepository, WebhookLogRepository>();
-        services.AddScoped<ISyncJobRepository, SyncJobRepository>();
         services.AddScoped<IAppConnectionConfigRepository, AppConnectionConfigRepository>();
         services.AddScoped<IIntegrationAppConfigRepository, IntegrationAppConfigRepository>();
         services.AddScoped<IDeveloperAppConfigRepository, DeveloperAppConfigRepository>();
+        services.AddScoped<IProcessDataStoreFactory, ProcessDataStoreFactory>();
         services.AddScoped<IUnitOfWork, UnitOfWork>();
 
         services.AddScoped<IPasswordHasher, PasswordHasher>();
@@ -71,7 +61,6 @@ public static class DependencyInjection
                     IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwt.SecretKey))
                 };
 
-                // SignalR sends the JWT as ?access_token= for WebSocket connections.
                 options.Events = new JwtBearerEvents
                 {
                     OnMessageReceived = context =>
@@ -89,9 +78,6 @@ public static class DependencyInjection
         return services;
     }
 
-    /// <summary>
-    /// Resolves Postgres in order: DATABASE_URL → ConnectionStrings:Default → PG* env vars.
-    /// </summary>
     private static string ResolveConnectionString(IConfiguration configuration)
     {
         var databaseUrl = Environment.GetEnvironmentVariable("DATABASE_URL");
@@ -108,15 +94,11 @@ public static class DependencyInjection
         var user = Environment.GetEnvironmentVariable("PGUSER") ?? "postgres";
         var password = Environment.GetEnvironmentVariable("PGPASSWORD") ?? "";
         var database = Environment.GetEnvironmentVariable("PGDATABASE") ?? "postgres";
-        // Prefer = try SSL, fall back if server has no SSL (fixes local / some Railway setups).
         var sslMode = Environment.GetEnvironmentVariable("PGSSLMODE") ?? "Prefer";
         return
             $"Host={host};Port={port};Username={user};Password={password};Database={database};SSL Mode={sslMode};Trust Server Certificate=true";
     }
 
-    /// <summary>
-    /// Converts a postgres:// URL into an Npgsql connection string with flexible SSL.
-    /// </summary>
     private static string BuildNpgsqlFromUrl(string databaseUrl)
     {
         var uri = new Uri(databaseUrl);

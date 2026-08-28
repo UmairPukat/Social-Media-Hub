@@ -3,9 +3,8 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using SocialMedia.Application.Interfaces;
 using SocialMedia.Application.Settings;
-using SocialMedia.Domain.Entities;
 using SocialMedia.Domain.Enums;
-using SocialMedia.Domain.Interfaces;
+using SocialMedia.Domain.Modules.Common.Entities;
 
 namespace SocialMedia.Infrastructure.Meta;
 
@@ -16,14 +15,20 @@ public class WhatsAppService : IWhatsAppService
 {
     private readonly MetaGraphClient _graph;
     private readonly WhatsAppSettings _settings;
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IProcessDataStoreFactory _processData;
+    private IProcessDataStore? _store;
+    private string _menuType = string.Empty;
     private readonly ILogger<WhatsAppService> _logger;
 
-    public WhatsAppService(MetaGraphClient graph, IOptions<MetaSettings> options, IUnitOfWork unitOfWork, ILogger<WhatsAppService> logger)
+    public WhatsAppService(
+        MetaGraphClient graph,
+        IOptions<MetaSettings> options,
+        IProcessDataStoreFactory processData,
+        ILogger<WhatsAppService> logger)
     {
         _graph = graph;
         _settings = options.Value.WhatsApp;
-        _unitOfWork = unitOfWork;
+        _processData = processData;
         _logger = logger;
     }
 
@@ -135,14 +140,25 @@ public class WhatsAppService : IWhatsAppService
 
     public async Task DeleteMessageAsync(MetaCallContext context, string messageId, CancellationToken cancellationToken = default)
     {
-        var items = await _unitOfWork.Messages.FindAsync(m => m.ExternalMessageId == messageId, cancellationToken);
-        foreach (var item in items)
-            _unitOfWork.Messages.Remove(item);
-        await _unitOfWork.SaveChangesAsync(cancellationToken);
+        foreach (var store in _processData.AllStores())
+        {
+            var item = await store.GetMessageByExternalIdAsync(messageId, cancellationToken);
+            if (item is null)
+                continue;
+
+            store.RemoveMessage(item);
+            await store.SaveChangesAsync(cancellationToken);
+            return;
+        }
     }
 
-    public async Task<WebhookProcessResult> ProcessWebhookPayloadAsync(WebhookEvent webhookEvent, CancellationToken cancellationToken = default)
+    public async Task<WebhookProcessResult> ProcessWebhookPayloadAsync(
+        WebhookEventEntityBase webhookEvent,
+        string menuType,
+        CancellationToken cancellationToken = default)
     {
+        _store = _processData.ForMenu(menuType);
+        _menuType = menuType;
         var result = new WebhookProcessResult();
         try
         {
@@ -164,13 +180,13 @@ public class WhatsAppService : IWhatsAppService
                         ? pn.GetString() : null;
                     if (phoneNumberId is null) continue;
 
-                    var profile = await _unitOfWork.SocialProfiles.GetByExternalProfileIdAsync(phoneNumberId, webhookEvent.MenuType, cancellationToken);
+                    var profile = await _store.GetProfileByExternalIdAsync(phoneNumberId, cancellationToken);
                     if (profile is null || !value.TryGetProperty("messages", out var messages)) continue;
 
-                    var account = await _unitOfWork.SocialAccounts.GetByIdAsync(profile.SocialAccountId, cancellationToken);
+                    var account = await _store.GetSocialAccountByIdAsync(profile.SocialAccountId, cancellationToken);
                     if (account is null) continue;
 
-                    if (!WebhookProfileGuard.CanProcess(profile, account, webhookEvent, result))
+                    if (!WebhookProfileGuard.CanProcess(profile, account, _menuType, result))
                         continue;
 
                     foreach (var message in messages.EnumerateArray())
@@ -181,56 +197,54 @@ public class WhatsAppService : IWhatsAppService
                             ? body.GetString() ?? string.Empty : string.Empty;
                         if (string.IsNullOrWhiteSpace(id)) continue;
 
-                        var conversations = await _unitOfWork.Conversations.FindAsync(
-                            c => c.SocialProfileId == profile.Id && c.CustomerId == from, cancellationToken);
-                        var conversation = conversations.FirstOrDefault();
+                        var conversation = await _store.GetConversationByProfileAndCustomerAsync(profile.Id, from ?? id, cancellationToken);
                         if (conversation is null)
                         {
-                            conversation = new Conversation
-                            {
-                                SocialProfileId = profile.Id,
-                                ExternalConversationId = from ?? id,
-                                CustomerId = from,
-                                CustomerName = from,
-                                MenuType = account.MenuType,
-                                LastMessageAt = DateTime.UtcNow,
-                                UnreadCount = 1,
-                                Status = ConversationStatus.Open
-                            };
-                            await _unitOfWork.Conversations.AddAsync(conversation, cancellationToken);
-                            await _unitOfWork.SaveChangesAsync(cancellationToken);
+                            conversation = _store.NewConversation();
+                            conversation.SocialProfileId = profile.Id;
+                            conversation.ExternalConversationId = from ?? id;
+                            conversation.CustomerId = from;
+                            conversation.CustomerName = from;
+                            conversation.LastMessageAt = DateTime.UtcNow;
+                            conversation.UnreadCount = 1;
+                            conversation.Status = ConversationStatus.Open;
+                            await _store.AddConversationAsync(conversation, cancellationToken);
+                            await _store.SaveChangesAsync(cancellationToken);
                         }
                         else
                         {
                             conversation.UnreadCount += 1;
                             conversation.LastMessageAt = DateTime.UtcNow;
-                            _unitOfWork.Conversations.Update(conversation);
+                            _store.UpdateConversation(conversation);
                         }
 
-                        await _unitOfWork.Messages.AddAsync(new Message
-                        {
-                            ConversationId = conversation.Id,
-                            ExternalMessageId = id,
-                            SenderId = from,
-                            Direction = MessageDirection.Inbound,
-                            MessageType = MessageContentType.Text,
-                            Body = text,
-                            MenuType = account.MenuType,
-                            Status = MessageDeliveryStatus.Delivered,
-                            PlatformCreatedAt = DateTime.UtcNow
-                        }, cancellationToken);
+                        var row = _store.NewMessage();
+                        row.ConversationId = conversation.Id;
+                        row.ExternalMessageId = id;
+                        row.SenderId = from;
+                        row.Direction = MessageDirection.Inbound;
+                        row.MessageType = MessageContentType.Text;
+                        row.Body = text;
+                        row.Status = MessageDeliveryStatus.Delivered;
+                        row.PlatformCreatedAt = DateTime.UtcNow;
+                        await _store.AddMessageAsync(row, cancellationToken);
                         result.Handled++;
                     }
                 }
             }
 
-            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            await _store.SaveChangesAsync(cancellationToken);
             return result;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "WhatsApp webhook processing failed for {Id}", webhookEvent.Id);
             throw;
+        }
+        finally
+        {
+            _store = null;
+            _menuType = string.Empty;
         }
     }
 }

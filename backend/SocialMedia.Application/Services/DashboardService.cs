@@ -2,17 +2,16 @@ using SocialMedia.Application.DTOs.Common;
 using SocialMedia.Application.DTOs.Dashboard;
 using SocialMedia.Application.Interfaces;
 using SocialMedia.Domain.Enums;
-using SocialMedia.Domain.Interfaces;
 
 namespace SocialMedia.Application.Services;
 
 public class DashboardService : IDashboardService
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IProcessDataStoreFactory _processData;
 
-    public DashboardService(IUnitOfWork unitOfWork)
+    public DashboardService(IProcessDataStoreFactory processData)
     {
-        _unitOfWork = unitOfWork;
+        _processData = processData;
     }
 
     public Task<ApiResponse<DashboardSummaryDto>> GetSummaryAsync(Guid userId, CancellationToken cancellationToken = default)
@@ -25,27 +24,42 @@ public class DashboardService : IDashboardService
     {
         try
         {
-            var accounts = await _unitOfWork.SocialAccounts.GetByUserAsync(userId, cancellationToken);
-            if (!string.IsNullOrWhiteSpace(menuType))
-                accounts = accounts.Where(a => a.MenuType == menuType).ToList();
+            var stores = string.IsNullOrWhiteSpace(menuType)
+                ? _processData.AllStores()
+                : [_processData.ForMenu(menuType)];
 
-            var posts = await _unitOfWork.Posts.GetByUserProfilesAsync(
-                userId, menuType: menuType, cancellationToken: cancellationToken);
+            var connectedAccounts = 0;
+            var posts = new List<Domain.Modules.Common.Entities.PostEntityBase>();
+            var commentCount = 0;
+            var messageCount = 0;
+            var unreadInbox = 0;
 
-            var comments = await _unitOfWork.Comments.GetByUserAsync(userId, menuType: menuType, cancellationToken: cancellationToken);
+            foreach (var store in stores)
+            {
+                var accounts = await store.GetSocialAccountsByUserAsync(userId, cancellationToken);
+                connectedAccounts += accounts.Count(a => a.Status == SocialAccountStatus.Connected);
 
-            var messages = await _unitOfWork.Messages.GetByUserAsync(userId, menuType: menuType, cancellationToken: cancellationToken);
+                var storePosts = await store.GetPostsByUserProfilesAsync(userId, cancellationToken: cancellationToken);
+                posts.AddRange(storePosts);
+
+                var comments = await store.GetCommentsForInboxAsync(userId, null, null, cancellationToken);
+                commentCount += comments.Count;
+
+                var messages = await store.GetMessagesForInboxAsync(userId, null, null, cancellationToken);
+                messageCount += messages.Count;
+                unreadInbox += messages.Count(m => Meta.ProcessEntityNav.UnreadCount(m.Conversation) > 0);
+            }
 
             return ApiResponse<DashboardSummaryDto>.Ok(new DashboardSummaryDto
             {
-                ConnectedAccountsCount = accounts.Count(a => a.Status == SocialAccountStatus.Connected),
+                ConnectedAccountsCount = connectedAccounts,
                 TotalPostsCount = posts.Count,
                 PublishedPostsCount = posts.Count(p => p.Status == ContentPostStatus.Published),
                 FailedPostsCount = posts.Count(p => p.Status == ContentPostStatus.Failed),
                 ScheduledPostsCount = posts.Count(p => p.Status == ContentPostStatus.Scheduled),
-                UnreadInboxCount = messages.Count(m => m.Conversation?.UnreadCount > 0),
-                TotalCommentsCount = comments.Count,
-                TotalMessagesCount = messages.Count
+                UnreadInboxCount = unreadInbox,
+                TotalCommentsCount = commentCount,
+                TotalMessagesCount = messageCount
             });
         }
         catch (Exception ex)

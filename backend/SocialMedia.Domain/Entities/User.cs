@@ -12,6 +12,4 @@ public class User : BaseEntity
     public string FullName { get; set; } = string.Empty;
     public string Role { get; set; } = "User";
     public bool IsActive { get; set; } = true;
-
-    public ICollection<SocialAccount> SocialAccounts { get; set; } = new List<SocialAccount>();
 }

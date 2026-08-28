@@ -2,10 +2,6 @@ using SocialMedia.Domain.Common;
 using SocialMedia.Domain.Entities;
 
 namespace SocialMedia.Domain.Modules.Integrations.Entities;
-
-/// <summary>
-/// Integrations process app credentials — table: IntegrationAppConfigs.
-/// </summary>
 public class IntegrationAppConfig : BaseEntity
 {
     public Guid UserId { get; set; }
@@ -26,5 +22,5 @@ public class IntegrationAppConfig : BaseEntity
     public string? WabaId { get; set; }
 
     public User? User { get; set; }
-    public Platform? Platform { get; set; }
+    public IntegrationPlatform? Platform { get; set; }
 }

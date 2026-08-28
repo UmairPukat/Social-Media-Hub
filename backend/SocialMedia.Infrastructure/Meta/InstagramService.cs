@@ -6,9 +6,8 @@ using SocialMedia.Application.DTOs.Meta;
 using SocialMedia.Application.Interfaces;
 using SocialMedia.Application.Meta;
 using SocialMedia.Application.Settings;
-using SocialMedia.Domain.Entities;
 using SocialMedia.Domain.Enums;
-using SocialMedia.Domain.Interfaces;
+using SocialMedia.Domain.Modules.Common.Entities;
 
 namespace SocialMedia.Infrastructure.Meta;
 
@@ -23,14 +22,16 @@ public class InstagramService : IInstagramService
     private readonly InstagramSettings _instagram;
     private readonly InstagramLoginSettings _instagramLogin;
     private readonly FacebookSettings _facebook;
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IProcessDataStoreFactory _processData;
+    private IProcessDataStore? _store;
+    private string _menuType = string.Empty;
     private readonly IInboxRealtimeNotifier _inboxRealtime;
     private readonly ILogger<InstagramService> _logger;
 
     public InstagramService(
         MetaGraphClient graph,
         IOptions<MetaSettings> options,
-        IUnitOfWork unitOfWork,
+        IProcessDataStoreFactory processData,
         IInboxRealtimeNotifier inboxRealtime,
         ILogger<InstagramService> logger)
     {
@@ -38,7 +39,7 @@ public class InstagramService : IInstagramService
         _instagram = options.Value.Instagram;
         _instagramLogin = options.Value.InstagramLogin;
         _facebook = options.Value.Facebook;
-        _unitOfWork = unitOfWork;
+        _processData = processData;
         _inboxRealtime = inboxRealtime;
         _logger = logger;
     }
@@ -631,8 +632,10 @@ public class InstagramService : IInstagramService
     public Task<IReadOnlyList<string>> GetSubscribedFieldsAsync(string pageId, string pageAccessToken, CancellationToken cancellationToken = default)
         => _graph.GetPageSubscribedFieldsAsync(GraphVersion, pageId, pageAccessToken, cancellationToken);
 
-    public async Task<WebhookProcessResult> ProcessWebhookPayloadAsync(WebhookEvent webhookEvent, CancellationToken cancellationToken = default)
+    public async Task<WebhookProcessResult> ProcessWebhookPayloadAsync(WebhookEventEntityBase webhookEvent, string menuType, CancellationToken cancellationToken = default)
     {
+        _store = _processData.ForMenu(menuType);
+        _menuType = menuType;
         var result = new WebhookProcessResult();
         try
         {
@@ -653,18 +656,18 @@ public class InstagramService : IInstagramService
                 }
 
                 var profile = await MetaWebhookEntryHelper.ResolveProfileForEntryAsync(
-                    _unitOfWork, entry, webhookEvent.MenuType, result, cancellationToken);
+                    _store, entry, result, cancellationToken);
                 if (profile is null)
                     continue;
 
-                var account = await _unitOfWork.SocialAccounts.GetByIdAsync(profile.SocialAccountId, cancellationToken);
+                var account = await _store.GetSocialAccountByIdAsync(profile.SocialAccountId, cancellationToken);
                 if (account is null)
                 {
                     result.Skip($"Entry '{igUserId}' has no owning account.");
                     continue;
                 }
 
-                if (!WebhookProfileGuard.CanProcess(profile, account, webhookEvent, result))
+                if (!WebhookProfileGuard.CanProcess(profile, account, _menuType, result))
                     continue;
 
                 // Business Login for Instagram can attach field/value on the entry itself.
@@ -688,13 +691,18 @@ public class InstagramService : IInstagramService
                     await ProcessMessagesAsync(profile, messaging, result, cancellationToken);
             }
 
-            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            await _store.SaveChangesAsync(cancellationToken);
             return result;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Instagram webhook processing failed for {Id}", webhookEvent.Id);
             throw;
+        }
+        finally
+        {
+            _store = null;
+            _menuType = string.Empty;
         }
     }
 
@@ -722,7 +730,7 @@ public class InstagramService : IInstagramService
     }
 
     /// <summary>True when the id belongs to this profile — its own id, a linked Page, or a known alternate.</summary>
-    private static bool ProfileOwnsId(SocialProfile profile, string? externalId)
+    private static bool ProfileOwnsId(SocialProfileEntityBase profile, string? externalId)
     {
         if (string.IsNullOrWhiteSpace(externalId))
             return false;
@@ -733,12 +741,12 @@ public class InstagramService : IInstagramService
     }
 
     private async Task<IReadOnlyList<string>> ResolveAccessTokensAsync(
-        SocialAccount account,
+        SocialAccountEntityBase account,
         InstagramConnectionType connectionType,
         CancellationToken cancellationToken)
     {
-        var auth = account.Auth
-            ?? await _unitOfWork.SocialAuths.GetBySocialAccountIdAsync(account.Id, cancellationToken);
+        var auth = ProcessEntityNav.Auth(account)
+            ?? await _store!.GetSocialAuthByAccountIdAsync(account.Id, cancellationToken);
         var tokens = new List<string>();
 
         void Add(string? token)
@@ -760,20 +768,20 @@ public class InstagramService : IInstagramService
     }
 
     private async Task ProcessChangesAsync(
-        SocialProfile profile,
+        SocialProfileEntityBase profile,
         JsonElement entry,
         JsonElement changes,
         WebhookProcessResult result,
         CancellationToken cancellationToken)
     {
-        var account = await _unitOfWork.SocialAccounts.GetByIdAsync(profile.SocialAccountId, cancellationToken);
+        var account = await _store!.GetSocialAccountByIdAsync(profile.SocialAccountId, cancellationToken);
         if (account is null)
         {
             result.Skip($"Profile '{profile.Id}' has no owning account.");
             return;
         }
 
-        var platform = await _unitOfWork.Platforms.GetByIdAsync(account.PlatformId, cancellationToken);
+        var platform = await _store!.GetPlatformByIdAsync(account.PlatformId, cancellationToken);
         var connectionType = InstagramConnectionResolver.FromProfile(profile, platform?.Code);
         _logger.LogInformation(
             "Instagram webhook comment/message routing | InstagramAccountId={InstagramAccountId} | ConnectionType={ConnectionType}",
@@ -845,18 +853,17 @@ public class InstagramService : IInstagramService
             // Resolve the post before checking comment idempotency. A redelivered comment can
             // therefore repair an older post row that was saved without its Instagram media.
             var post = await MetaPostStore.ResolveAsync(
-                _unitOfWork,
+                _store!,
                 profile,
                 account.PlatformId,
                 mediaId!,
                 enriched?.CreatedTime ?? UnixSeconds(entry, "time") ?? DateTime.UtcNow,
-                account.MenuType,
                 ct => GetMediaSnapshotWithTokensAsync(accessTokens, mediaId!, connectionType, ct),
                 "Instagram post",
                 requireMedia: true,
                 cancellationToken: cancellationToken);
 
-            var existing = await _unitOfWork.Comments.GetByExternalCommentIdAsync(commentId, account.MenuType, cancellationToken);
+            var existing = await _store!.GetCommentByExternalIdAsync(commentId, cancellationToken);
             if (existing is not null)
             {
                 var changed = existing.Message != commentText || existing.PostId != post.Id;
@@ -870,8 +877,8 @@ public class InstagramService : IInstagramService
                 existing.Message = commentText;
                 if (enriched?.LikeCount > 0) existing.LikeCount = enriched.LikeCount;
                 existing.UpdatedAt = DateTime.UtcNow;
-                _unitOfWork.Comments.Update(existing);
-                await _unitOfWork.SaveChangesAsync(cancellationToken);
+                _store!.UpdateComment(existing);
+                await _store!.SaveChangesAsync(cancellationToken);
                 result.Handled++;
                 continue;
             }
@@ -894,32 +901,29 @@ public class InstagramService : IInstagramService
                 continue;
             }
 
-            Comment? parentComment = null;
+            CommentEntityBase? parentComment = null;
             var parentExternalId = FirstNonEmpty(
                 enriched?.ParentExternalId,
                 value.TryGetProperty("parent_id", out var parentIdElement) ? parentIdElement.ToString() : null);
             if (!string.IsNullOrWhiteSpace(parentExternalId) && parentExternalId != mediaId)
-                parentComment = await _unitOfWork.Comments.GetByExternalCommentIdAsync(parentExternalId!, account.MenuType, cancellationToken);
+                parentComment = await _store!.GetCommentByExternalIdAsync(parentExternalId!, cancellationToken);
 
             var receivedAt = enriched?.CreatedTime ?? UnixSeconds(entry, "time") ?? DateTime.UtcNow;
-            var comment = new Comment
-            {
-                PostId = post.Id,
-                ParentCommentId = parentComment?.Id,
-                ExternalCommentId = commentId,
-                AuthorId = authorId,
-                AuthorName = authorName,
-                Message = commentText,
-                MenuType = account.MenuType,
-                LikeCount = enriched?.LikeCount ?? 0,
-                PlatformCreatedAt = receivedAt
-            };
-            await _unitOfWork.Comments.AddAsync(comment, cancellationToken);
+            var comment = _store!.NewComment();
+            comment.PostId = post.Id;
+            comment.ParentCommentId = parentComment?.Id;
+            comment.ExternalCommentId = commentId;
+            comment.AuthorId = authorId;
+            comment.AuthorName = authorName;
+            comment.Message = commentText;
+            comment.LikeCount = enriched?.LikeCount ?? 0;
+            comment.PlatformCreatedAt = receivedAt;
+            await _store!.AddCommentAsync(comment, cancellationToken);
             post.CommentCount += 1;
             post.UpdatedAt = DateTime.UtcNow;
-            _unitOfWork.Posts.Update(post);
+            _store!.UpdatePost(post);
 
-            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            await _store!.SaveChangesAsync(cancellationToken);
             result.Handled++;
 
             var inboxItem = new InboxItemDto
@@ -943,7 +947,7 @@ public class InstagramService : IInstagramService
                     PostId = post.ExternalPostId ?? post.Id.ToString(),
                     PageName = profile.Name ?? profile.Username ?? "Instagram",
                     PostText = FirstNonEmpty(post.Caption, post.Text),
-                    PostImageUrl = post.MediaItems.FirstOrDefault()?.Url,
+                    PostImageUrl = ProcessEntityNav.FirstMediaUrl(post),
                     LikesCount = post.LikeCount,
                     CommentsCount = post.CommentCount,
                     SharesCount = post.ShareCount,
@@ -951,7 +955,7 @@ public class InstagramService : IInstagramService
                 }
             };
 
-            InboxRoutingHelper.Apply(inboxItem, profile, account);
+            InboxRoutingHelper.Apply(inboxItem, profile, account, _menuType);
             await _inboxRealtime.NotifyInboxItemAsync(account.UserId, inboxItem, cancellationToken);
         }
     }
@@ -960,12 +964,12 @@ public class InstagramService : IInstagramService
         => values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)) ?? string.Empty;
 
     private async Task ProcessMessagesAsync(
-        SocialProfile profile,
+        SocialProfileEntityBase profile,
         JsonElement messaging,
         WebhookProcessResult result,
         CancellationToken cancellationToken)
     {
-        var account = await _unitOfWork.SocialAccounts.GetByIdAsync(profile.SocialAccountId, cancellationToken);
+        var account = await _store!.GetSocialAccountByIdAsync(profile.SocialAccountId, cancellationToken);
         if (account is null)
         {
             result.Skip($"Profile '{profile.Id}' has no owning account.");
@@ -981,8 +985,8 @@ public class InstagramService : IInstagramService
     /// <c>entry.messaging[]</c> and the <c>changes[field=messages].value</c> object.
     /// </summary>
     private async Task ProcessMessageAsync(
-        SocialProfile profile,
-        SocialAccount account,
+        SocialProfileEntityBase profile,
+        SocialAccountEntityBase account,
         JsonElement item,
         WebhookProcessResult result,
         CancellationToken cancellationToken)
@@ -999,7 +1003,7 @@ public class InstagramService : IInstagramService
             result.Skip("Message has no mid.");
             return;
         }
-        if (await _unitOfWork.Messages.GetByExternalMessageIdAsync(messageId, account.MenuType, cancellationToken) is not null)
+        if (await _store!.GetMessageByExternalIdAsync(messageId, cancellationToken) is not null)
         {
             result.Skip($"Message '{messageId}' already stored.");
             return;
@@ -1029,21 +1033,18 @@ public class InstagramService : IInstagramService
         }
 
         var conversationKey = $"{profile.ExternalProfileId}:{customerId}";
-        var conversation = await _unitOfWork.Conversations.GetByExternalConversationIdAsync(
-            profile.Id, conversationKey, account.MenuType, cancellationToken);
+        var conversation = await _store!.GetConversationByExternalIdAsync(
+            profile.Id, conversationKey, cancellationToken);
         var isNewConversation = conversation is null;
         if (conversation is null)
         {
-            conversation = new Conversation
-            {
-                SocialProfileId = profile.Id,
-                ExternalConversationId = conversationKey,
-                CustomerId = customerId,
-                CustomerName = customerId,
-                MenuType = account.MenuType,
-                Status = ConversationStatus.Open
-            };
-            await _unitOfWork.Conversations.AddAsync(conversation, cancellationToken);
+            conversation = _store!.NewConversation();
+            conversation.SocialProfileId = profile.Id;
+            conversation.ExternalConversationId = conversationKey;
+            conversation.CustomerId = customerId;
+            conversation.CustomerName = customerId;
+            conversation.Status = ConversationStatus.Open;
+            await _store!.AddConversationAsync(conversation, cancellationToken);
         }
 
         var receivedAt = ReadTimestamp(item) ?? DateTime.UtcNow;
@@ -1058,31 +1059,28 @@ public class InstagramService : IInstagramService
             : null;
         var quoted = string.IsNullOrWhiteSpace(replyToMid)
             ? null
-            : await _unitOfWork.Messages.GetByExternalMessageIdAsync(replyToMid!, account.MenuType, cancellationToken);
+            : await _store!.GetMessageByExternalIdAsync(replyToMid!, cancellationToken);
 
-        var msg = new Message
-        {
-            ConversationId = conversation.Id,
-            ExternalMessageId = messageId,
-            SenderId = senderId,
-            ReceiverId = receiverId,
-            Direction = outbound ? MessageDirection.Outbound : MessageDirection.Inbound,
-            MessageType = MessageContentType.Text,
-            Body = body,
-            MenuType = account.MenuType,
-            Status = outbound ? MessageDeliveryStatus.Sent : MessageDeliveryStatus.Delivered,
-            PlatformCreatedAt = receivedAt,
-            ReplyToMessageId = quoted?.Id,
-            ReplyToExternalId = replyToMid
-        };
-        await _unitOfWork.Messages.AddAsync(msg, cancellationToken);
+        var msg = _store!.NewMessage();
+        msg.ConversationId = conversation.Id;
+        msg.ExternalMessageId = messageId;
+        msg.SenderId = senderId;
+        msg.ReceiverId = receiverId;
+        msg.Direction = outbound ? MessageDirection.Outbound : MessageDirection.Inbound;
+        msg.MessageType = MessageContentType.Text;
+        msg.Body = body;
+        msg.Status = outbound ? MessageDeliveryStatus.Sent : MessageDeliveryStatus.Delivered;
+        msg.PlatformCreatedAt = receivedAt;
+        msg.ReplyToMessageId = quoted?.Id;
+        msg.ReplyToExternalId = replyToMid;
+        await _store!.AddMessageAsync(msg, cancellationToken);
 
         conversation.LastMessageAt = receivedAt;
         conversation.UpdatedAt = DateTime.UtcNow;
         if (!outbound) conversation.UnreadCount += 1;
-        if (!isNewConversation) _unitOfWork.Conversations.Update(conversation);
+        if (!isNewConversation) _store!.UpdateConversation(conversation);
 
-        await _unitOfWork.SaveChangesAsync(cancellationToken);
+        await _store!.SaveChangesAsync(cancellationToken);
         result.Handled++;
 
         var inboxItem = new InboxItemDto
@@ -1106,7 +1104,7 @@ public class InstagramService : IInstagramService
             ReplyToContent = quoted?.Body
         };
 
-        InboxRoutingHelper.Apply(inboxItem, profile, account);
+        InboxRoutingHelper.Apply(inboxItem, profile, account, _menuType);
         await _inboxRealtime.NotifyInboxItemAsync(account.UserId, inboxItem, cancellationToken);
     }
 

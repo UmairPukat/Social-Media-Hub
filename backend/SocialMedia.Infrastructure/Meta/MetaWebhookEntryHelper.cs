@@ -1,7 +1,6 @@
 using System.Text.Json;
 using SocialMedia.Application.Interfaces;
-using SocialMedia.Domain.Entities;
-using SocialMedia.Domain.Interfaces;
+using SocialMedia.Domain.Modules.Common.Entities;
 
 namespace SocialMedia.Infrastructure.Meta;
 
@@ -11,10 +10,9 @@ namespace SocialMedia.Infrastructure.Meta;
 /// </summary>
 internal static class MetaWebhookEntryHelper
 {
-    public static async Task<SocialProfile?> ResolveProfileForEntryAsync(
-        IUnitOfWork unitOfWork,
+    public static async Task<SocialProfileEntityBase?> ResolveProfileForEntryAsync(
+        IProcessDataStore store,
         JsonElement entry,
-        string? menuType,
         WebhookProcessResult result,
         CancellationToken cancellationToken)
     {
@@ -25,7 +23,7 @@ internal static class MetaWebhookEntryHelper
         {
             tried.Add(entryId);
             var profile = await MetaWebhookProfileResolver.TryResolveAsync(
-                unitOfWork, entryId, menuType, cancellationToken);
+                store, entryId, cancellationToken);
             if (profile is not null)
                 return profile;
         }
@@ -36,7 +34,7 @@ internal static class MetaWebhookEntryHelper
                 continue;
 
             var profile = await MetaWebhookProfileResolver.TryResolveAsync(
-                unitOfWork, candidateId, menuType, cancellationToken);
+                store, candidateId, cancellationToken);
             if (profile is not null)
                 return profile;
         }

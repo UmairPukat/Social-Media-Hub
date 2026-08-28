@@ -1,15 +1,11 @@
 using SocialMedia.Domain.Common;
 using SocialMedia.Domain.Enums;
 
-namespace SocialMedia.Domain.Entities;
+namespace SocialMedia.Domain.Modules.Common.Entities;
 
-/// <summary>
-/// Messaging thread (Messenger / IG DM / WhatsApp).
-/// </summary>
-public class Conversation : BaseEntity
+public abstract class ConversationEntityBase : BaseEntity
 {
     public Guid SocialProfileId { get; set; }
-
     public string ExternalConversationId { get; set; } = string.Empty;
     public string? CustomerId { get; set; }
     public string? CustomerName { get; set; }
@@ -17,10 +13,4 @@ public class Conversation : BaseEntity
     public int UnreadCount { get; set; }
     public DateTime? LastMessageAt { get; set; }
     public ConversationStatus Status { get; set; } = ConversationStatus.Open;
-
-    /// <summary>Process module that owns this conversation.</summary>
-    public string MenuType { get; set; } = "integration";
-
-    public SocialProfile? SocialProfile { get; set; }
-    public ICollection<Message> Messages { get; set; } = new List<Message>();
 }

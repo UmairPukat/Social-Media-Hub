@@ -2,54 +2,62 @@ using SocialMedia.Application.Catalog;
 using SocialMedia.Application.DTOs.Common;
 using SocialMedia.Application.DTOs.Posts;
 using SocialMedia.Application.Interfaces;
-using SocialMedia.Domain.Entities;
+using SocialMedia.Application.Meta;
 using SocialMedia.Domain.Enums;
-using SocialMedia.Domain.Interfaces;
+using SocialMedia.Domain.Modules.Common.Entities;
 
 namespace SocialMedia.Application.Services;
 
 public class PostService : IPostService
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IProcessDataStoreFactory _processData;
     private readonly IFacebookService _facebookService;
     private readonly IInstagramService _instagramService;
 
-    public PostService(IUnitOfWork unitOfWork, IFacebookService facebookService, IInstagramService instagramService)
+    public PostService(
+        IProcessDataStoreFactory processData,
+        IFacebookService facebookService,
+        IInstagramService instagramService)
     {
-        _unitOfWork = unitOfWork;
+        _processData = processData;
         _facebookService = facebookService;
         _instagramService = instagramService;
     }
 
-    public async Task<ApiResponse<PublishPostResponse>> CreateAndPublishAsync(Guid userId, CreatePostRequest request, CancellationToken cancellationToken = default)
+    public async Task<ApiResponse<PublishPostResponse>> CreateAndPublishAsync(
+        Guid userId,
+        CreatePostRequest request,
+        CancellationToken cancellationToken = default)
     {
         try
         {
-            var profile = await _unitOfWork.SocialProfiles.GetByIdAsync(request.SocialProfileId, cancellationToken);
-            if (profile is null)
+            var located = await ProcessStoreLocator.FindAsync(
+                _processData,
+                store => store.GetProfileByIdAsync(request.SocialProfileId, cancellationToken),
+                cancellationToken);
+            if (located is null)
                 return ApiResponse<PublishPostResponse>.Fail("Social profile not found.");
 
-            var account = await _unitOfWork.SocialAccounts.GetWithAuthAndProfilesAsync(profile.SocialAccountId, cancellationToken);
-            if (account is null || account.UserId != userId || account.Auth is null)
+            var (store, profile) = located.Value;
+            var account = await store.GetSocialAccountWithAuthAndProfilesAsync(profile.SocialAccountId, cancellationToken);
+            if (account is null || account.UserId != userId || ProcessEntityNav.Auth(account) is null)
                 return ApiResponse<PublishPostResponse>.Fail("Connected account not found.");
 
-            var platform = await _unitOfWork.Platforms.GetByIdAsync(account.PlatformId, cancellationToken);
-            var post = new Post
-            {
-                SocialProfileId = profile.Id,
-                PlatformId = account.PlatformId,
-                MenuType = account.MenuType,
-                Text = request.Content,
-                Caption = request.Content,
-                Type = string.IsNullOrWhiteSpace(request.MediaUrl) ? ContentPostType.Text : ContentPostType.Image,
-                Status = ContentPostStatus.Draft
-            };
-            await _unitOfWork.Posts.AddAsync(post, cancellationToken);
-            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            var platform = await store.GetPlatformByIdAsync(account.PlatformId, cancellationToken);
+            var post = store.NewPost();
+            post.SocialProfileId = profile.Id;
+            post.PlatformId = account.PlatformId;
+            post.Text = request.Content;
+            post.Caption = request.Content;
+            post.Type = string.IsNullOrWhiteSpace(request.MediaUrl) ? ContentPostType.Text : ContentPostType.Image;
+            post.Status = ContentPostStatus.Draft;
+            await store.AddPostAsync(post, cancellationToken);
+            await store.SaveChangesAsync(cancellationToken);
 
+            var auth = ProcessEntityNav.Auth(account)!;
             var context = new MetaCallContext
             {
-                AccessToken = account.Auth.AccessToken,
+                AccessToken = auth.AccessToken,
                 ProfileExternalId = profile.ExternalProfileId
             };
 
@@ -82,16 +90,10 @@ public class PostService : IPostService
                 post.ErrorMessage = ex.Message;
             }
 
-            if (!string.IsNullOrWhiteSpace(request.MediaUrl))
-            {
-                await _unitOfWork.Posts.SaveChangesAsync(cancellationToken);
-                // Media row via context — add through Posts navigation by reloading not needed; use unit of work Posts only.
-            }
+            store.UpdatePost(post);
+            await store.SaveChangesAsync(cancellationToken);
 
-            _unitOfWork.Posts.Update(post);
-            await _unitOfWork.SaveChangesAsync(cancellationToken);
-
-            var dto = Map(post, platform?.Code);
+            var dto = Map(post, platform?.Code, profile);
             return ApiResponse<PublishPostResponse>.Ok(new PublishPostResponse
             {
                 Success = post.Status == ContentPostStatus.Published,
@@ -113,9 +115,16 @@ public class PostService : IPostService
     {
         try
         {
-            var normalizedMenu = string.IsNullOrWhiteSpace(menuType) ? null : MenuTypes.Normalize(menuType);
-            var posts = await _unitOfWork.Posts.GetByUserProfilesAsync(userId, platformId, normalizedMenu, cancellationToken);
-            return ApiResponse<IReadOnlyList<SocialPostDto>>.Ok(posts.Select(p => Map(p, p.Platform?.Code)).ToList());
+            var stores = string.IsNullOrWhiteSpace(menuType)
+                ? _processData.AllStores()
+                : [_processData.ForMenu(menuType)];
+
+            var posts = new List<PostEntityBase>();
+            foreach (var store in stores)
+                posts.AddRange(await store.GetPostsByUserProfilesAsync(userId, platformId, cancellationToken));
+
+            return ApiResponse<IReadOnlyList<SocialPostDto>>.Ok(
+                posts.Select(p => Map(p, ProcessEntityNav.Platform(p)?.Code, ProcessEntityNav.Profile(p))).ToList());
         }
         catch (Exception ex)
         {
@@ -127,17 +136,23 @@ public class PostService : IPostService
     {
         try
         {
-            var post = await _unitOfWork.Posts.GetByIdAsync(postId, cancellationToken);
-            if (post is null)
+            var located = await ProcessStoreLocator.FindAsync(
+                _processData,
+                store => store.GetPostByIdAsync(postId, cancellationToken),
+                cancellationToken);
+            if (located is null)
                 return ApiResponse<object>.Fail("Post not found.");
 
-            var profile = await _unitOfWork.SocialProfiles.GetByIdAsync(post.SocialProfileId, cancellationToken);
-            var account = profile is null ? null : await _unitOfWork.SocialAccounts.GetByIdAsync(profile.SocialAccountId, cancellationToken);
+            var (store, post) = located.Value;
+            var profile = await store.GetProfileByIdAsync(post.SocialProfileId, cancellationToken);
+            var account = profile is null
+                ? null
+                : await store.GetSocialAccountByIdAsync(profile.SocialAccountId, cancellationToken);
             if (account is null || account.UserId != userId)
                 return ApiResponse<object>.Fail("Post not found.");
 
-            _unitOfWork.Posts.Remove(post);
-            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            store.RemovePost(post);
+            await store.SaveChangesAsync(cancellationToken);
             return ApiResponse<object>.Ok(new { }, "Post deleted.");
         }
         catch (Exception ex)
@@ -146,14 +161,14 @@ public class PostService : IPostService
         }
     }
 
-    private static SocialPostDto Map(Post post, string? platformCode) => new()
+    private static SocialPostDto Map(PostEntityBase post, string? platformCode, SocialProfileEntityBase? profile) => new()
     {
         Id = post.Id,
         SocialProfileId = post.SocialProfileId,
         PlatformId = post.PlatformId,
         PlatformCode = platformCode,
-        ProfileName = post.SocialProfile?.Name,
-        ProfileUsername = post.SocialProfile?.Username,
+        ProfileName = profile?.Name,
+        ProfileUsername = profile?.Username,
         ExternalPostId = post.ExternalPostId,
         Text = post.Text,
         Caption = post.Caption,

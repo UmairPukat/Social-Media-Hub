@@ -1,6 +1,6 @@
 using SocialMedia.Application.DTOs.Meta;
-using SocialMedia.Domain.Entities;
 using SocialMedia.Domain.Enums;
+using SocialMedia.Domain.Modules.Common.Entities;
 
 namespace SocialMedia.Application.Interfaces;
 
@@ -45,7 +45,7 @@ public interface IFacebookService
     /// <returns>The new Graph message id when Meta returns one.</returns>
     Task<string?> SendMessageAsync(MetaCallContext context, string recipientId, string message, string? replyToMid = null, CancellationToken cancellationToken = default);
     Task DeleteMessageAsync(MetaCallContext context, string messageId, CancellationToken cancellationToken = default);
-    Task<WebhookProcessResult> ProcessWebhookPayloadAsync(WebhookEvent webhookEvent, CancellationToken cancellationToken = default);
+    Task<WebhookProcessResult> ProcessWebhookPayloadAsync(WebhookEventEntityBase webhookEvent, string menuType, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<SocialProfileDraft>> DiscoverProfilesAsync(string userAccessToken, CancellationToken cancellationToken = default);
 
     /// <summary>Lists the Facebook Pages the user granted, so one can be chosen before connecting.</summary>
@@ -99,7 +99,7 @@ public interface IInstagramService
     /// <returns>The new Graph message id when Meta returns one.</returns>
     Task<string?> SendMessageAsync(MetaCallContext context, string recipientId, string message, string? replyToMid = null, CancellationToken cancellationToken = default);
     Task DeleteMessageAsync(MetaCallContext context, string messageId, CancellationToken cancellationToken = default);
-    Task<WebhookProcessResult> ProcessWebhookPayloadAsync(WebhookEvent webhookEvent, CancellationToken cancellationToken = default);
+    Task<WebhookProcessResult> ProcessWebhookPayloadAsync(WebhookEventEntityBase webhookEvent, string menuType, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<SocialProfileDraft>> DiscoverProfilesAsync(string userAccessToken, CancellationToken cancellationToken = default);
 
     /// <summary>Builds a single profile from a native Instagram Login user token.</summary>
@@ -128,7 +128,7 @@ public interface IWhatsAppService
     /// <returns>The new WhatsApp message id when Meta returns one.</returns>
     Task<string?> SendMessageAsync(MetaCallContext context, string recipientId, string message, string? replyToMid = null, CancellationToken cancellationToken = default);
     Task DeleteMessageAsync(MetaCallContext context, string messageId, CancellationToken cancellationToken = default);
-    Task<WebhookProcessResult> ProcessWebhookPayloadAsync(WebhookEvent webhookEvent, CancellationToken cancellationToken = default);
+    Task<WebhookProcessResult> ProcessWebhookPayloadAsync(WebhookEventEntityBase webhookEvent, string menuType, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<SocialProfileDraft>> DiscoverProfilesAsync(string userAccessToken, string? phoneNumberId, string? wabaId, CancellationToken cancellationToken = default);
 }
 

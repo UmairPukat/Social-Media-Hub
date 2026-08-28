@@ -8,9 +8,9 @@ using SocialMedia.Application.DTOs.Common;
 using SocialMedia.Application.Interfaces;
 using SocialMedia.Application.Meta;
 using SocialMedia.Application.Settings;
-using SocialMedia.Domain.Entities;
 using SocialMedia.Domain.Enums;
 using SocialMedia.Domain.Interfaces;
+using SocialMedia.Domain.Modules.Common.Entities;
 
 namespace SocialMedia.Application.Services;
 
@@ -21,6 +21,7 @@ namespace SocialMedia.Application.Services;
 public class WebhookService : IWebhookService
 {
     private readonly IUnitOfWork _unitOfWork;
+    private readonly IProcessDataStoreFactory _processData;
     private readonly IFacebookService _facebookService;
     private readonly IInstagramService _instagramService;
     private readonly IWhatsAppService _whatsAppService;
@@ -29,6 +30,7 @@ public class WebhookService : IWebhookService
 
     public WebhookService(
         IUnitOfWork unitOfWork,
+        IProcessDataStoreFactory processData,
         IFacebookService facebookService,
         IInstagramService instagramService,
         IWhatsAppService whatsAppService,
@@ -36,6 +38,7 @@ public class WebhookService : IWebhookService
         ILogger<WebhookService> logger)
     {
         _unitOfWork = unitOfWork;
+        _processData = processData;
         _facebookService = facebookService;
         _instagramService = instagramService;
         _whatsAppService = whatsAppService;
@@ -173,22 +176,21 @@ public class WebhookService : IWebhookService
     {
         try
         {
-            var platform = await _unitOfWork.Platforms.GetByCodeAsync(platformCode, cancellationToken: cancellationToken);
+            var store = _processData.ForMenu(MenuTypes.Integration);
+            var platform = await store.GetPlatformByCodeAsync(platformCode, cancellationToken);
             if (platform is null)
                 return ApiResponse<object>.Fail("Unknown platform.");
 
-            await _unitOfWork.WebhookEvents.AddAsync(new WebhookEvent
-            {
-                PlatformId = platform.Id,
-                EventType = "subscribe",
-                ObjectType = "webhook",
-                PayloadJson = $"{{\"callbackUrl\":\"{callbackUrl}\",\"platform\":\"{platformCode}\"}}",
-                Status = WebhookEventStatus.Processed,
-                ReceivedAt = DateTime.UtcNow,
-                ProcessedAt = DateTime.UtcNow
-            }, cancellationToken);
-
-            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            var webhookEvent = store.NewWebhookEvent();
+            webhookEvent.PlatformId = platform.Id;
+            webhookEvent.EventType = "subscribe";
+            webhookEvent.ObjectType = "webhook";
+            webhookEvent.PayloadJson = $"{{\"callbackUrl\":\"{callbackUrl}\",\"platform\":\"{platformCode}\"}}";
+            webhookEvent.Status = WebhookEventStatus.Processed;
+            webhookEvent.ReceivedAt = DateTime.UtcNow;
+            webhookEvent.ProcessedAt = DateTime.UtcNow;
+            await store.AddWebhookEventAsync(webhookEvent, cancellationToken);
+            await store.SaveChangesAsync(cancellationToken);
 
             return ApiResponse<object>.Ok(new
             {
@@ -249,28 +251,28 @@ public class WebhookService : IWebhookService
                 return ApiResponse<object>.Fail("Invalid webhook signature.");
             }
 
-            var platform = await _unitOfWork.Platforms.GetByCodeAsync(platformCode, normalizedMenu, cancellationToken: cancellationToken);
+            var effectiveMenu = normalizedMenu ?? MenuTypes.Integration;
+            var store = _processData.ForMenu(effectiveMenu);
+
+            var platform = await store.GetPlatformByCodeAsync(platformCode, cancellationToken);
 
             // Meta names the source in "object", which is trusted over the endpoint that was hit.
             var descriptor = Describe(payloadJson);
             var targetCode = descriptor.PlatformCode ?? platformCode;
             var targetPlatform = string.Equals(targetCode, platformCode, StringComparison.OrdinalIgnoreCase)
                 ? platform
-                : await _unitOfWork.Platforms.GetByCodeAsync(targetCode, normalizedMenu, cancellationToken: cancellationToken);
+                : await store.GetPlatformByCodeAsync(targetCode, cancellationToken);
 
-            var webhookEvent = new WebhookEvent
-            {
-                PlatformId = targetPlatform?.Id ?? platform?.Id,
-                EventType = descriptor.EventType,
-                ObjectType = targetCode,
-                ExternalObjectId = descriptor.EntryId,
-                PayloadJson = payloadJson,
-                Signature = signature,
-                HeadersJson = headersJson,
-                MenuType = normalizedMenu,
-                Status = WebhookEventStatus.Received,
-                ReceivedAt = DateTime.UtcNow
-            };
+            var webhookEvent = store.NewWebhookEvent();
+            webhookEvent.PlatformId = targetPlatform?.Id ?? platform?.Id;
+            webhookEvent.EventType = descriptor.EventType;
+            webhookEvent.ObjectType = targetCode;
+            webhookEvent.ExternalObjectId = descriptor.EntryId;
+            webhookEvent.PayloadJson = payloadJson;
+            webhookEvent.Signature = signature;
+            webhookEvent.HeadersJson = headersJson;
+            webhookEvent.Status = WebhookEventStatus.Received;
+            webhookEvent.ReceivedAt = DateTime.UtcNow;
 
             if (!MetaWebhookContentClassifier.ContainsRealUserInboundContent(payloadJson))
             {
@@ -287,8 +289,8 @@ public class WebhookService : IWebhookService
                 }, "Webhook ignored — not from a real user.");
             }
 
-            await _unitOfWork.WebhookEvents.AddAsync(webhookEvent, cancellationToken);
-            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            await store.AddWebhookEventAsync(webhookEvent, cancellationToken);
+            await store.SaveChangesAsync(cancellationToken);
 
             _logger.LogInformation(
                 "Real-user webhook saved for module {MenuType}. WebhookEventId={WebhookEventId}, Object={ObjectType}, EntryId={EntryId}",
@@ -298,13 +300,13 @@ public class WebhookService : IWebhookService
                 descriptor.EntryId);
 
             webhookEvent.Status = WebhookEventStatus.Processing;
-            _unitOfWork.WebhookEvents.Update(webhookEvent);
-            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            store.UpdateWebhookEvent(webhookEvent);
+            await store.SaveChangesAsync(cancellationToken);
 
             WebhookProcessResult? result;
             try
             {
-                result = await ProcessMetaPayloadAsync(webhookEvent, targetCode, cancellationToken);
+                result = await ProcessMetaPayloadAsync(webhookEvent, effectiveMenu, targetCode, cancellationToken);
 
                 webhookEvent.Status = WebhookEventStatus.Processed;
                 webhookEvent.ProcessedAt = DateTime.UtcNow;
@@ -328,18 +330,16 @@ public class WebhookService : IWebhookService
                     : webhookEvent.Error ?? "Nothing stored.";
             }
 
-            var log = new WebhookLog
-            {
-                PlatformId = webhookEvent.PlatformId,
-                PlatformCode = platformCode,
-                Signature = signature,
-                HeadersJson = headersJson,
-                PayloadJson = payloadJson,
-                ReceivedAt = webhookEvent.ReceivedAt
-            };
-            await _unitOfWork.WebhookLogs.AddAsync(log, cancellationToken);
-            _unitOfWork.WebhookEvents.Update(webhookEvent);
-            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            var log = store.NewWebhookLog();
+            log.PlatformId = webhookEvent.PlatformId;
+            log.PlatformCode = platformCode;
+            log.Signature = signature;
+            log.HeadersJson = headersJson;
+            log.PayloadJson = payloadJson;
+            log.ReceivedAt = webhookEvent.ReceivedAt;
+            await store.AddWebhookLogAsync(log, cancellationToken);
+            store.UpdateWebhookEvent(webhookEvent);
+            await store.SaveChangesAsync(cancellationToken);
 
             _logger.LogInformation(
                 "Webhook processed for module {MenuType}. WebhookEventId={WebhookEventId}, Handled={Handled}, Error={Error}",
@@ -364,7 +364,8 @@ public class WebhookService : IWebhookService
     }
 
     private async Task<WebhookProcessResult?> ProcessMetaPayloadAsync(
-        WebhookEvent webhookEvent,
+        WebhookEventEntityBase webhookEvent,
+        string menuType,
         string targetCode,
         CancellationToken cancellationToken)
     {
@@ -381,9 +382,9 @@ public class WebhookService : IWebhookService
         {
             var attempt = code switch
             {
-                "facebook" => await _facebookService.ProcessWebhookPayloadAsync(webhookEvent, cancellationToken),
-                "instagram" => await _instagramService.ProcessWebhookPayloadAsync(webhookEvent, cancellationToken),
-                "whatsapp" => await _whatsAppService.ProcessWebhookPayloadAsync(webhookEvent, cancellationToken),
+                "facebook" => await _facebookService.ProcessWebhookPayloadAsync(webhookEvent, menuType, cancellationToken),
+                "instagram" => await _instagramService.ProcessWebhookPayloadAsync(webhookEvent, menuType, cancellationToken),
+                "whatsapp" => await _whatsAppService.ProcessWebhookPayloadAsync(webhookEvent, menuType, cancellationToken),
                 _ => null
             };
 

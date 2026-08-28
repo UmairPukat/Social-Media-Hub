@@ -6,13 +6,14 @@ using SocialMedia.Application.Catalog;
 using SocialMedia.Application.DTOs.Common;
 using SocialMedia.Application.DTOs.Integration;
 using SocialMedia.Application.Interfaces;
+using SocialMedia.Application.Meta;
 using SocialMedia.Application.Settings;
-using SocialMedia.Domain.Entities;
-using SocialMedia.Domain.Modules.AppConnections.Entities;
-using SocialMedia.Domain.Modules.DeveloperApps.Entities;
-using SocialMedia.Domain.Modules.Integrations.Entities;
 using SocialMedia.Domain.Enums;
 using SocialMedia.Domain.Interfaces;
+using SocialMedia.Domain.Modules.AppConnections.Entities;
+using SocialMedia.Domain.Modules.Common.Entities;
+using SocialMedia.Domain.Modules.DeveloperApps.Entities;
+using SocialMedia.Domain.Modules.Integrations.Entities;
 
 namespace SocialMedia.Application.Services;
 
@@ -30,6 +31,7 @@ public class IntegrationService : IIntegrationService
     };
 
     private readonly IUnitOfWork _unitOfWork;
+    private readonly IProcessDataStoreFactory _processData;
     private readonly IFacebookService _facebookService;
     private readonly IInstagramService _instagramService;
     private readonly IWhatsAppService _whatsAppService;
@@ -40,6 +42,7 @@ public class IntegrationService : IIntegrationService
 
     public IntegrationService(
         IUnitOfWork unitOfWork,
+        IProcessDataStoreFactory processData,
         IFacebookService facebookService,
         IInstagramService instagramService,
         IWhatsAppService whatsAppService,
@@ -49,6 +52,7 @@ public class IntegrationService : IIntegrationService
         IConfiguration configuration)
     {
         _unitOfWork = unitOfWork;
+        _processData = processData;
         _facebookService = facebookService;
         _instagramService = instagramService;
         _whatsAppService = whatsAppService;
@@ -66,13 +70,11 @@ public class IntegrationService : IIntegrationService
         try
         {
             var normalizedMenu = MenuTypes.Normalize(menuType);
-            var platforms = (await _unitOfWork.Platforms.GetActiveAsync(cancellationToken))
-                .Where(p => string.Equals(p.MenuType, normalizedMenu, StringComparison.OrdinalIgnoreCase))
-                .ToList();
-            var accounts = await _unitOfWork.SocialAccounts.GetByUserAsync(userId, cancellationToken);
+            var store = _processData.ForMenu(normalizedMenu);
+            var platforms = (await store.GetActivePlatformsAsync(cancellationToken)).ToList();
+            var accounts = await store.GetSocialAccountsByUserAsync(userId, cancellationToken);
             var byPlatform = accounts
-                .Where(a => a.Status == SocialAccountStatus.Connected
-                            && string.Equals(a.MenuType, normalizedMenu, StringComparison.OrdinalIgnoreCase))
+                .Where(a => a.Status == SocialAccountStatus.Connected)
                 .GroupBy(a => a.PlatformId)
                 .ToDictionary(
                     g => g.Key,
@@ -96,7 +98,7 @@ public class IntegrationService : IIntegrationService
                     {
                         PlatformId = p.Id,
                         Code = p.Code,
-                        MenuType = p.MenuType,
+                        MenuType = normalizedMenu,
                         DisplayName = def?.Name ?? p.Name,
                         Icon = def?.Icon ?? p.Icon,
                         Description = def?.Description ?? $"{p.Name} integration",
@@ -539,58 +541,51 @@ public class IntegrationService : IIntegrationService
             return ApiResponse<SocialAccountDto>.Fail("Meta did not return an access token. Try connecting again.");
 
         var normalizedMenu = MenuTypes.Normalize(menuType);
-        var platform = await _unitOfWork.Platforms.GetByCodeAsync(platformCode, normalizedMenu, cancellationToken);
+        var store = _processData.ForMenu(normalizedMenu);
+        var platform = await store.GetPlatformByCodeAsync(platformCode, cancellationToken);
         if (platform is null)
             return ApiResponse<SocialAccountDto>.Fail($"Unknown platform '{platformCode}'.");
 
-        var account = await _unitOfWork.SocialAccounts.GetByUserAndPlatformAsync(userId, platform.Id, normalizedMenu, cancellationToken);
+        var account = await store.GetSocialAccountByUserAndPlatformAsync(userId, platform.Id, cancellationToken);
         var isNewAccount = account is null;
         if (account is null)
         {
-            account = new SocialAccount
-            {
-                UserId = userId,
-                PlatformId = platform.Id,
-                MenuType = normalizedMenu
-            };
-            await _unitOfWork.SocialAccounts.AddAsync(account, cancellationToken);
+            account = store.NewSocialAccount();
+            account.UserId = userId;
+            account.PlatformId = platform.Id;
+            await store.AddSocialAccountAsync(account, cancellationToken);
         }
 
-        account.MenuType = normalizedMenu;
         account.ExternalAccountId = externalAccountId;
         account.DisplayName = displayName;
         account.Status = SocialAccountStatus.Connected;
         account.ConnectedAt = DateTime.UtcNow;
         account.UpdatedAt = DateTime.UtcNow;
-        MarkUpdated(_unitOfWork.SocialAccounts, account, isNewAccount);
+        if (!isNewAccount)
+            store.UpdateSocialAccount(account);
 
-        // Insert the account before its auth row so the foreign key is already valid.
-        await _unitOfWork.SaveChangesAsync(cancellationToken);
+        await store.SaveChangesAsync(cancellationToken);
 
-        var auth = await _unitOfWork.SocialAuths.GetBySocialAccountIdAsync(account.Id, cancellationToken);
+        var auth = await store.GetSocialAuthByAccountIdAsync(account.Id, cancellationToken);
         var isNewAuth = auth is null;
         if (auth is null)
         {
-            auth = new SocialAuth { SocialAccountId = account.Id };
-            await _unitOfWork.SocialAuths.AddAsync(auth, cancellationToken);
+            auth = store.NewSocialAuth();
+            auth.SocialAccountId = account.Id;
+            await store.AddSocialAuthAsync(auth, cancellationToken);
         }
 
         auth.AccessToken = accessToken;
-        // Keep the long-lived user token: AccessToken is later swapped for the selected
-        // page token, but listing pages always needs the user token.
         auth.RefreshToken = accessToken;
         auth.ExpiresAt = expiresAt;
         auth.UpdatedAt = DateTime.UtcNow;
-        MarkUpdated(_unitOfWork.SocialAuths, auth, isNewAuth);
+        if (!isNewAuth)
+            store.UpdateSocialAuth(auth);
 
-        // Legacy App Connections may have left extra rows for the same user+platform.
-        // Merge profiles into this account and delete duplicates — updating multiple rows
-        // that share the unique (UserId, PlatformId, MenuType) index causes an EF circular dependency.
-        await ConsolidateLegacyDuplicateAccountsAsync(userId, platform.Id, normalizedMenu, account.Id, cancellationToken);
+        await ConsolidateLegacyDuplicateAccountsAsync(store, userId, platform.Id, account.Id, cancellationToken);
+        await store.SaveChangesAsync(cancellationToken);
 
-        await _unitOfWork.SaveChangesAsync(cancellationToken);
-
-        var persistedAuth = await _unitOfWork.SocialAuths.GetBySocialAccountIdAsync(account.Id, cancellationToken);
+        var persistedAuth = await store.GetSocialAuthByAccountIdAsync(account.Id, cancellationToken);
         if (persistedAuth is null || string.IsNullOrWhiteSpace(persistedAuth.AccessToken))
             return ApiResponse<SocialAccountDto>.Fail("The access token could not be saved. Disconnect and connect again.");
 
@@ -606,14 +601,14 @@ public class IntegrationService : IIntegrationService
             };
 
             foreach (var draft in drafts)
-                await UpsertProfileAsync(account, draft, cancellationToken);
+                await UpsertProfileAsync(store, account, draft, cancellationToken);
 
-            await QueueInitialSyncAsync(account, cancellationToken);
-            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            await QueueInitialSyncAsync(store, account, cancellationToken);
+            await store.SaveChangesAsync(cancellationToken);
         }
 
-        var reloaded = await _unitOfWork.SocialAccounts.GetWithAuthAndProfilesAsync(account.Id, cancellationToken);
-        var dto = MapAccount(reloaded ?? account, platform);
+        var reloaded = await store.GetSocialAccountWithAuthAndProfilesAsync(account.Id, cancellationToken);
+        var dto = MapAccount(reloaded ?? account, platform, normalizedMenu);
         dto.RequiresPageSelection = requiresPageSelection;
 
         return ApiResponse<SocialAccountDto>.Ok(dto, requiresPageSelection
@@ -631,14 +626,15 @@ public class IntegrationService : IIntegrationService
         {
             var code = (platformCode ?? string.Empty).Trim().ToLowerInvariant();
             var normalizedMenu = MenuTypes.Normalize(menuType);
+            var store = _processData.ForMenu(normalizedMenu);
             if (!SupportsPageSelection(code))
                 return ApiResponse<IReadOnlyList<MetaPageDto>>.Fail($"Page selection is not available for '{platformCode}'.");
 
-            var platform = await _unitOfWork.Platforms.GetByCodeAsync(code, normalizedMenu, cancellationToken);
+            var platform = await store.GetPlatformByCodeAsync(code, cancellationToken);
             if (platform is null)
                 return ApiResponse<IReadOnlyList<MetaPageDto>>.Fail("Unknown platform.");
 
-            var account = await _unitOfWork.SocialAccounts.GetByUserAndPlatformAsync(userId, platform.Id, normalizedMenu, cancellationToken);
+            var account = await store.GetSocialAccountByUserAndPlatformAsync(userId, platform.Id, cancellationToken);
             var userToken = ResolveUserAccessToken(account);
             if (string.IsNullOrWhiteSpace(userToken))
                 return ApiResponse<IReadOnlyList<MetaPageDto>>.Fail("Sign in with Meta again — no stored login token was found.");
@@ -669,17 +665,19 @@ public class IntegrationService : IIntegrationService
         {
             var code = (request.PlatformCode ?? string.Empty).Trim().ToLowerInvariant();
             var normalizedMenu = MenuTypes.Normalize(request.MenuType);
+            var store = _processData.ForMenu(normalizedMenu);
             if (!SupportsPageSelection(code))
                 return ApiResponse<SocialAccountDto>.Fail($"Page selection is not available for '{request.PlatformCode}'.");
             if (string.IsNullOrWhiteSpace(request.PageId))
                 return ApiResponse<SocialAccountDto>.Fail("Select a page first.");
 
-            var platform = await _unitOfWork.Platforms.GetByCodeAsync(code, normalizedMenu, cancellationToken);
+            var platform = await store.GetPlatformByCodeAsync(code, cancellationToken);
             if (platform is null)
                 return ApiResponse<SocialAccountDto>.Fail("Unknown platform.");
 
-            var account = await _unitOfWork.SocialAccounts.GetByUserAndPlatformAsync(userId, platform.Id, normalizedMenu, cancellationToken);
-            var auth = account?.Auth;
+            var account = await store.GetSocialAccountByUserAndPlatformAsync(userId, platform.Id, cancellationToken);
+            var auth = account is null ? null : ProcessEntityNav.Auth(account)
+                ?? await store.GetSocialAuthByAccountIdAsync(account.Id, cancellationToken);
             var userToken = ResolveUserAccessToken(account);
             if (account is null || auth is null || string.IsNullOrWhiteSpace(userToken))
                 return ApiResponse<SocialAccountDto>.Fail("Sign in with Meta before selecting a page.");
@@ -713,14 +711,13 @@ public class IntegrationService : IIntegrationService
                     PageAccessToken = page.PageAccessToken
                 };
 
-            await UpsertProfileAsync(account, draft, cancellationToken);
+            await UpsertProfileAsync(store, account, draft, cancellationToken);
 
-            if (!string.IsNullOrWhiteSpace(page.PageAccessToken))
+            if (!string.IsNullOrWhiteSpace(page.PageAccessToken) && auth is not null)
             {
-                // Page token drives post / comment / message calls; the user token stays in RefreshToken.
                 auth.AccessToken = page.PageAccessToken!;
                 auth.UpdatedAt = DateTime.UtcNow;
-                MarkUpdated(_unitOfWork.SocialAuths, auth, isNew: false);
+                store.UpdateSocialAuth(auth);
             }
 
             account.Status = SocialAccountStatus.Connected;
@@ -730,18 +727,19 @@ public class IntegrationService : IIntegrationService
                 selectedPageId = page.PageId,
                 selectedPageName = page.PageName
             });
-            await QueueInitialSyncAsync(account, cancellationToken);
+            store.UpdateSocialAccount(account);
+            await QueueInitialSyncAsync(store, account, cancellationToken);
 
-            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            await store.SaveChangesAsync(cancellationToken);
 
             var subscribeWarning = await SubscribePageWebhooksAsync(code, page, cancellationToken);
 
-            var reloaded = await _unitOfWork.SocialAccounts.GetWithAuthAndProfilesAsync(account.Id, cancellationToken);
+            var reloaded = await store.GetSocialAccountWithAuthAndProfilesAsync(account.Id, cancellationToken);
             var message = string.IsNullOrWhiteSpace(subscribeWarning)
                 ? $"{page.PageName} connected."
                 : $"{page.PageName} connected, but webhook subscription failed: {subscribeWarning}";
 
-            return ApiResponse<SocialAccountDto>.Ok(MapAccount(reloaded ?? account, platform), message);
+            return ApiResponse<SocialAccountDto>.Ok(MapAccount(reloaded ?? account, platform, normalizedMenu), message);
         }
         catch (Exception ex)
         {
@@ -759,19 +757,21 @@ public class IntegrationService : IIntegrationService
         {
             var code = (platformCode ?? string.Empty).Trim().ToLowerInvariant();
             var normalizedMenu = MenuTypes.Normalize(menuType);
-            var platform = await _unitOfWork.Platforms.GetByCodeAsync(code, normalizedMenu, cancellationToken);
+            var store = _processData.ForMenu(normalizedMenu);
+            var platform = await store.GetPlatformByCodeAsync(code, cancellationToken);
             if (platform is null)
                 return ApiResponse<ConnectionDetailsDto>.Fail("Unknown platform.");
 
-            var account = await _unitOfWork.SocialAccounts.GetByUserAndPlatformAsync(userId, platform.Id, normalizedMenu, cancellationToken);
+            var account = await store.GetSocialAccountByUserAndPlatformAsync(userId, platform.Id, cancellationToken);
             if (account is null || account.Status != SocialAccountStatus.Connected)
                 return ApiResponse<ConnectionDetailsDto>.Fail($"{platform.Name} is not connected.");
 
-            var auth = account.Auth
-                ?? await _unitOfWork.SocialAuths.GetBySocialAccountIdAsync(account.Id, cancellationToken);
-            var effectiveToken = ResolveUserAccessToken(auth is null ? account : new SocialAccount { Auth = auth });
+            var auth = ProcessEntityNav.Auth(account)
+                ?? await store.GetSocialAuthByAccountIdAsync(account.Id, cancellationToken);
+            var effectiveToken = ResolveUserAccessToken(auth);
 
-            var profile = account.Profiles.FirstOrDefault();
+            var profiles = ProcessEntityNav.Profiles(account);
+            var profile = profiles.FirstOrDefault();
             var pageId = ResolveSelectedPageId(account, code);
             var isInstagram = code is "instagram" or "instagram_login";
 
@@ -792,7 +792,7 @@ public class IntegrationService : IIntegrationService
                 InstagramId = isInstagram ? profile?.ExternalProfileId : null,
                 InstagramUsername = isInstagram ? profile?.Username : null,
                 AccessToken = string.IsNullOrWhiteSpace(effectiveToken) ? null : effectiveToken,
-                Profiles = account.Profiles.Select(p => new SocialProfileDto
+                Profiles = profiles.Select(p => new SocialProfileDto
                 {
                     Id = p.Id,
                     ExternalProfileId = p.ExternalProfileId,
@@ -893,7 +893,7 @@ public class IntegrationService : IIntegrationService
     /// <summary>Best-effort unsubscribe so a disconnected page stops sending webhooks.</summary>
     private async Task UnsubscribePageWebhooksAsync(
         string platformCode,
-        SocialAccount account,
+        SocialAccountEntityBase account,
         string? pageAccessToken,
         CancellationToken cancellationToken)
     {
@@ -914,13 +914,13 @@ public class IntegrationService : IIntegrationService
         }
     }
 
-    private static string? ResolveSelectedPageId(SocialAccount account, string platformCode)
+    private static string? ResolveSelectedPageId(SocialAccountEntityBase account, string platformCode)
     {
         var selected = ReadJsonString(account.MetadataJson, "selectedPageId");
         if (!string.IsNullOrWhiteSpace(selected))
             return selected;
 
-        foreach (var profile in account.Profiles)
+        foreach (var profile in ProcessEntityNav.Profiles(account))
         {
             var pageId = ReadJsonString(profile.MetadataJson, "pageId");
             if (!string.IsNullOrWhiteSpace(pageId))
@@ -952,43 +952,37 @@ public class IntegrationService : IIntegrationService
         }
     }
 
-    private static bool AccountHasToken(SocialAccount account)
-        => account.Auth is not null
-           && (!string.IsNullOrWhiteSpace(account.Auth.AccessToken)
-               || !string.IsNullOrWhiteSpace(account.Auth.RefreshToken));
+    private static bool AccountHasToken(SocialAccountEntityBase account)
+    {
+        var auth = ProcessEntityNav.Auth(account);
+        return auth is not null
+               && (!string.IsNullOrWhiteSpace(auth.AccessToken)
+                   || !string.IsNullOrWhiteSpace(auth.RefreshToken));
+    }
 
     private static bool SupportsPageSelection(string platformCode) =>
         platformCode.Equals("facebook", StringComparison.OrdinalIgnoreCase) ||
         platformCode.Equals("instagram", StringComparison.OrdinalIgnoreCase);
 
-    /// <summary>
-    /// EF already tracks a freshly added entity as Added; calling Update() on it flips the state
-    /// to Modified and issues an UPDATE for a row that does not exist, which fails with
-    /// "expected to affect 1 row(s), but actually affected 0 row(s)".
-    /// </summary>
-    private static void MarkUpdated<T>(IRepository<T> repository, T entity, bool isNew) where T : class
-    {
-        if (!isNew)
-            repository.Update(entity);
-    }
-
-    private async Task<SocialProfile> UpsertProfileAsync(
-        SocialAccount account,
+    private async Task<SocialProfileEntityBase> UpsertProfileAsync(
+        IProcessDataStore store,
+        SocialAccountEntityBase account,
         SocialProfileDraft draft,
         CancellationToken cancellationToken)
     {
-        var profiles = await _unitOfWork.SocialProfiles.GetBySocialAccountAsync(account.Id, cancellationToken);
+        var profiles = await store.GetProfilesByAccountAsync(account.Id, cancellationToken);
         var existingId = profiles.FirstOrDefault(p => p.ExternalProfileId == draft.ExternalProfileId)?.Id;
 
         var profile = existingId.HasValue
-            ? await _unitOfWork.SocialProfiles.GetByIdAsync(existingId.Value, cancellationToken)
+            ? await store.GetProfileByIdAsync(existingId.Value, cancellationToken)
             : null;
 
         var isNew = profile is null;
         if (profile is null)
         {
-            profile = new SocialProfile { SocialAccountId = account.Id };
-            await _unitOfWork.SocialProfiles.AddAsync(profile, cancellationToken);
+            profile = store.NewSocialProfile();
+            profile.SocialAccountId = account.Id;
+            await store.AddSocialProfileAsync(profile, cancellationToken);
         }
 
         profile.SocialAccountId = account.Id;
@@ -997,7 +991,6 @@ public class IntegrationService : IIntegrationService
         profile.Username = draft.Username;
         profile.ProfileImage = draft.ProfileImage;
         profile.ProfileType = ParseProfileType(draft.ProfileType);
-        profile.MenuType = account.MenuType;
 
         var metadata = new Dictionary<string, object>();
         if (!string.IsNullOrWhiteSpace(draft.PageId))
@@ -1008,106 +1001,96 @@ public class IntegrationService : IIntegrationService
             profile.MetadataJson = JsonSerializer.Serialize(metadata);
 
         profile.UpdatedAt = DateTime.UtcNow;
-        MarkUpdated(_unitOfWork.SocialProfiles, profile, isNew);
+        if (!isNew)
+            store.UpdateSocialProfile(profile);
 
-        await ReassignOrphanProfilesAsync(account, profile, cancellationToken);
+        await ReassignOrphanProfilesAsync(store, account, profile, cancellationToken);
 
         return profile;
     }
 
-    /// <summary>
-    /// Legacy rows can leave profiles on a tokenless duplicate account (same platform code,
-    /// Integrations vs App Connections, or reconnect leftovers). Re-link them to the live account.
-    /// </summary>
     private async Task ReassignOrphanProfilesAsync(
-        SocialAccount account,
-        SocialProfile canonicalProfile,
+        IProcessDataStore store,
+        SocialAccountEntityBase account,
+        SocialProfileEntityBase canonicalProfile,
         CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(canonicalProfile.ExternalProfileId))
             return;
 
-        var platform = await _unitOfWork.Platforms.GetByIdAsync(account.PlatformId, cancellationToken);
+        var platform = await store.GetPlatformByIdAsync(account.PlatformId, cancellationToken);
         var platformCode = platform?.Code;
         if (string.IsNullOrWhiteSpace(platformCode))
             return;
 
-        var orphans = await _unitOfWork.SocialProfiles.FindAsync(
-            p => p.ExternalProfileId == canonicalProfile.ExternalProfileId && p.SocialAccountId != account.Id,
-            cancellationToken);
+        var orphans = await store.FindProfilesByExternalIdAsync(canonicalProfile.ExternalProfileId, cancellationToken);
 
         foreach (var orphanSnapshot in orphans)
         {
             if (orphanSnapshot.Id == canonicalProfile.Id)
                 continue;
 
-            var owner = await _unitOfWork.SocialAccounts.GetByIdAsync(orphanSnapshot.SocialAccountId, cancellationToken);
+            var owner = await store.GetSocialAccountByIdAsync(orphanSnapshot.SocialAccountId, cancellationToken);
             if (owner is null || owner.UserId != account.UserId)
                 continue;
 
-            if (!string.Equals(owner.MenuType, account.MenuType, StringComparison.OrdinalIgnoreCase))
-                continue;
-
-            var ownerPlatform = await _unitOfWork.Platforms.GetByIdAsync(owner.PlatformId, cancellationToken);
+            var ownerPlatform = await store.GetPlatformByIdAsync(owner.PlatformId, cancellationToken);
             if (!string.Equals(ownerPlatform?.Code, platformCode, StringComparison.OrdinalIgnoreCase))
                 continue;
 
-            var ownerAuth = await _unitOfWork.SocialAuths.GetBySocialAccountIdAsync(owner.Id, cancellationToken);
+            var ownerAuth = await store.GetSocialAuthByAccountIdAsync(owner.Id, cancellationToken);
             if (owner.Status == SocialAccountStatus.Connected && HasStoredTokens(ownerAuth))
                 continue;
 
-            // Load a single tracked instance — FindAsync is no-tracking and Include() would duplicate it.
-            var orphan = await _unitOfWork.SocialProfiles.GetByIdAsync(orphanSnapshot.Id, cancellationToken);
+            var orphan = await store.GetProfileByIdAsync(orphanSnapshot.Id, cancellationToken);
             if (orphan is null)
                 continue;
 
-            await MoveConversationsToProfileAsync(orphan.Id, canonicalProfile.Id, cancellationToken);
-            _unitOfWork.SocialProfiles.Remove(orphan);
+            await MoveConversationsToProfileAsync(store, orphan.Id, canonicalProfile.Id, cancellationToken);
+            store.RemoveSocialProfile(orphan);
         }
     }
 
     private async Task MoveConversationsToProfileAsync(
+        IProcessDataStore store,
         Guid fromProfileId,
         Guid toProfileId,
         CancellationToken cancellationToken)
     {
-        var conversations = await _unitOfWork.Conversations.FindAsync(
-            c => c.SocialProfileId == fromProfileId,
-            cancellationToken);
-        foreach (var conversationSnapshot in conversations)
+        var conversations = await store.GetConversationsByProfileIdAsync(fromProfileId, cancellationToken);
+        foreach (var conversation in conversations)
         {
-            var conversation = await _unitOfWork.Conversations.GetByIdAsync(conversationSnapshot.Id, cancellationToken);
-            if (conversation is null)
-                continue;
-
             conversation.SocialProfileId = toProfileId;
             conversation.UpdatedAt = DateTime.UtcNow;
-            _unitOfWork.Conversations.Update(conversation);
+            store.UpdateConversation(conversation);
         }
     }
 
-    private static bool HasStoredTokens(SocialAuth? auth)
+    private static bool HasStoredTokens(SocialAuthEntityBase? auth)
         => auth is not null
            && (!string.IsNullOrWhiteSpace(auth.AccessToken) || !string.IsNullOrWhiteSpace(auth.RefreshToken));
 
-    private async Task QueueInitialSyncAsync(SocialAccount account, CancellationToken cancellationToken)
+    private async Task QueueInitialSyncAsync(
+        IProcessDataStore store,
+        SocialAccountEntityBase account,
+        CancellationToken cancellationToken)
     {
-        await _unitOfWork.SyncJobs.AddAsync(new SyncJob
-        {
-            SocialAccountId = account.Id,
-            EntityType = SyncEntityType.Posts,
-            Status = SyncJobStatus.Pending,
-            StartedAt = DateTime.UtcNow
-        }, cancellationToken);
+        var syncJob = store.NewSyncJob();
+        syncJob.SocialAccountId = account.Id;
+        syncJob.EntityType = SyncEntityType.Posts;
+        syncJob.Status = SyncJobStatus.Pending;
+        syncJob.StartedAt = DateTime.UtcNow;
+        await store.AddSyncJobAsync(syncJob, cancellationToken);
 
         account.LastSyncAt = DateTime.UtcNow;
         account.UpdatedAt = DateTime.UtcNow;
+        store.UpdateSocialAccount(account);
     }
 
-    private static string? ResolveUserAccessToken(SocialAccount? account)
-        => ResolveUserAccessToken(account?.Auth);
+    private static string? ResolveUserAccessToken(SocialAccountEntityBase? account)
+        => ResolveUserAccessToken(account is null ? null : ProcessEntityNav.Auth(account));
 
-    private static string? ResolveUserAccessToken(SocialAuth? auth)
+    private static string? ResolveUserAccessToken(SocialAuthEntityBase? auth)
     {
         if (auth is null)
             return null;
@@ -1122,56 +1105,53 @@ public class IntegrationService : IIntegrationService
     /// Profiles/conversations move to the primary row; extra account rows are deleted.
     /// </summary>
     private async Task ConsolidateLegacyDuplicateAccountsAsync(
+        IProcessDataStore store,
         Guid userId,
         Guid platformId,
-        string menuType,
         Guid primaryAccountId,
         CancellationToken cancellationToken)
     {
-        var duplicateAccounts = await _unitOfWork.SocialAccounts.FindAsync(
-            a => a.UserId == userId
-                 && a.PlatformId == platformId
-                 && a.MenuType == menuType
-                 && a.Id != primaryAccountId,
-            cancellationToken);
+        var duplicateAccounts = (await store.GetSocialAccountsByUserAsync(userId, cancellationToken))
+            .Where(a => a.PlatformId == platformId && a.Id != primaryAccountId)
+            .ToList();
         if (duplicateAccounts.Count == 0)
             return;
 
         foreach (var duplicate in duplicateAccounts)
         {
-            var profiles = await _unitOfWork.SocialProfiles.GetBySocialAccountAsync(duplicate.Id, cancellationToken);
+            var profiles = await store.GetProfilesByAccountAsync(duplicate.Id, cancellationToken);
             foreach (var profile in profiles)
             {
-                var tracked = await _unitOfWork.SocialProfiles.GetByIdAsync(profile.Id, cancellationToken);
+                var tracked = await store.GetProfileByIdAsync(profile.Id, cancellationToken);
                 if (tracked is null)
                     continue;
 
                 tracked.SocialAccountId = primaryAccountId;
                 tracked.UpdatedAt = DateTime.UtcNow;
-                _unitOfWork.SocialProfiles.Update(tracked);
+                store.UpdateSocialProfile(tracked);
             }
         }
 
-        await _unitOfWork.SaveChangesAsync(cancellationToken);
+        await store.SaveChangesAsync(cancellationToken);
 
         foreach (var duplicate in duplicateAccounts)
         {
-            var toRemove = await _unitOfWork.SocialAccounts.GetByIdAsync(duplicate.Id, cancellationToken);
+            var toRemove = await store.GetSocialAccountByIdAsync(duplicate.Id, cancellationToken);
             if (toRemove is null)
                 continue;
 
-            _unitOfWork.SocialAccounts.Remove(toRemove);
-            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            store.RemoveSocialAccount(toRemove);
+            await store.SaveChangesAsync(cancellationToken);
         }
     }
 
-    private static HashSet<string> ResolveConnectedPageIds(SocialAccount? account, string platformCode)
+    private static HashSet<string> ResolveConnectedPageIds(SocialAccountEntityBase? account, string platformCode)
     {
         var ids = new HashSet<string>(StringComparer.Ordinal);
         if (account is null)
             return ids;
 
-        foreach (var profile in account.Profiles)
+        foreach (var profile in ProcessEntityNav.Profiles(account))
         {
             // Facebook profiles are the page itself; Instagram profiles keep the page id in metadata.
             if (platformCode == "facebook" && !string.IsNullOrWhiteSpace(profile.ExternalProfileId))
@@ -1228,37 +1208,38 @@ public class IntegrationService : IIntegrationService
         try
         {
             var normalizedMenu = MenuTypes.Normalize(menuType);
-            var platform = await _unitOfWork.Platforms.GetByCodeAsync(platformCode, normalizedMenu, cancellationToken);
+            var store = _processData.ForMenu(normalizedMenu);
+            var platform = await store.GetPlatformByCodeAsync(platformCode, cancellationToken);
             if (platform is null)
                 return ApiResponse<object>.Fail("Unknown platform.");
 
-            var account = await _unitOfWork.SocialAccounts.GetByUserAndPlatformAsync(userId, platform.Id, normalizedMenu, cancellationToken);
+            var account = await store.GetSocialAccountByUserAndPlatformAsync(userId, platform.Id, cancellationToken);
             if (account is null)
                 return ApiResponse<object>.Fail("Account not connected.");
 
-            await ConsolidateLegacyDuplicateAccountsAsync(userId, platform.Id, normalizedMenu, account.Id, cancellationToken);
-            account = await _unitOfWork.SocialAccounts.GetByUserAndPlatformAsync(userId, platform.Id, normalizedMenu, cancellationToken)
+            await ConsolidateLegacyDuplicateAccountsAsync(store, userId, platform.Id, account.Id, cancellationToken);
+            account = await store.GetSocialAccountByUserAndPlatformAsync(userId, platform.Id, cancellationToken)
                 ?? account;
 
             var code = platformCode.Trim().ToLowerInvariant();
-            var auth = await _unitOfWork.SocialAuths.GetBySocialAccountIdAsync(account.Id, cancellationToken);
+            var auth = await store.GetSocialAuthByAccountIdAsync(account.Id, cancellationToken);
 
             if (SupportsPageSelection(code) && account.Status == SocialAccountStatus.Connected)
                 await UnsubscribePageWebhooksAsync(code, account, auth?.AccessToken, cancellationToken);
 
             account.Status = SocialAccountStatus.Disconnected;
             account.UpdatedAt = DateTime.UtcNow;
-            _unitOfWork.SocialAccounts.Update(account);
+            store.UpdateSocialAccount(account);
 
             if (auth is not null)
             {
                 auth.AccessToken = string.Empty;
                 auth.RefreshToken = null;
                 auth.UpdatedAt = DateTime.UtcNow;
-                _unitOfWork.SocialAuths.Update(auth);
+                store.UpdateSocialAuth(auth);
             }
 
-            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            await store.SaveChangesAsync(cancellationToken);
             return ApiResponse<object>.Ok(new { }, "Account disconnected.");
         }
         catch (Exception ex)
@@ -1275,11 +1256,11 @@ public class IntegrationService : IIntegrationService
         try
         {
             var normalizedMenu = MenuTypes.Normalize(menuType);
-            var accounts = await _unitOfWork.SocialAccounts.GetByUserAsync(userId, cancellationToken);
+            var store = _processData.ForMenu(normalizedMenu);
+            var accounts = await store.GetSocialAccountsByUserAsync(userId, cancellationToken);
             var data = accounts
-                .Where(a => a.Status == SocialAccountStatus.Connected
-                            && string.Equals(a.MenuType, normalizedMenu, StringComparison.OrdinalIgnoreCase))
-                .Select(a => MapAccount(a, a.Platform!))
+                .Where(a => a.Status == SocialAccountStatus.Connected)
+                .Select(a => MapAccount(a, ProcessEntityNav.Platform(a)!, normalizedMenu))
                 .ToList();
             return ApiResponse<IReadOnlyList<SocialAccountDto>>.Ok(data);
         }
@@ -1298,12 +1279,15 @@ public class IntegrationService : IIntegrationService
         _ => ProfileType.Other
     };
 
-    private static SocialAccountDto MapAccount(SocialAccount account, Platform platform) => new()
+    private static SocialAccountDto MapAccount(
+        SocialAccountEntityBase account,
+        PlatformEntityBase platform,
+        string menuType) => new()
     {
         Id = account.Id,
         PlatformId = account.PlatformId,
         PlatformCode = platform.Code,
-        MenuType = account.MenuType,
+        MenuType = menuType,
         PlatformName = platform.Name,
         ExternalAccountId = account.ExternalAccountId,
         DisplayName = account.DisplayName,
@@ -1311,7 +1295,7 @@ public class IntegrationService : IIntegrationService
         Status = account.Status,
         ConnectedAt = account.ConnectedAt,
         LastSyncAt = account.LastSyncAt,
-        Profiles = account.Profiles.Select(p => new SocialProfileDto
+        Profiles = ProcessEntityNav.Profiles(account).Select(p => new SocialProfileDto
         {
             Id = p.Id,
             ExternalProfileId = p.ExternalProfileId,

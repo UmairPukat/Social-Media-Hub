@@ -1,6 +1,6 @@
 using SocialMedia.Application.DTOs.Inbox;
-using SocialMedia.Domain.Entities;
 using SocialMedia.Domain.Enums;
+using SocialMedia.Domain.Modules.Common.Entities;
 
 namespace SocialMedia.Application.Meta;
 
@@ -9,14 +9,18 @@ namespace SocialMedia.Application.Meta;
 /// </summary>
 public static class InboxRoutingHelper
 {
-    public static void Apply(InboxItemDto item, SocialProfile profile, SocialAccount account)
+    public static void Apply(
+        InboxItemDto item,
+        SocialProfileEntityBase profile,
+        SocialAccountEntityBase account,
+        string menuType)
     {
-        item.MenuType = account.MenuType;
+        item.MenuType = menuType;
         item.PageId = ResolvePageId(profile);
         item.AccountId = ResolveAccountId(profile);
     }
 
-    public static string? ResolvePageId(SocialProfile profile)
+    public static string? ResolvePageId(SocialProfileEntityBase profile)
     {
         if (profile.ProfileType == ProfileType.FacebookPage)
             return profile.ExternalProfileId;
@@ -24,14 +28,14 @@ public static class InboxRoutingHelper
         return ReadMetadataString(profile.MetadataJson, "pageId");
     }
 
-    public static string? ResolveAccountId(SocialProfile profile)
+    public static string? ResolveAccountId(SocialProfileEntityBase profile)
     {
         return profile.ProfileType is ProfileType.InstagramLogin or ProfileType.InstagramBusiness
             ? profile.ExternalProfileId
             : null;
     }
 
-    public static bool ProfileMatchesRouting(SocialProfile profile, string? pageId, string? accountId)
+    public static bool ProfileMatchesRouting(SocialProfileEntityBase profile, string? pageId, string? accountId)
     {
         if (!string.IsNullOrWhiteSpace(pageId))
         {

@@ -26,5 +26,5 @@ public class DeveloperAppConfig : BaseEntity
     public string? WabaId { get; set; }
 
     public User? User { get; set; }
-    public Platform? Platform { get; set; }
+    public DeveloperAppPlatform? Platform { get; set; }
 }
