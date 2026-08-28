@@ -33,24 +33,10 @@ public static class MetaWebhookContentClassifier
             {
                 var entryId = entry.TryGetProperty("id", out var idElement) ? idElement.ToString() : null;
 
-                if (entry.TryGetProperty("messaging", out var messaging) &&
-                    messaging.ValueKind == JsonValueKind.Array)
+                foreach (var item in EnumerateMessagingItems(entry))
                 {
-                    foreach (var item in messaging.EnumerateArray())
-                    {
-                        if (IsRealUserMessageItem(item, entryId))
-                            return true;
-                    }
-                }
-
-                if (entry.TryGetProperty("standby", out var standby) &&
-                    standby.ValueKind == JsonValueKind.Array)
-                {
-                    foreach (var item in standby.EnumerateArray())
-                    {
-                        if (IsRealUserMessageItem(item, entryId))
-                            return true;
-                    }
+                    if (IsRealUserMessageItem(item, entryId))
+                        return true;
                 }
 
                 if (entry.TryGetProperty("changes", out var changes) &&
@@ -83,18 +69,65 @@ public static class MetaWebhookContentClassifier
         return false;
     }
 
+    private static IEnumerable<JsonElement> EnumerateMessagingItems(JsonElement entry)
+    {
+        foreach (var propertyName in new[] { "messaging", "standby" })
+        {
+            if (!entry.TryGetProperty(propertyName, out var items) ||
+                items.ValueKind != JsonValueKind.Array)
+                continue;
+
+            foreach (var item in items.EnumerateArray())
+                yield return item;
+        }
+
+        if (!entry.TryGetProperty("changes", out var changes) || changes.ValueKind != JsonValueKind.Array)
+            yield break;
+
+        foreach (var change in changes.EnumerateArray())
+        {
+            var field = change.TryGetProperty("field", out var fieldElement) ? fieldElement.GetString() : null;
+            if (field is not ("messages" or "messaging"))
+                continue;
+
+            if (!change.TryGetProperty("value", out var value))
+                continue;
+
+            if (value.TryGetProperty("message", out _))
+                yield return value;
+
+            if (!value.TryGetProperty("messaging", out var nested) ||
+                nested.ValueKind != JsonValueKind.Array)
+                continue;
+
+            foreach (var item in nested.EnumerateArray())
+                yield return item;
+        }
+    }
+
     private static bool IsRealUserChange(JsonElement change, JsonElement value, string? entryId)
     {
         var field = change.TryGetProperty("field", out var fieldElement) ? fieldElement.GetString() : null;
 
         if (field is "messages" or "messaging")
-            return IsRealUserMessageItem(value, entryId);
+        {
+            if (IsRealUserMessageItem(value, entryId))
+                return true;
+
+            if (value.TryGetProperty("messaging", out var nested) && nested.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var item in nested.EnumerateArray())
+                {
+                    if (IsRealUserMessageItem(item, entryId))
+                        return true;
+                }
+            }
+
+            return IsRealUserCloudMessagesValue(value, entryId);
+        }
 
         if (field is "comments" or "live_comments")
             return IsRealUserComment(value, entryId);
-
-        if (field is "messages" && value.TryGetProperty("messages", out _))
-            return IsRealUserWhatsAppValue(value);
 
         if (field is "feed")
         {
@@ -102,17 +135,33 @@ public static class MetaWebhookContentClassifier
             return item is "comment" or "reply" && IsRealUserComment(value, entryId);
         }
 
-        if (field is "whatsapp_business_account" or null)
-            return IsRealUserWhatsAppValue(value);
+        if (field is "whatsapp_business_account")
+            return IsRealUserCloudMessagesValue(value, entryId);
 
         return false;
     }
 
     private static bool IsRealUserDirectField(string? fieldName, JsonElement value, string? entryId)
     {
+        if (fieldName is "messages" or "messaging")
+        {
+            if (IsRealUserMessageItem(value, entryId))
+                return true;
+
+            if (value.TryGetProperty("messaging", out var nested) && nested.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var item in nested.EnumerateArray())
+                {
+                    if (IsRealUserMessageItem(item, entryId))
+                        return true;
+                }
+            }
+
+            return IsRealUserCloudMessagesValue(value, entryId);
+        }
+
         return fieldName switch
         {
-            "messages" or "messaging" => IsRealUserMessageItem(value, entryId),
             "comments" or "live_comments" => IsRealUserComment(value, entryId),
             _ => false
         };
@@ -126,7 +175,7 @@ public static class MetaWebhookContentClassifier
         if (string.IsNullOrWhiteSpace(ReadMessageId(message)))
             return false;
 
-        if (message.TryGetProperty("is_echo", out var echo) && echo.ValueKind == JsonValueKind.True)
+        if (IsEchoOrSelf(item, message))
             return false;
 
         if (message.TryGetProperty("is_deleted", out var deleted) && deleted.ValueKind == JsonValueKind.True)
@@ -135,15 +184,37 @@ public static class MetaWebhookContentClassifier
         if (HasMarketingTag(message) || HasMarketingTag(item))
             return false;
 
-        var senderId = ReadActorId(item, "sender");
+        var senderId = ReadActorId(item, "sender") ?? ReadActorId(item, "from");
+        var recipientId = ReadActorId(item, "recipient") ?? ReadActorId(item, "to");
+
+        // Inbound DM to the connected Instagram professional account.
+        if (!string.IsNullOrWhiteSpace(entryId) &&
+            !string.IsNullOrWhiteSpace(recipientId) &&
+            string.Equals(recipientId, entryId, StringComparison.Ordinal))
+        {
+            return string.IsNullOrWhiteSpace(senderId) ||
+                   !string.Equals(senderId, entryId, StringComparison.Ordinal);
+        }
+
         if (string.IsNullOrWhiteSpace(senderId))
             return false;
 
-        if (!string.IsNullOrWhiteSpace(entryId) &&
-            string.Equals(senderId, entryId, StringComparison.Ordinal))
-            return false;
+        return string.IsNullOrWhiteSpace(entryId) ||
+               !string.Equals(senderId, entryId, StringComparison.Ordinal);
+    }
 
-        return true;
+    private static bool IsEchoOrSelf(JsonElement item, JsonElement message)
+    {
+        if (message.TryGetProperty("is_echo", out var echo) && echo.ValueKind == JsonValueKind.True)
+            return true;
+
+        if (item.TryGetProperty("is_echo", out var itemEcho) && itemEcho.ValueKind == JsonValueKind.True)
+            return true;
+
+        if (message.TryGetProperty("is_self", out var self) && self.ValueKind == JsonValueKind.True)
+            return true;
+
+        return item.TryGetProperty("is_self", out var itemSelf) && itemSelf.ValueKind == JsonValueKind.True;
     }
 
     private static bool IsRealUserComment(JsonElement value, string? entryId)
@@ -176,7 +247,7 @@ public static class MetaWebhookContentClassifier
         return true;
     }
 
-    private static bool IsRealUserWhatsAppValue(JsonElement value)
+    private static bool IsRealUserCloudMessagesValue(JsonElement value, string? entryId)
     {
         if (!value.TryGetProperty("messages", out var messages) ||
             messages.ValueKind != JsonValueKind.Array)
@@ -187,7 +258,12 @@ public static class MetaWebhookContentClassifier
             if (!message.TryGetProperty("id", out _))
                 continue;
 
-            if (!message.TryGetProperty("from", out _))
+            var from = message.TryGetProperty("from", out var fromElement) ? fromElement.ToString() : null;
+            if (string.IsNullOrWhiteSpace(from))
+                continue;
+
+            if (!string.IsNullOrWhiteSpace(entryId) &&
+                string.Equals(from, entryId, StringComparison.Ordinal))
                 continue;
 
             if (message.TryGetProperty("type", out var typeElement) &&
@@ -226,7 +302,10 @@ public static class MetaWebhookContentClassifier
         if (actor.TryGetProperty("id", out var id))
             return id.ToString();
 
-        return actor.ValueKind == JsonValueKind.String ? actor.GetString() : null;
+        if (actor.ValueKind is JsonValueKind.String or JsonValueKind.Number)
+            return actor.ToString();
+
+        return null;
     }
 
     private static string? ReadMessageId(JsonElement message)

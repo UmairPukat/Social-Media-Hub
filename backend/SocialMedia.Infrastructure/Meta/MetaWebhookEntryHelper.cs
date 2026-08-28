@@ -65,24 +65,10 @@ internal static class MetaWebhookEntryHelper
     {
         var ids = new List<string>();
 
-        void Add(string? id)
-        {
-            if (!string.IsNullOrWhiteSpace(id))
-                ids.Add(id);
-        }
-
         foreach (var messages in EnumerateMessageArrays(entry))
         {
             foreach (var item in messages.EnumerateArray())
-            {
-                if (item.TryGetProperty("recipient", out var recipient) &&
-                    recipient.TryGetProperty("id", out var recipientId))
-                    Add(recipientId.ToString());
-
-                if (item.TryGetProperty("sender", out var sender) &&
-                    sender.TryGetProperty("id", out var senderId))
-                    Add(senderId.ToString());
-            }
+                CollectActorIds(item, ids);
         }
 
         if (entry.TryGetProperty("changes", out var changes) && changes.ValueKind == JsonValueKind.Array)
@@ -92,16 +78,43 @@ internal static class MetaWebhookEntryHelper
                 if (!change.TryGetProperty("value", out var value))
                     continue;
 
-                if (value.TryGetProperty("recipient", out var recipient) &&
-                    recipient.TryGetProperty("id", out var recipientId))
-                    Add(recipientId.ToString());
+                CollectActorIds(value, ids);
 
-                if (value.TryGetProperty("metadata", out var metadata) &&
-                    metadata.TryGetProperty("phone_number_id", out var phoneNumberId))
-                    Add(phoneNumberId.ToString());
+                if (value.TryGetProperty("messaging", out var nested) && nested.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var item in nested.EnumerateArray())
+                        CollectActorIds(item, ids);
+                }
             }
         }
 
         return ids.Distinct(StringComparer.Ordinal);
+    }
+
+    private static void CollectActorIds(JsonElement item, List<string> ids)
+    {
+        void Add(string? id)
+        {
+            if (!string.IsNullOrWhiteSpace(id))
+                ids.Add(id);
+        }
+
+        if (item.TryGetProperty("recipient", out var recipient) &&
+            recipient.TryGetProperty("id", out var recipientId))
+            Add(recipientId.ToString());
+
+        if (item.TryGetProperty("sender", out var sender) &&
+            sender.TryGetProperty("id", out var senderId))
+            Add(senderId.ToString());
+
+        if (item.TryGetProperty("to", out var to))
+            Add(to.ToString());
+
+        if (item.TryGetProperty("from", out var from))
+            Add(from.ToString());
+
+        if (item.TryGetProperty("metadata", out var metadata) &&
+            metadata.TryGetProperty("phone_number_id", out var phoneNumberId))
+            Add(phoneNumberId.ToString());
     }
 }

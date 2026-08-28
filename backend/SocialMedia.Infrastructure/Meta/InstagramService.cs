@@ -800,7 +800,13 @@ public class InstagramService : IInstagramService
             // Instagram messaging can arrive as a change with field=messages rather than entry.messaging.
             if (field is "messages" or "messaging" or "messaging_postbacks" or "message_reactions")
             {
-                await ProcessMessageAsync(profile, account, value, result, cancellationToken);
+                if (value.TryGetProperty("message", out _))
+                    await ProcessMessageAsync(profile, account, value, result, cancellationToken);
+                else if (value.TryGetProperty("messaging", out var nestedMessaging) &&
+                         nestedMessaging.ValueKind == JsonValueKind.Array)
+                    await ProcessMessagesAsync(profile, nestedMessaging, result, cancellationToken);
+                else
+                    result.Skip($"Change '{field}' value has no message envelope.");
                 continue;
             }
 
@@ -1009,15 +1015,17 @@ public class InstagramService : IInstagramService
             return;
         }
 
-        var senderId = item.TryGetProperty("sender", out var sender) &&
-                       sender.TryGetProperty("id", out var senderValue)
-            ? senderValue.ToString()
-            : string.Empty;
-        var receiverId = item.TryGetProperty("recipient", out var recipient) &&
-                         recipient.TryGetProperty("id", out var recipientValue)
-            ? recipientValue.ToString()
-            : string.Empty;
-        var isEcho = message.TryGetProperty("is_echo", out var echo) && echo.ValueKind == JsonValueKind.True;
+        var senderId = FirstNonEmpty(
+            item.TryGetProperty("sender", out var sender) && sender.TryGetProperty("id", out var senderValue)
+                ? senderValue.ToString()
+                : null,
+            item.TryGetProperty("from", out var from) ? from.ToString() : null);
+        var receiverId = FirstNonEmpty(
+            item.TryGetProperty("recipient", out var recipient) && recipient.TryGetProperty("id", out var recipientValue)
+                ? recipientValue.ToString()
+                : null,
+            item.TryGetProperty("to", out var to) ? to.ToString() : null);
+        var isEcho = IsEchoOrSelf(item, message);
         var outbound = isEcho || MetaMessagingHelper.ProfileOwnsSenderId(profile, senderId);
         var customerId = outbound ? receiverId : senderId;
         if (string.IsNullOrWhiteSpace(customerId))
@@ -1151,5 +1159,19 @@ public class InstagramService : IInstagramService
         return raw > 100_000_000_000L
             ? DateTimeOffset.FromUnixTimeMilliseconds(raw).UtcDateTime
             : DateTimeOffset.FromUnixTimeSeconds(raw).UtcDateTime;
+    }
+
+    private static bool IsEchoOrSelf(JsonElement item, JsonElement message)
+    {
+        if (message.TryGetProperty("is_echo", out var echo) && echo.ValueKind == JsonValueKind.True)
+            return true;
+
+        if (item.TryGetProperty("is_echo", out var itemEcho) && itemEcho.ValueKind == JsonValueKind.True)
+            return true;
+
+        if (message.TryGetProperty("is_self", out var self) && self.ValueKind == JsonValueKind.True)
+            return true;
+
+        return item.TryGetProperty("is_self", out var itemSelf) && itemSelf.ValueKind == JsonValueKind.True;
     }
 }
