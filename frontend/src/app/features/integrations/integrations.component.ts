@@ -181,7 +181,7 @@ export class IntegrationsComponent implements OnInit {
   canConnectCard(card: PlatformCard): boolean {
     const code = card.code.toLowerCase();
     if (!card.canConnect || !this.supportsMetaConfig(code)) return false;
-    return !!card.hasAppConfig || this.metaAuth.isConfigured(code as MetaPlatform);
+    return !!card.hasAppConfig;
   }
 
   isWhatsAppPlatform(code: string | null | undefined): boolean {
@@ -307,7 +307,7 @@ export class IntegrationsComponent implements OnInit {
     }
 
     if (!this.canConnectCard(card)) {
-      this.message.set(`Configure ${card.displayName} or set Meta App Id in environment settings.`);
+      this.message.set(`Configure ${card.displayName} before connecting.`);
       this.openConfig(card);
       return;
     }
@@ -572,7 +572,7 @@ export class IntegrationsComponent implements OnInit {
       menuType: this.menuType,
       clientId: '',
       clientSecret: '',
-      redirectUri: PROCESS_MODULES.integrations.callbackPath,
+      redirectUri: '',
       authUrl: DEFAULT_AUTH_URLS[code] || '',
       baseUrl: DEFAULT_BASE_URLS[code] || 'https://graph.facebook.com',
       scopes: '',

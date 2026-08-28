@@ -2,12 +2,10 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 using SocialMedia.Application.Catalog;
 using SocialMedia.Application.DTOs.Common;
 using SocialMedia.Application.Interfaces;
 using SocialMedia.Application.Meta;
-using SocialMedia.Application.Settings;
 using SocialMedia.Domain.Enums;
 using SocialMedia.Domain.Interfaces;
 using SocialMedia.Domain.Modules.Common.Entities;
@@ -25,7 +23,6 @@ public class WebhookService : IWebhookService
     private readonly IFacebookService _facebookService;
     private readonly IInstagramService _instagramService;
     private readonly IWhatsAppService _whatsAppService;
-    private readonly MetaSettings _meta;
     private readonly ILogger<WebhookService> _logger;
 
     public WebhookService(
@@ -34,7 +31,6 @@ public class WebhookService : IWebhookService
         IFacebookService facebookService,
         IInstagramService instagramService,
         IWhatsAppService whatsAppService,
-        IOptions<MetaSettings> metaOptions,
         ILogger<WebhookService> logger)
     {
         _unitOfWork = unitOfWork;
@@ -42,70 +38,18 @@ public class WebhookService : IWebhookService
         _facebookService = facebookService;
         _instagramService = instagramService;
         _whatsAppService = whatsAppService;
-        _meta = metaOptions.Value;
         _logger = logger;
     }
 
+    /// <inheritdoc />
+    /// <remarks>Use <see cref="VerifyConnectionForProcessAsync"/> for module webhook endpoints.</remarks>
     public string? VerifyConnection(string? platformCode, string mode, string challenge, string verifyToken)
-    {
-        if (mode != "subscribe" || string.IsNullOrWhiteSpace(verifyToken) || string.IsNullOrWhiteSpace(challenge))
-            return null;
+        => null;
 
-        var code = platformCode?.Trim().ToLowerInvariant();
-        if (string.IsNullOrWhiteSpace(code) || code is "meta" or "all")
-        {
-            // Shared callback: accept whichever product Meta is verifying.
-            var tokens = new[]
-            {
-                _meta.Facebook.WebhookVerifyToken,
-                _meta.Instagram.WebhookVerifyToken,
-                _meta.InstagramLogin.WebhookVerifyToken,
-                _meta.WhatsApp.WebhookVerifyToken
-            };
-            return tokens.Any(t => !string.IsNullOrWhiteSpace(t) && t == verifyToken)
-                ? challenge
-                : null;
-        }
-
-        var expected = code switch
-        {
-            "facebook" => _meta.Facebook.WebhookVerifyToken,
-            "instagram" => _meta.Instagram.WebhookVerifyToken,
-            "instagram_login" => _meta.InstagramLogin.WebhookVerifyToken,
-            "whatsapp" => _meta.WhatsApp.WebhookVerifyToken,
-            _ => null
-        };
-
-        return expected is not null && verifyToken == expected ? challenge : null;
-    }
-
+    /// <inheritdoc />
+    /// <remarks>Use <see cref="IsSignatureValidForProcessAsync"/> for module webhook endpoints.</remarks>
     public bool IsSignatureValid(string? platformCode, string payloadJson, string? signature)
-    {
-        if (string.IsNullOrWhiteSpace(signature) ||
-            !signature.StartsWith("sha256=", StringComparison.OrdinalIgnoreCase))
-            return false;
-
-        byte[] supplied;
-        try
-        {
-            supplied = Convert.FromHexString(signature["sha256=".Length..]);
-        }
-        catch (FormatException)
-        {
-            return false;
-        }
-
-        foreach (var appSecret in ResolveAppSecrets(platformCode, payloadJson))
-        {
-            using var hmac = new HMACSHA256(Encoding.UTF8.GetBytes(appSecret));
-            var expected = hmac.ComputeHash(Encoding.UTF8.GetBytes(payloadJson));
-            if (supplied.Length == expected.Length &&
-                CryptographicOperations.FixedTimeEquals(supplied, expected))
-                return true;
-        }
-
-        return false;
-    }
+        => false;
 
     public string? DetectPlatformFromPayload(string payloadJson)
     {
@@ -127,49 +71,6 @@ public class WebhookService : IWebhookService
         {
             return null;
         }
-    }
-
-    private IEnumerable<string> ResolveAppSecrets(string? platformCode, string payloadJson)
-    {
-        var code = platformCode?.Trim().ToLowerInvariant();
-        if (string.IsNullOrWhiteSpace(code) || code is "meta" or "all")
-            code = DetectPlatformFromPayload(payloadJson);
-
-        var secrets = new List<string>();
-        void Add(string? secret)
-        {
-            if (!string.IsNullOrWhiteSpace(secret) && !secrets.Contains(secret))
-                secrets.Add(secret);
-        }
-
-        switch (code)
-        {
-            case "facebook":
-                Add(_meta.Facebook.AppSecret);
-                break;
-            case "instagram":
-            case "instagram_login":
-                // Both Instagram connection types deliver object="instagram" on the shared callback,
-                // but each is signed by its own app, so every Instagram-capable secret is a candidate.
-                Add(!string.IsNullOrWhiteSpace(_meta.Instagram.AppSecret)
-                    ? _meta.Instagram.AppSecret
-                    : _meta.Facebook.AppSecret);
-                Add(_meta.InstagramLogin.AppSecret);
-                Add(_meta.Facebook.AppSecret);
-                break;
-            case "whatsapp":
-                Add(_meta.WhatsApp.AppSecret);
-                Add(_meta.Facebook.AppSecret);
-                break;
-            default:
-                Add(_meta.Facebook.AppSecret);
-                Add(_meta.Instagram.AppSecret);
-                Add(_meta.InstagramLogin.AppSecret);
-                Add(_meta.WhatsApp.AppSecret);
-                break;
-        }
-
-        return secrets;
     }
 
     public async Task<ApiResponse<object>> SubscribeAsync(
@@ -572,7 +473,6 @@ public class WebhookService : IWebhookService
 
         if (normalized == MenuTypes.Integration)
         {
-            AddGlobalVerifyTokens(Add);
             foreach (var token in await _unitOfWork.IntegrationAppConfigs.GetWebhookVerifyTokensAsync(normalized, cancellationToken))
                 Add(token);
         }
@@ -590,14 +490,6 @@ public class WebhookService : IWebhookService
         return tokens;
     }
 
-    private void AddGlobalVerifyTokens(Action<string?> add)
-    {
-        add(_meta.Facebook.WebhookVerifyToken);
-        add(_meta.Instagram.WebhookVerifyToken);
-        add(_meta.InstagramLogin.WebhookVerifyToken);
-        add(_meta.WhatsApp.WebhookVerifyToken);
-    }
-
     private async Task<IReadOnlyList<string>> LoadSecretsForProcessAsync(
         string menuType,
         string? platformCode,
@@ -605,9 +497,6 @@ public class WebhookService : IWebhookService
         CancellationToken cancellationToken)
     {
         var normalized = MenuTypes.Normalize(menuType);
-        if (normalized == MenuTypes.Integration)
-            return ResolveAppSecrets(platformCode, payloadJson).ToList();
-
         var secrets = new List<string>();
         void Add(string? secret)
         {
@@ -615,9 +504,12 @@ public class WebhookService : IWebhookService
                 secrets.Add(secret);
         }
 
-        var dbSecrets = normalized == MenuTypes.AppConnection
-            ? await _unitOfWork.AppConnectionConfigs.GetClientSecretsAsync(normalized, cancellationToken)
-            : await _unitOfWork.DeveloperAppConfigs.GetClientSecretsAsync(normalized, cancellationToken);
+        var dbSecrets = normalized switch
+        {
+            MenuTypes.AppConnection => await _unitOfWork.AppConnectionConfigs.GetClientSecretsAsync(normalized, cancellationToken),
+            MenuTypes.DeveloperApp => await _unitOfWork.DeveloperAppConfigs.GetClientSecretsAsync(normalized, cancellationToken),
+            _ => await _unitOfWork.IntegrationAppConfigs.GetClientSecretsAsync(normalized, cancellationToken)
+        };
 
         foreach (var secret in dbSecrets)
             Add(secret);
