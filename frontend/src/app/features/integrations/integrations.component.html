@@ -385,6 +385,37 @@
                 <dd>{{ info.connectedAt ? (info.connectedAt | date: 'medium') : '—' }}</dd>
               </div>
             }
+
+            @if (info.accessToken) {
+              <div class="token-row">
+                <dt>{{ tokenLabel(info.platformCode) }}</dt>
+                <dd>
+                  <div class="token-line">
+                    <code [class.revealed]="tokenRevealed()">
+                      {{ tokenRevealed() ? info.accessToken : maskedToken(info.accessToken) }}
+                    </code>
+                    <button
+                      type="button"
+                      class="token-btn"
+                      (click)="toggleTokenReveal()"
+                      [attr.aria-label]="tokenRevealed() ? 'Hide access token' : 'Show access token'">
+                      <mat-icon>{{ tokenRevealed() ? 'visibility_off' : 'visibility' }}</mat-icon>
+                    </button>
+                    <button type="button" class="token-btn" (click)="copyToken(info.accessToken)" aria-label="Copy access token">
+                      <mat-icon>content_copy</mat-icon>
+                    </button>
+                  </div>
+                  @if (tokenCopied()) {
+                    <span class="token-copied">Copied to clipboard</span>
+                  }
+                </dd>
+              </div>
+            } @else if (info.webhookError) {
+              <div class="token-row">
+                <dt>{{ tokenLabel(info.platformCode) }}</dt>
+                <dd class="section-note">{{ info.webhookError }}</dd>
+              </div>
+            }
           </dl>
         }
       </div>
