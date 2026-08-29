@@ -712,18 +712,17 @@ public class FacebookService : IFacebookService
             ? recipientValue.ToString()
             : string.Empty;
 
-        var outbound = MetaMessagingHelper.ProfileOwnsSenderId(profile, senderId);
-        var customerId = outbound ? receiverId : senderId;
-        if (string.IsNullOrWhiteSpace(customerId))
+        if (MetaMessagingHelper.ProfileOwnsSenderId(profile, senderId))
         {
-            result.Skip($"Message '{messageId}' has no sender/recipient id.");
+            result.Skip($"Message '{messageId}' is from connected profile — not stored from webhook.");
             return;
         }
 
-        // Echoes and business-side sends are recorded via the send API, not webhooks.
-        if (outbound)
+        var outbound = false;
+        var customerId = senderId;
+        if (string.IsNullOrWhiteSpace(customerId))
         {
-            result.Skip($"Message '{messageId}' is outbound/echo — not stored from webhook.");
+            result.Skip($"Message '{messageId}' has no sender/recipient id.");
             return;
         }
 

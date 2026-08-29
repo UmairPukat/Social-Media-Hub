@@ -1039,8 +1039,16 @@ public class InstagramService : IInstagramService
                 ? recipientValue.ToString()
                 : null,
             item.TryGetProperty("to", out var to) ? to.ToString() : null);
-        var outbound = MetaMessagingHelper.ProfileOwnsSenderId(profile, senderId);
-        var customerId = outbound ? receiverId : senderId;
+
+        if (MetaMessagingHelper.ProfileOwnsSenderId(profile, senderId) ||
+            IdsMatchEntryBusiness(senderId, entryBusinessId, profile))
+        {
+            result.Skip($"Message '{messageId}' is from connected account — not stored from webhook.");
+            return;
+        }
+
+        var outbound = false;
+        var customerId = senderId;
         if (string.IsNullOrWhiteSpace(customerId) && !outbound)
         {
             if (!string.IsNullOrWhiteSpace(receiverId) &&
@@ -1056,12 +1064,6 @@ public class InstagramService : IInstagramService
         if (string.IsNullOrWhiteSpace(customerId))
         {
             result.Skip($"Message '{messageId}' has no customer sender/recipient id.");
-            return;
-        }
-
-        if (outbound)
-        {
-            result.Skip($"Message '{messageId}' is outbound/echo — not stored from webhook.");
             return;
         }
 

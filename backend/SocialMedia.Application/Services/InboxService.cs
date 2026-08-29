@@ -394,6 +394,13 @@ public class InboxService : IInboxService
             && CandidateTokens(linkedAuth).Count > 0)
             return new ReplyAuthResolution(linked, linkedAuth, moduleMenu);
 
+        // Instagram IGSIDs only work with the same Meta app that received the webhook.
+        if (linked is not null
+            && linked.UserId == userId
+            && InstagramConnectionResolver.IsInstagramPlatform(
+                InferPlatformCode(profile) ?? ProcessEntityNav.PlatformCode(linked) ?? string.Empty))
+            return null;
+
         var hinted = await FindAccountByRoutingHintsAsync(
             userId,
             profile,
@@ -690,6 +697,20 @@ public class InboxService : IInboxService
             || text.Contains("session is invalid", StringComparison.OrdinalIgnoreCase);
     }
 
+    private static bool IsInstagramRecipientError(Exception ex)
+    {
+        var text = ex.Message ?? string.Empty;
+        return text.Contains("2534014", StringComparison.OrdinalIgnoreCase)
+            || text.Contains("requested user cannot be found", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string? ResolveGenericRecipientId(
+        MessageEntityBase message,
+        ConversationEntityBase conversation)
+        => (message.Direction == MessageDirection.Outbound
+            ? message.ReceiverId ?? conversation.CustomerId
+            : message.SenderId ?? conversation.CustomerId)?.Trim();
+
     private static async Task<string> ResolveReplyTargetExternalIdAsync(
         IProcessDataStore store,
         CommentEntityBase comment,
@@ -868,11 +889,16 @@ public class InboxService : IInboxService
             if (!SupportsMessaging(code))
                 return ApiResponse<object>.Fail("Platform does not support messaging.");
 
-            var recipientId = (message.Direction == MessageDirection.Outbound
-                ? message.ReceiverId ?? conversation.CustomerId
-                : message.SenderId ?? conversation.CustomerId) ?? string.Empty;
+            var recipientId = InstagramConnectionResolver.IsInstagramPlatform(code)
+                ? InstagramMessagingRecipient.Resolve(message, conversation, profile)
+                : ResolveGenericRecipientId(message, conversation);
             if (string.IsNullOrWhiteSpace(recipientId))
-                return ApiResponse<object>.Fail("Recipient is unknown for this conversation.");
+            {
+                return ApiResponse<object>.Fail(
+                    InstagramConnectionResolver.IsInstagramPlatform(code)
+                        ? InstagramMessagingRecipient.FormatRecipientNotFoundError(store.MenuType, conversation.CustomerId)
+                        : "Recipient is unknown for this conversation.");
+            }
 
             MessageEntityBase? quoted = null;
             if (request.ReplyToMessageId.HasValue)
@@ -920,6 +946,11 @@ public class InboxService : IInboxService
                 catch (Exception ex) when (IsOAuthTokenError(ex))
                 {
                     lastError = ex;
+                }
+                catch (Exception ex) when (IsInstagramRecipientError(ex))
+                {
+                    return ApiResponse<object>.Fail(
+                        InstagramMessagingRecipient.FormatInstagramRecipientApiError(store.MenuType));
                 }
             }
 

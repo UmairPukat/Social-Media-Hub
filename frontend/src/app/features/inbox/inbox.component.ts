@@ -111,20 +111,31 @@ export class InboxComponent implements OnInit, OnDestroy {
   });
 
   readonly messageConversations = computed(() => {
+    const customerNames = new Map<string, string>();
+    for (const item of this.filteredItems()) {
+      if (item.itemKind !== 'message' || item.isOutgoing || !item.conversationId) continue;
+      customerNames.set(
+        this.messageConversationKey(item),
+        item.authorName || item.authorId || 'Customer'
+      );
+    }
+
     const grouped = new Map<string, MessageConversation>();
     for (const item of this.filteredItems()) {
       if (item.itemKind !== 'message') continue;
-      const key = `msg:${item.platformCode}:${item.conversationId || item.authorId || item.authorName}`;
+      const key = this.messageConversationKey(item);
       const existing = grouped.get(key);
       if (!existing) {
         grouped.set(key, {
           key,
-          authorName: item.isOutgoing ? (item.authorId || 'Customer') : item.authorName || 'Customer',
-          authorId: item.authorId,
+          authorName: item.isOutgoing
+            ? (customerNames.get(key) || 'Customer')
+            : (item.authorName || 'Customer'),
+          authorId: item.isOutgoing ? undefined : item.authorId,
           platformCode: item.platformCode,
           lastContent: item.content,
           lastAt: item.receivedAt,
-          unreadCount: item.isRead ? 0 : 1,
+          unreadCount: item.isRead || item.isOutgoing ? 0 : 1,
           items: [item],
           menuType: item.menuType,
           pageId: item.pageId,
@@ -136,7 +147,7 @@ export class InboxComponent implements OnInit, OnDestroy {
           existing.authorName = item.authorName;
           existing.authorId = item.authorId;
         }
-        if (!item.isRead) existing.unreadCount += 1;
+        if (!item.isRead && !item.isOutgoing) existing.unreadCount += 1;
         if (new Date(item.receivedAt) > new Date(existing.lastAt)) {
           existing.lastContent = item.content;
           existing.lastAt = item.receivedAt;
@@ -315,15 +326,40 @@ export class InboxComponent implements OnInit, OnDestroy {
     void this.realtime.stop();
   }
 
+  private normalizeInboxItem(item: InboxItem): InboxItem {
+    return {
+      ...item,
+      id: String(item.id),
+      conversationId: item.conversationId ? String(item.conversationId) : undefined,
+      receivedAt: item.receivedAt || new Date().toISOString()
+    };
+  }
+
+  /** Group messages by conversation id so outbound replies stay in the same sidebar thread. */
+  private messageConversationKey(item: InboxItem): string {
+    if (item.conversationId) {
+      return `msg:${item.platformCode}:${item.conversationId}`;
+    }
+
+    const peerId = item.isOutgoing ? undefined : (item.authorId || item.authorName);
+    return peerId
+      ? `msg:${item.platformCode}:peer:${peerId}`
+      : `msg:${item.platformCode}:orphan:${item.id}`;
+  }
+
   private upsertItem(item: InboxItem): void {
+    const normalized = this.normalizeInboxItem(item);
     this.items.update((list) => {
-      const existing = list.findIndex((row) => row.id === item.id || row.externalId === item.externalId);
+      const existing = list.findIndex((row) =>
+        row.id === normalized.id ||
+        (!!normalized.externalId && row.externalId === normalized.externalId)
+      );
       if (existing >= 0) {
         const next = [...list];
-        next[existing] = { ...next[existing], ...item };
+        next[existing] = { ...next[existing], ...normalized };
         return next;
       }
-      return [item, ...list];
+      return [normalized, ...list];
     });
 
     if (!this.selectedKey()) {
@@ -348,7 +384,7 @@ export class InboxComponent implements OnInit, OnDestroy {
   reload(): void {
     this.processApi.getInbox(this.processRoute.currentMenuType()).subscribe({
       next: (res: ApiResponse<InboxItem[]>) => {
-        this.items.set(res.data || []);
+        this.items.set((res.data || []).map((item) => this.normalizeInboxItem(item)));
         this.banner.set('');
         this.autoSelectFirst();
       },
@@ -503,6 +539,7 @@ export class InboxComponent implements OnInit, OnDestroy {
       if (!latest) return;
       const quoted = this.replyTargetMessage();
       this.sending.set(true);
+      const conversationId = conv.items.find((item) => item.conversationId)?.conversationId;
       this.processApi.replyMessage(
         this.processRoute.currentMenuType(),
         latest.id,
@@ -516,26 +553,28 @@ export class InboxComponent implements OnInit, OnDestroy {
         next: (res) => {
           if (res.success) {
             const messageId = (res.data as { messageId?: string } | null)?.messageId;
-            this.upsertItem({
-              id: messageId || `local-${Date.now()}`,
-              itemKind: 'message',
-              platformCode: conv.platformCode,
-              externalId: messageId || `local_msg_${Date.now()}`,
-              authorName: 'You',
-              authorId: latest.authorId,
-              content: text,
-              isHidden: false,
-              isRead: true,
-              isOutgoing: true,
-              conversationId: latest.conversationId,
-              receivedAt: new Date().toISOString(),
-              replyToId: quoted?.id,
-              replyToAuthor: quoted ? (quoted.isOutgoing ? 'You' : quoted.authorName) : undefined,
-              replyToContent: quoted?.content,
-              menuType: conv.menuType ?? latest.menuType,
-              pageId: conv.pageId ?? latest.pageId,
-              accountId: conv.accountId ?? latest.accountId
-            });
+            if (messageId && conversationId) {
+              this.upsertItem({
+                id: String(messageId),
+                itemKind: 'message',
+                platformCode: conv.platformCode,
+                externalId: `pending:${messageId}`,
+                authorName: 'You',
+                authorId: conv.authorId ?? latest.authorId,
+                content: text,
+                isHidden: false,
+                isRead: true,
+                isOutgoing: true,
+                conversationId: String(conversationId),
+                receivedAt: new Date().toISOString(),
+                replyToId: quoted?.id,
+                replyToAuthor: quoted ? (quoted.isOutgoing ? 'You' : quoted.authorName) : undefined,
+                replyToContent: quoted?.content,
+                menuType: conv.menuType ?? latest.menuType,
+                pageId: conv.pageId ?? latest.pageId,
+                accountId: conv.accountId ?? latest.accountId
+              });
+            }
             this.replyText.set('');
             this.clearMessageReplyTarget();
             this.banner.set('');
