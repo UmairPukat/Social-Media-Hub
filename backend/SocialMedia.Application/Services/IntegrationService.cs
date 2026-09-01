@@ -199,37 +199,21 @@ public class IntegrationService : IIntegrationService
         CancellationToken cancellationToken = default)
     {
         var origins = ResolveFrontendOrigins();
+        var relayOrigin = ResolveOAuthRelayOrigin(origins);
 
         if (!string.IsNullOrWhiteSpace(error))
         {
-            return new MetaRedirectResult
-            {
-                Ok = false,
-                Message = error!,
-                FrontendOrigins = origins
-            };
+            return OAuthRedirectResult(false, error!, origins, relayOrigin);
         }
 
         if (!MetaOAuthState.TryValidate(state, _jwt.SecretKey, out var userId, out var platformCode, out var menuType, out var stateError))
         {
-            return new MetaRedirectResult
-            {
-                Ok = false,
-                Message = stateError,
-                FrontendOrigins = origins
-            };
+            return OAuthRedirectResult(false, stateError, origins, relayOrigin);
         }
 
         if (string.IsNullOrWhiteSpace(code))
         {
-            return new MetaRedirectResult
-            {
-                Ok = false,
-                PlatformCode = platformCode,
-                MenuType = menuType,
-                Message = "Missing authorization code.",
-                FrontendOrigins = origins
-            };
+            return OAuthRedirectResult(false, "Missing authorization code.", origins, relayOrigin, platformCode, menuType);
         }
 
         var response = await ExchangeAuthCodeAsync(userId, new OAuthCallbackRequest
@@ -239,17 +223,33 @@ public class IntegrationService : IIntegrationService
             Code = code!
         }, cancellationToken);
 
-        return new MetaRedirectResult
-        {
-            Ok = response.Success,
-            PlatformCode = platformCode,
-            MenuType = menuType,
-            Message = response.Success
+        return OAuthRedirectResult(
+            response.Success,
+            response.Success
                 ? (response.Message ?? "Connected. You can close this window.")
                 : (response.Message ?? "Connection failed."),
-            FrontendOrigins = origins
-        };
+            origins,
+            relayOrigin,
+            platformCode,
+            menuType);
     }
+
+    private static MetaRedirectResult OAuthRedirectResult(
+        bool ok,
+        string message,
+        IReadOnlyList<string> origins,
+        string relayOrigin,
+        string platformCode = "",
+        string menuType = MenuTypes.Integration)
+        => new()
+        {
+            Ok = ok,
+            PlatformCode = platformCode,
+            MenuType = menuType,
+            Message = message,
+            FrontendOrigins = origins,
+            OAuthRelayOrigin = relayOrigin
+        };
 
     public Task<ApiResponse<SocialAccountDto>> ExchangeAuthCodeAsync(Guid userId, OAuthCallbackRequest request, CancellationToken cancellationToken = default)
     {
@@ -263,22 +263,43 @@ public class IntegrationService : IIntegrationService
 
     private IReadOnlyList<string> ResolveFrontendOrigins()
     {
+        var explicitBase = FirstNonEmpty(
+            _configuration["FrontendBaseUrl"],
+            _configuration["frontendBaseUrl"]);
+
         var fromConfig = _configuration.GetSection("Cors:Origins").GetChildren()
             .Select(c => c.Value)
             .Where(v => !string.IsNullOrWhiteSpace(v))
             .Select(v => v!);
         var fromEnv = (_configuration["corsOrigins"] ?? string.Empty)
             .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        var frontendBase = _configuration["frontendBaseUrl"];
 
-        return fromConfig
+        return new[] { explicitBase }
+            .Concat(fromConfig)
             .Concat(fromEnv)
-            .Append(frontendBase)
             .Where(o => !string.IsNullOrWhiteSpace(o))
             .Select(NormalizeFrontendOrigin)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .DefaultIfEmpty("http://localhost:4200")
             .ToList();
+    }
+
+    private static string ResolveOAuthRelayOrigin(IReadOnlyList<string> origins)
+    {
+        if (origins.Count == 0)
+            return "http://localhost:4200";
+
+        var production = origins.FirstOrDefault(IsProductionFrontendOrigin);
+        return production ?? origins[0];
+    }
+
+    private static bool IsProductionFrontendOrigin(string origin)
+    {
+        if (!origin.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        return !origin.Contains("localhost", StringComparison.OrdinalIgnoreCase)
+               && !origin.Contains("127.0.0.1", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string NormalizeFrontendOrigin(string origin)

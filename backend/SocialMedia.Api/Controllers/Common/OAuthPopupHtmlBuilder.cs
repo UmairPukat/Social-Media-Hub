@@ -18,6 +18,8 @@ public static class OAuthPopupHtmlBuilder
         });
 
         var originsJson = JsonSerializer.Serialize(result.FrontendOrigins);
+        var relayOriginJson = JsonSerializer.Serialize(
+            string.IsNullOrWhiteSpace(result.OAuthRelayOrigin) ? null : result.OAuthRelayOrigin);
         var statusText = System.Net.WebUtility.HtmlEncode(result.Message);
 
         return $$"""
@@ -47,8 +49,9 @@ public static class OAuthPopupHtmlBuilder
                   notifyOpener();
                   setTimeout(notifyOpener, 120);
                   setTimeout(function () {
-                    if (origins.length > 0) {
-                      var relay = origins[0] + '/oauth-complete#payload=' + encodeURIComponent(JSON.stringify(payload));
+                    var relayOrigin = {{relayOriginJson}} || (origins.length > 0 ? origins[0] : '');
+                    if (relayOrigin) {
+                      var relay = relayOrigin + '/oauth-complete#payload=' + encodeURIComponent(JSON.stringify(payload));
                       window.location = relay;
                       return;
                     }

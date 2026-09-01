@@ -67,6 +67,9 @@ public class MetaRedirectResult
     public string MenuType { get; set; } = MenuTypes.Integration;
     public string Message { get; set; } = string.Empty;
     public IReadOnlyList<string> FrontendOrigins { get; set; } = Array.Empty<string>();
+
+    /// <summary>Frontend origin used for the OAuth popup relay page (/oauth-complete).</summary>
+    public string OAuthRelayOrigin { get; set; } = string.Empty;
 }
 
 public class SocialAccountDto
