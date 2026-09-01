@@ -327,6 +327,13 @@ public class InstagramService : IInstagramService
         var creationId = containerDoc.RootElement.GetProperty("id").GetString()
             ?? throw new InvalidOperationException("Instagram did not return a media container id.");
 
+        await WaitForMediaContainerReadyAsync(
+            creationId,
+            context.AccessToken,
+            connectionType,
+            isVideo,
+            cancellationToken);
+
         using var publishDoc = connectionType == InstagramConnectionType.InstagramLogin
             ? await _graph.PostInstagramAsync(InstagramLoginGraphVersion, $"{context.ProfileExternalId}/media_publish", context.AccessToken,
                 new Dictionary<string, string> { ["creation_id"] = creationId }, cancellationToken)
@@ -348,6 +355,57 @@ public class InstagramService : IInstagramService
 
         var value = (nameOrUrl ?? string.Empty).ToLowerInvariant();
         return value.EndsWith(".mp4") || value.EndsWith(".mov") || value.EndsWith(".webm") || value.EndsWith(".mkv");
+    }
+
+    /// <summary>
+    /// Instagram rejects media_publish until the container status_code is FINISHED (especially for video).
+    /// </summary>
+    private async Task WaitForMediaContainerReadyAsync(
+        string creationId,
+        string accessToken,
+        InstagramConnectionType connectionType,
+        bool isVideo,
+        CancellationToken cancellationToken)
+    {
+        var maxAttempts = isVideo ? 40 : 20;
+        var delayMs = isVideo ? 3000 : 2000;
+
+        for (var attempt = 0; attempt < maxAttempts; attempt++)
+        {
+            using var doc = connectionType == InstagramConnectionType.InstagramLogin
+                ? await _graph.GetInstagramAsync(
+                    InstagramLoginGraphVersion,
+                    creationId,
+                    accessToken,
+                    cancellationToken,
+                    ("fields", "status_code"))
+                : await _graph.GetAsync(
+                    GraphVersion,
+                    creationId,
+                    accessToken,
+                    cancellationToken,
+                    ("fields", "status_code"));
+
+            var status = doc.RootElement.TryGetProperty("status_code", out var statusProp)
+                ? statusProp.GetString()
+                : null;
+
+            if (string.Equals(status, "FINISHED", StringComparison.OrdinalIgnoreCase))
+                return;
+
+            if (string.Equals(status, "ERROR", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(status, "EXPIRED", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException(
+                    $"Instagram could not process the media (status: {status ?? "unknown"}).");
+            }
+
+            if (attempt < maxAttempts - 1)
+                await Task.Delay(delayMs, cancellationToken);
+        }
+
+        throw new InvalidOperationException(
+            "Instagram is still processing the media. Wait a moment and try publishing again.");
     }
 
     public async Task<RemotePostSnapshot?> GetMediaSnapshotAsync(

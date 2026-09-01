@@ -1325,3 +1325,126 @@ input {
     padding-right: 16px;
   }
 }
+
+.publish-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background:
+    radial-gradient(circle at 50% 20%, color-mix(in srgb, var(--loader-accent, #e1306c) 18%, transparent), transparent 55%),
+    rgba(15, 23, 42, 0.42);
+  backdrop-filter: blur(10px);
+  animation: publish-overlay-in 0.28s ease;
+}
+
+.publish-loader {
+  width: min(360px, 100%);
+  padding: 28px 26px 24px;
+  border-radius: 22px;
+  text-align: center;
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid rgba(255, 255, 255, 0.65);
+  box-shadow:
+    0 24px 60px rgba(15, 23, 42, 0.22),
+    0 0 0 1px rgba(15, 23, 42, 0.04);
+  animation: publish-card-in 0.34s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.publish-loader strong {
+  display: block;
+  margin-top: 18px;
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 1.12rem;
+  letter-spacing: -0.02em;
+  color: var(--ink, #0f172a);
+}
+
+.publish-loader p {
+  margin: 8px 0 0;
+  font-size: 0.88rem;
+  line-height: 1.5;
+  color: var(--muted, #64748b);
+}
+
+.publish-orbit {
+  position: relative;
+  width: 84px;
+  height: 84px;
+  margin: 0 auto;
+}
+
+.publish-orbit-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 3px solid color-mix(in srgb, var(--loader-accent, #1877f2) 16%, transparent);
+  border-top-color: var(--loader-accent, #1877f2);
+  animation: publish-spin 0.9s linear infinite;
+}
+
+.publish-orbit-core {
+  position: absolute;
+  inset: 14px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--loader-accent, #1877f2) 12%, white);
+  color: var(--loader-accent, #1877f2);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--loader-accent, #1877f2) 18%, transparent);
+}
+
+.publish-orbit-core mat-icon {
+  width: 28px;
+  height: 28px;
+  font-size: 28px;
+}
+
+.publish-progress {
+  margin-top: 20px;
+  height: 4px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--loader-accent, #1877f2) 10%, #e2e8f0);
+}
+
+.publish-progress span {
+  display: block;
+  width: 42%;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--loader-accent, #1877f2),
+    transparent
+  );
+  animation: publish-progress-slide 1.35s ease-in-out infinite;
+}
+
+@keyframes publish-overlay-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes publish-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes publish-spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes publish-progress-slide {
+  0% { transform: translateX(-120%); }
+  100% { transform: translateX(260%); }
+}

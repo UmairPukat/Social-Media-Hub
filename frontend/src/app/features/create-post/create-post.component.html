@@ -584,4 +584,22 @@
       </div>
     </main>
   </div>
+
+  @if (publishing()) {
+    <div class="publish-overlay" role="status" aria-live="polite" aria-busy="true">
+      <div class="publish-loader" [style.--loader-accent]="activeMeta().color">
+        <div class="publish-orbit" aria-hidden="true">
+          <span class="publish-orbit-ring"></span>
+          <span class="publish-orbit-core">
+            <mat-icon>{{ activeMeta().icon }}</mat-icon>
+          </span>
+        </div>
+        <strong>{{ publishStatusTitle() }}</strong>
+        <p>{{ publishStatusHint() }}</p>
+        <div class="publish-progress" aria-hidden="true">
+          <span></span>
+        </div>
+      </div>
+    </div>
+  }
 </section>

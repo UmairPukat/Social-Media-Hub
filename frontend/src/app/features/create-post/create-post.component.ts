@@ -336,6 +336,34 @@ export class CreatePostComponent implements OnInit, OnDestroy {
     );
   }
 
+  readonly publishStatusTitle = computed(() => {
+    if (!this.publishing()) return '';
+    switch (this.platform()) {
+      case 'instagram':
+        return 'Publishing to Instagram';
+      case 'youtube':
+        return 'Uploading to YouTube';
+      case 'facebook':
+        return 'Posting to Facebook';
+      default:
+        return 'Publishing';
+    }
+  });
+
+  readonly publishStatusHint = computed(() => {
+    if (!this.publishing()) return '';
+    switch (this.platform()) {
+      case 'instagram':
+        return 'Creating your media and waiting for Instagram to finish processing…';
+      case 'youtube':
+        return 'Uploading your video. This can take a minute or two.';
+      case 'facebook':
+        return 'Sending your post to Facebook…';
+      default:
+        return 'Please wait while we publish your content.';
+    }
+  });
+
   ctaLabel(): string {
     switch (this.platform()) {
       case 'facebook':
