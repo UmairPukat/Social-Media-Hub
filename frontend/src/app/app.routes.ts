@@ -36,6 +36,11 @@ export const routes: Routes = [
     loadComponent: () => import('./features/auth/login/login.component').then(m => m.LoginComponent)
   },
   {
+    path: 'oauth-complete',
+    loadComponent: () =>
+      import('./features/oauth-complete/oauth-complete.component').then(m => m.OAuthCompleteComponent)
+  },
+  {
     path: 'app',
     canActivate: [authGuard],
     loadComponent: () => import('./layout/shell/shell.component').then(m => m.ShellComponent),

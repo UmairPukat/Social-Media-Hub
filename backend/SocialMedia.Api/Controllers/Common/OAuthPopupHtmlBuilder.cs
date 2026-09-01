@@ -46,8 +46,14 @@ public static class OAuthPopupHtmlBuilder
                   }
                   notifyOpener();
                   setTimeout(notifyOpener, 120);
-                  setTimeout(notifyOpener, 400);
-                  setTimeout(function () { window.close(); }, 900);
+                  setTimeout(function () {
+                    if (origins.length > 0) {
+                      var relay = origins[0] + '/oauth-complete#payload=' + encodeURIComponent(JSON.stringify(payload));
+                      window.location = relay;
+                      return;
+                    }
+                    setTimeout(function () { window.close(); }, 400);
+                  }, 300);
                 })();
               </script>
             </body>
