@@ -21,9 +21,9 @@ public static class ProcessEntityNav
 
     public static IReadOnlyList<SocialProfileEntityBase> Profiles(SocialAccountEntityBase account) => account switch
     {
-        IntegrationSocialAccount i => i.Profiles.Cast<SocialProfileEntityBase>().ToList(),
-        AppConnectionSocialAccount a => a.Profiles.Cast<SocialProfileEntityBase>().ToList(),
-        DeveloperAppSocialAccount d => d.Profiles.Cast<SocialProfileEntityBase>().ToList(),
+        IntegrationSocialAccount i when i.Profiles is { } ip => ip.Cast<SocialProfileEntityBase>().ToList(),
+        AppConnectionSocialAccount a when a.Profiles is { } ap => ap.Cast<SocialProfileEntityBase>().ToList(),
+        DeveloperAppSocialAccount d when d.Profiles is { } dp => dp.Cast<SocialProfileEntityBase>().ToList(),
         _ => Array.Empty<SocialProfileEntityBase>()
     };
 
@@ -55,17 +55,17 @@ public static class ProcessEntityNav
 
     public static string? FirstMediaUrl(PostEntityBase post) => post switch
     {
-        IntegrationPost i => i.MediaItems.FirstOrDefault()?.Url,
-        AppConnectionPost a => a.MediaItems.FirstOrDefault()?.Url,
-        DeveloperAppPost d => d.MediaItems.FirstOrDefault()?.Url,
+        IntegrationPost i => i.MediaItems?.FirstOrDefault()?.Url,
+        AppConnectionPost a => a.MediaItems?.FirstOrDefault()?.Url,
+        DeveloperAppPost d => d.MediaItems?.FirstOrDefault()?.Url,
         _ => null
     };
 
     public static int MediaCount(PostEntityBase post) => post switch
     {
-        IntegrationPost i => i.MediaItems.Count,
-        AppConnectionPost a => a.MediaItems.Count,
-        DeveloperAppPost d => d.MediaItems.Count,
+        IntegrationPost i => i.MediaItems?.Count ?? 0,
+        AppConnectionPost a => a.MediaItems?.Count ?? 0,
+        DeveloperAppPost d => d.MediaItems?.Count ?? 0,
         _ => 0
     };
 
@@ -74,13 +74,13 @@ public static class ProcessEntityNav
         switch (post)
         {
             case IntegrationPost i:
-                i.MediaItems.Add((IntegrationMedia)media);
+                (i.MediaItems ??= new List<IntegrationMedia>()).Add((IntegrationMedia)media);
                 break;
             case AppConnectionPost a:
-                a.MediaItems.Add((AppConnectionMedia)media);
+                (a.MediaItems ??= new List<AppConnectionMedia>()).Add((AppConnectionMedia)media);
                 break;
             case DeveloperAppPost d:
-                d.MediaItems.Add((DeveloperAppMedia)media);
+                (d.MediaItems ??= new List<DeveloperAppMedia>()).Add((DeveloperAppMedia)media);
                 break;
         }
     }

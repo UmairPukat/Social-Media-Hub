@@ -8,6 +8,7 @@ import { Subscription } from 'rxjs';
 import { ProcessApiService } from '../../core/services/process-api.service';
 import { ProcessRouteService } from '../../core/services/process-route.service';
 import { InboxRealtimeService } from '../../core/services/inbox-realtime.service';
+import { ProcessMenuType } from '../../core/config/process.config';
 import {
   ApiResponse,
   InboxItem,
@@ -620,9 +621,10 @@ export class InboxComponent implements OnInit, OnDestroy {
     }
 
     const rootId = this.rootCommentId(target);
+    const menuType = (thread.menuType ?? target.menuType ?? this.processRoute.currentMenuType()) as ProcessMenuType;
     this.sending.set(true);
     this.processApi.replyComment(
-      this.processRoute.currentMenuType(),
+      menuType,
       target.id,
       text,
       {

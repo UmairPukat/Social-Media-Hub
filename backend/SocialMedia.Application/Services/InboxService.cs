@@ -274,7 +274,11 @@ public class InboxService : IInboxService
                 _processData,
                 menuType,
                 store => store.GetCommentByIdAsync(commentId, cancellationToken),
-                cancellationToken);
+                cancellationToken)
+                ?? await ProcessStoreLocator.FindAsync(
+                    _processData,
+                    store => store.GetCommentByIdAsync(commentId, cancellationToken),
+                    cancellationToken);
             if (located is null)
                 throw new InvalidOperationException("Comment not found.");
 
@@ -287,7 +291,7 @@ public class InboxService : IInboxService
                 store.MenuType,
                 profile,
                 userId,
-                ReplyAuthHints.FromRequest(request.MenuType, request.PageId, request.AccountId),
+                ReplyAuthHints.FromRequest(request.MenuType ?? store.MenuType, request.PageId, request.AccountId),
                 cancellationToken);
             if (resolvedAuth is null)
                 return ApiResponse<object>.Fail("No access token is available. Reconnect the account.");
@@ -304,7 +308,7 @@ public class InboxService : IInboxService
                 return ApiResponse<object>.Fail("Cannot reply until the original comment is synced from the platform.");
 
             var connectionType = InstagramConnectionResolver.FromProfile(profile, code);
-            var tokens = CandidateTokens(auth);
+            var tokens = code == "youtube" ? CandidateYouTubeTokens(auth) : CandidateTokens(auth);
             if (tokens.Count == 0)
                 return ApiResponse<object>.Fail("No access token is available. Reconnect the account.");
 
@@ -610,6 +614,9 @@ public class InboxService : IInboxService
             case ProfileType.WhatsAppPhone:
                 codes.Add("whatsapp");
                 break;
+            case ProfileType.YouTubeChannel:
+                codes.Add("youtube");
+                break;
         }
 
         return codes;
@@ -725,6 +732,14 @@ public class InboxService : IInboxService
 
         Add(auth.AccessToken);
         Add(auth.RefreshToken);
+        return tokens;
+    }
+
+    private static List<string> CandidateYouTubeTokens(SocialAuthEntityBase auth)
+    {
+        var tokens = new List<string>();
+        if (!string.IsNullOrWhiteSpace(auth.AccessToken))
+            tokens.Add(auth.AccessToken);
         return tokens;
     }
 
