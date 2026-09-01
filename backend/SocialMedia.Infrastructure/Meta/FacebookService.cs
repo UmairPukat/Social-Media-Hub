@@ -1,3 +1,4 @@
+using System.Net.Http.Headers;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -133,14 +134,137 @@ public class FacebookService : IFacebookService
     public Task<IReadOnlyList<string>> GetSubscribedFieldsAsync(string pageId, string pageAccessToken, CancellationToken cancellationToken = default)
         => _graph.GetPageSubscribedFieldsAsync(_settings.GraphApiVersion, pageId, pageAccessToken, cancellationToken);
 
-    public async Task<PostDto> CreatePostAsync(MetaCallContext context, string content, string? mediaUrl, CancellationToken cancellationToken = default)
+    public async Task<PostDto> CreatePostAsync(
+        MetaCallContext context,
+        string content,
+        string? mediaUrl,
+        Stream? mediaStream = null,
+        string? mediaFileName = null,
+        string? mediaContentType = null,
+        CancellationToken cancellationToken = default)
     {
-        var fields = new Dictionary<string, string> { ["message"] = content };
-        if (!string.IsNullOrWhiteSpace(mediaUrl))
-            fields["link"] = mediaUrl;
+        if (mediaStream is not null)
+        {
+            var isVideo = IsVideoMedia(mediaContentType, mediaFileName);
+            var path = isVideo ? $"{context.ProfileExternalId}/videos" : $"{context.ProfileExternalId}/photos";
+            using var multipart = new MultipartFormDataContent();
+            var streamContent = new StreamContent(mediaStream);
+            if (!string.IsNullOrWhiteSpace(mediaContentType))
+                streamContent.Headers.ContentType = new MediaTypeHeaderValue(mediaContentType);
+            multipart.Add(streamContent, "source", mediaFileName ?? (isVideo ? "video.mp4" : "photo.jpg"));
 
-        using var doc = await _graph.PostAsync(_settings.GraphApiVersion, $"{context.ProfileExternalId}/feed", context.AccessToken, fields, cancellationToken);
-        return new PostDto { Id = doc.RootElement.GetProperty("id").GetString() ?? string.Empty, Message = content, CreatedTime = DateTime.UtcNow };
+            if (isVideo)
+            {
+                if (!string.IsNullOrWhiteSpace(content))
+                    multipart.Add(new StringContent(content), "description");
+            }
+            else
+            {
+                if (!string.IsNullOrWhiteSpace(content))
+                    multipart.Add(new StringContent(content), "message");
+                multipart.Add(new StringContent("true"), "published");
+            }
+
+            using var doc = await _graph.PostMultipartAsync(
+                _settings.GraphApiVersion, path, context.AccessToken, multipart, cancellationToken);
+            return new PostDto
+            {
+                Id = doc.RootElement.GetProperty("id").GetString() ?? string.Empty,
+                Message = content,
+                CreatedTime = DateTime.UtcNow
+            };
+        }
+
+        var fields = new Dictionary<string, string>();
+        if (!string.IsNullOrWhiteSpace(content))
+            fields["message"] = content;
+
+        if (!string.IsNullOrWhiteSpace(mediaUrl))
+        {
+            if (IsVideoMedia(null, mediaUrl))
+            {
+                fields["file_url"] = mediaUrl;
+                if (!string.IsNullOrWhiteSpace(content))
+                    fields["description"] = content;
+                using var videoDoc = await _graph.PostAsync(
+                    _settings.GraphApiVersion, $"{context.ProfileExternalId}/videos", context.AccessToken, fields, cancellationToken);
+                return new PostDto
+                {
+                    Id = videoDoc.RootElement.GetProperty("id").GetString() ?? string.Empty,
+                    Message = content,
+                    CreatedTime = DateTime.UtcNow
+                };
+            }
+
+            fields["url"] = mediaUrl;
+            using var photoDoc = await _graph.PostAsync(
+                _settings.GraphApiVersion, $"{context.ProfileExternalId}/photos", context.AccessToken, fields, cancellationToken);
+            return new PostDto
+            {
+                Id = photoDoc.RootElement.GetProperty("id").GetString() ?? string.Empty,
+                Message = content,
+                CreatedTime = DateTime.UtcNow
+            };
+        }
+
+        if (fields.Count == 0)
+            throw new InvalidOperationException("Facebook posts require text or media.");
+
+        using var docFeed = await _graph.PostAsync(
+            _settings.GraphApiVersion, $"{context.ProfileExternalId}/feed", context.AccessToken, fields, cancellationToken);
+        return new PostDto
+        {
+            Id = docFeed.RootElement.GetProperty("id").GetString() ?? string.Empty,
+            Message = content,
+            CreatedTime = DateTime.UtcNow
+        };
+    }
+
+    public async Task<string> UploadUnpublishedPhotoUrlAsync(
+        string pageId,
+        string pageAccessToken,
+        Stream mediaStream,
+        string mediaFileName,
+        string? mediaContentType,
+        CancellationToken cancellationToken = default)
+    {
+        using var multipart = new MultipartFormDataContent();
+        var streamContent = new StreamContent(mediaStream);
+        if (!string.IsNullOrWhiteSpace(mediaContentType))
+            streamContent.Headers.ContentType = new MediaTypeHeaderValue(mediaContentType);
+        multipart.Add(streamContent, "source", mediaFileName);
+        multipart.Add(new StringContent("false"), "published");
+
+        using var uploadDoc = await _graph.PostMultipartAsync(
+            _settings.GraphApiVersion, $"{pageId}/photos", pageAccessToken, multipart, cancellationToken);
+        var photoId = uploadDoc.RootElement.GetProperty("id").GetString()
+            ?? throw new InvalidOperationException("Facebook did not return a photo id.");
+
+        using var photoDoc = await _graph.GetAsync(
+            _settings.GraphApiVersion, photoId, pageAccessToken, cancellationToken, ("fields", "images"));
+        if (!photoDoc.RootElement.TryGetProperty("images", out var images))
+            throw new InvalidOperationException("Facebook did not return photo images.");
+
+        foreach (var image in images.EnumerateArray())
+        {
+            if (image.TryGetProperty("source", out var source))
+            {
+                var url = source.GetString();
+                if (!string.IsNullOrWhiteSpace(url))
+                    return url;
+            }
+        }
+
+        throw new InvalidOperationException("Facebook did not return a public photo URL.");
+    }
+
+    private static bool IsVideoMedia(string? contentType, string? nameOrUrl)
+    {
+        if (!string.IsNullOrWhiteSpace(contentType) && contentType.StartsWith("video/", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        var value = (nameOrUrl ?? string.Empty).ToLowerInvariant();
+        return value.EndsWith(".mp4") || value.EndsWith(".mov") || value.EndsWith(".webm") || value.EndsWith(".mkv");
     }
 
     public async Task<IReadOnlyList<PostDto>> GetPostsAsync(MetaCallContext context, CancellationToken cancellationToken = default)

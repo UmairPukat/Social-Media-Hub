@@ -101,4 +101,43 @@ public sealed class YouTubeApiClient
 
         return JsonDocument.Parse(bodyText);
     }
+
+    public async Task<string> UploadVideoAsync(
+        string accessToken,
+        object snippet,
+        object status,
+        Stream videoStream,
+        string contentType,
+        CancellationToken cancellationToken)
+    {
+        using var initRequest = new HttpRequestMessage(
+            HttpMethod.Post,
+            "https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status");
+        initRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+        initRequest.Content = new StringContent(JsonSerializer.Serialize(new { snippet, status }), Encoding.UTF8, "application/json");
+
+        using var initResponse = await _http.SendAsync(initRequest, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        var initBody = await initResponse.Content.ReadAsStringAsync(cancellationToken);
+        if (!initResponse.IsSuccessStatusCode)
+            throw new InvalidOperationException($"YouTube upload init failed ({(int)initResponse.StatusCode}): {initBody}");
+
+        var uploadUrl = initResponse.Headers.Location?.ToString()
+            ?? throw new InvalidOperationException("YouTube did not return an upload URL.");
+
+        videoStream.Position = 0;
+        using var uploadRequest = new HttpRequestMessage(HttpMethod.Put, uploadUrl);
+        uploadRequest.Content = new StreamContent(videoStream);
+        uploadRequest.Content.Headers.ContentType = new MediaTypeHeaderValue(
+            string.IsNullOrWhiteSpace(contentType) ? "video/*" : contentType);
+
+        using var uploadResponse = await _http.SendAsync(uploadRequest, cancellationToken);
+        var uploadBody = await uploadResponse.Content.ReadAsStringAsync(cancellationToken);
+        if (!uploadResponse.IsSuccessStatusCode)
+            throw new InvalidOperationException($"YouTube upload failed ({(int)uploadResponse.StatusCode}): {uploadBody}");
+
+        using var doc = JsonDocument.Parse(uploadBody);
+        return doc.RootElement.TryGetProperty("id", out var idEl)
+            ? idEl.GetString() ?? string.Empty
+            : string.Empty;
+    }
 }

@@ -269,6 +269,43 @@ public class YouTubeService : IYouTubeService
         return doc.RootElement.TryGetProperty("id", out var idEl) ? idEl.GetString() : null;
     }
 
+    public async Task<YouTubeVideoSnapshot> UploadVideoAsync(
+        string accessToken,
+        string title,
+        string description,
+        Stream videoStream,
+        string contentType,
+        string privacyStatus = "public",
+        CancellationToken cancellationToken = default)
+    {
+        var normalizedPrivacy = privacyStatus.Trim().ToLowerInvariant() switch
+        {
+            "private" => "private",
+            "unlisted" => "unlisted",
+            _ => "public"
+        };
+
+        var videoId = await _api.UploadVideoAsync(
+            accessToken,
+            new { title, description },
+            new { privacyStatus = normalizedPrivacy },
+            videoStream,
+            contentType,
+            cancellationToken);
+
+        if (string.IsNullOrWhiteSpace(videoId))
+            throw new InvalidOperationException("YouTube did not return a video id.");
+
+        var stats = await GetVideoStatisticsAsync(accessToken, [videoId], cancellationToken);
+        return stats.FirstOrDefault() ?? new YouTubeVideoSnapshot
+        {
+            VideoId = videoId,
+            Title = title,
+            Description = description,
+            Permalink = $"https://www.youtube.com/watch?v={videoId}"
+        };
+    }
+
     private async Task<string?> ResolveUploadsPlaylistIdAsync(
         string accessToken,
         string channelId,

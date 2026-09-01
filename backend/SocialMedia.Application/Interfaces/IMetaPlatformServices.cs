@@ -27,7 +27,21 @@ public interface IFacebookService
 
     Task<(string Id, string Name)> GetMeAsync(string accessToken, CancellationToken cancellationToken = default);
 
-    Task<PostDto> CreatePostAsync(MetaCallContext context, string content, string? mediaUrl, CancellationToken cancellationToken = default);
+    Task<PostDto> CreatePostAsync(
+        MetaCallContext context,
+        string content,
+        string? mediaUrl,
+        Stream? mediaStream = null,
+        string? mediaFileName = null,
+        string? mediaContentType = null,
+        CancellationToken cancellationToken = default);
+    Task<string> UploadUnpublishedPhotoUrlAsync(
+        string pageId,
+        string pageAccessToken,
+        Stream mediaStream,
+        string mediaFileName,
+        string? mediaContentType,
+        CancellationToken cancellationToken = default);
     Task<IReadOnlyList<PostDto>> GetPostsAsync(MetaCallContext context, CancellationToken cancellationToken = default);
 
     /// <summary>Reads one page post so a webhook comment can be stored with its post context.</summary>
@@ -74,7 +88,14 @@ public interface IInstagramService
     /// <summary>Reads the Instagram user for a native Instagram Login token (graph.instagram.com).</summary>
     Task<(string Id, string Name)> GetInstagramLoginMeAsync(string accessToken, CancellationToken cancellationToken = default);
 
-    Task<PostDto> CreatePostAsync(MetaCallContext context, string content, string? mediaUrl, CancellationToken cancellationToken = default);
+    Task<PostDto> CreatePostAsync(
+        MetaCallContext context,
+        string content,
+        string? mediaUrl,
+        Stream? mediaStream = null,
+        string? mediaFileName = null,
+        string? mediaContentType = null,
+        CancellationToken cancellationToken = default);
     Task<IReadOnlyList<PostDto>> GetPostsAsync(MetaCallContext context, CancellationToken cancellationToken = default);
 
     /// <summary>Reads one media item so a webhook comment can be stored with its post context.</summary>

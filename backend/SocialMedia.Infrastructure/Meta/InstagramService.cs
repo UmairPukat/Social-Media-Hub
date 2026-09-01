@@ -19,6 +19,7 @@ namespace SocialMedia.Infrastructure.Meta;
 public class InstagramService : IInstagramService
 {
     private readonly MetaGraphClient _graph;
+    private readonly IFacebookService _facebookService;
     private readonly InstagramSettings _instagram;
     private readonly InstagramLoginSettings _instagramLogin;
     private readonly FacebookSettings _facebook;
@@ -30,12 +31,14 @@ public class InstagramService : IInstagramService
 
     public InstagramService(
         MetaGraphClient graph,
+        IFacebookService facebookService,
         IOptions<MetaSettings> options,
         IProcessDataStoreFactory processData,
         IInboxRealtimeNotifier inboxRealtime,
         ILogger<InstagramService> logger)
     {
         _graph = graph;
+        _facebookService = facebookService;
         _instagram = options.Value.Instagram;
         _instagramLogin = options.Value.InstagramLogin;
         _facebook = options.Value.Facebook;
@@ -263,18 +266,57 @@ public class InstagramService : IInstagramService
     public Task<IReadOnlyList<MetaPageInfo>> ListPagesAsync(string userAccessToken, CancellationToken cancellationToken = default)
         => _graph.ListPagesAsync(GraphVersion, userAccessToken, cancellationToken);
 
-    public async Task<PostDto> CreatePostAsync(MetaCallContext context, string content, string? mediaUrl, CancellationToken cancellationToken = default)
+    public async Task<PostDto> CreatePostAsync(
+        MetaCallContext context,
+        string content,
+        string? mediaUrl,
+        Stream? mediaStream = null,
+        string? mediaFileName = null,
+        string? mediaContentType = null,
+        CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(mediaUrl))
-            throw new InvalidOperationException("Instagram posts require a publicly reachable MediaUrl.");
+        var resolvedUrl = mediaUrl;
+        if (mediaStream is not null)
+        {
+            if (string.IsNullOrWhiteSpace(context.PageExternalId))
+                throw new InvalidOperationException("Instagram media uploads require a linked Facebook Page.");
 
-        using var containerDoc = await _graph.PostAsync(GraphVersion, $"{context.ProfileExternalId}/media", context.AccessToken,
-            new Dictionary<string, string> { ["image_url"] = mediaUrl, ["caption"] = content }, cancellationToken);
+            if (IsVideoMedia(mediaContentType, mediaFileName))
+                throw new InvalidOperationException("Instagram video uploads from files are not supported yet. Use a public video URL.");
+
+            mediaStream.Position = 0;
+            resolvedUrl = await _facebookService.UploadUnpublishedPhotoUrlAsync(
+                context.PageExternalId,
+                context.AccessToken,
+                mediaStream,
+                mediaFileName ?? "photo.jpg",
+                mediaContentType,
+                cancellationToken);
+        }
+
+        if (string.IsNullOrWhiteSpace(resolvedUrl))
+            throw new InvalidOperationException("Instagram posts require an image or video URL.");
+
+        var isVideo = IsVideoMedia(mediaContentType, resolvedUrl);
+        var mediaFields = new Dictionary<string, string> { ["caption"] = content };
+        if (isVideo)
+            mediaFields["video_url"] = resolvedUrl;
+        else
+            mediaFields["image_url"] = resolvedUrl;
+
+        var connectionType = context.InstagramConnectionType;
+        using var containerDoc = connectionType == InstagramConnectionType.InstagramLogin
+            ? await _graph.PostInstagramAsync(InstagramLoginGraphVersion, $"{context.ProfileExternalId}/media", context.AccessToken, mediaFields, cancellationToken)
+            : await _graph.PostAsync(GraphVersion, $"{context.ProfileExternalId}/media", context.AccessToken, mediaFields, cancellationToken);
+
         var creationId = containerDoc.RootElement.GetProperty("id").GetString()
             ?? throw new InvalidOperationException("Instagram did not return a media container id.");
 
-        using var publishDoc = await _graph.PostAsync(GraphVersion, $"{context.ProfileExternalId}/media_publish", context.AccessToken,
-            new Dictionary<string, string> { ["creation_id"] = creationId }, cancellationToken);
+        using var publishDoc = connectionType == InstagramConnectionType.InstagramLogin
+            ? await _graph.PostInstagramAsync(InstagramLoginGraphVersion, $"{context.ProfileExternalId}/media_publish", context.AccessToken,
+                new Dictionary<string, string> { ["creation_id"] = creationId }, cancellationToken)
+            : await _graph.PostAsync(GraphVersion, $"{context.ProfileExternalId}/media_publish", context.AccessToken,
+                new Dictionary<string, string> { ["creation_id"] = creationId }, cancellationToken);
 
         return new PostDto
         {
@@ -282,6 +324,15 @@ public class InstagramService : IInstagramService
             Message = content,
             CreatedTime = DateTime.UtcNow
         };
+    }
+
+    private static bool IsVideoMedia(string? contentType, string? nameOrUrl)
+    {
+        if (!string.IsNullOrWhiteSpace(contentType) && contentType.StartsWith("video/", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        var value = (nameOrUrl ?? string.Empty).ToLowerInvariant();
+        return value.EndsWith(".mp4") || value.EndsWith(".mov") || value.EndsWith(".webm") || value.EndsWith(".mkv");
     }
 
     public async Task<RemotePostSnapshot?> GetMediaSnapshotAsync(

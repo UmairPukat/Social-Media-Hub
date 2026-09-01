@@ -162,6 +162,23 @@ public class MetaGraphClient
         return JsonDocument.Parse(body);
     }
 
+    public async Task<JsonDocument> PostMultipartAsync(
+        string version,
+        string path,
+        string accessToken,
+        MultipartFormDataContent content,
+        CancellationToken cancellationToken)
+    {
+        var url = BuildUrl(FacebookGraphHost, version, path, accessToken);
+        using var response = await _httpClient.PostAsync(url, content, cancellationToken);
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+
+        if (!response.IsSuccessStatusCode)
+            throw new InvalidOperationException($"Meta Graph multipart POST failed ({(int)response.StatusCode}): {body}");
+
+        return JsonDocument.Parse(body);
+    }
+
     public async Task<JsonDocument> PostInstagramAsync(
         string version,
         string path,

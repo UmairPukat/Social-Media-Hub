@@ -28,6 +28,7 @@ export class CreatePostComponent implements OnInit, OnDestroy {
   private readonly processRoute = inject(ProcessRouteService);
   private formSub?: Subscription;
   private objectUrl: string | null = null;
+  private selectedFile: File | null = null;
 
   readonly platforms = CREATE_PLATFORMS;
   readonly platform = signal<CreatePlatform>('facebook');
@@ -124,7 +125,7 @@ export class CreatePostComponent implements OnInit, OnDestroy {
         const live: ComposerProfile[] = (res.data || []).flatMap((account) =>
           (account.profiles || []).map((p) => ({
             id: p.id,
-            platformCode: account.platformCode.toLowerCase() as CreatePlatform,
+            platformCode: this.toComposerPlatform(account.platformCode),
             name: p.name || account.displayName,
             username: p.username,
             profileType: p.profileType,
@@ -147,6 +148,12 @@ export class CreatePostComponent implements OnInit, OnDestroy {
   ngOnDestroy(): void {
     this.formSub?.unsubscribe();
     this.revokeObjectUrl();
+  }
+
+  private toComposerPlatform(code: string): CreatePlatform {
+    const normalized = (code || '').toLowerCase();
+    if (normalized === 'instagram_login') return 'instagram';
+    return normalized as CreatePlatform;
   }
 
   selectPlatform(code: CreatePlatform): void {
@@ -224,6 +231,7 @@ export class CreatePostComponent implements OnInit, OnDestroy {
 
     this.selectedFileName.set(file.name);
     this.selectedFileKind.set(kind);
+    this.selectedFile = file;
     this.form.controls.mediaUrl.setValue(url);
     this.formTick.update((n) => n + 1);
     input.value = '';
@@ -231,6 +239,7 @@ export class CreatePostComponent implements OnInit, OnDestroy {
 
   clearAttachment(emit = true): void {
     this.revokeObjectUrl();
+    this.selectedFile = null;
     this.selectedFileName.set(null);
     this.selectedFileKind.set(null);
     if (emit) {
@@ -254,24 +263,20 @@ export class CreatePostComponent implements OnInit, OnDestroy {
 
     const meta = this.activeMeta();
     const content = this.form.controls.content.value.trim();
-    const mediaUrl = this.form.controls.mediaUrl.value.trim() || undefined;
+    const mediaUrl = this.form.controls.mediaUrl.value.trim();
     const title = this.form.controls.title.value.trim();
-    const fileName = this.selectedFileName();
+    const file = this.selectedFile;
 
-    // Local / demo success path — real API publish can be wired later.
-    // Only attempt live API for Facebook/Instagram when a live profile is selected.
-    const tryLiveApi = !profile.isDemo && meta.supportsPublish && !fileName;
-
-    if (!tryLiveApi) {
+    if (profile.isDemo || !meta.supportsPublish) {
       this.publishing.set(true);
       window.setTimeout(() => {
         this.publishing.set(false);
         this.messageOk.set(true);
-        const mediaNote = fileName ? ` with “${fileName}”` : mediaUrl ? ' with media' : '';
+        const mediaNote = file ? ` with “${file.name}”` : mediaUrl ? ' with media' : '';
         this.message.set(
           profile.isDemo
-            ? `Preview posted to ${meta.label} as “${profile.name}”${mediaNote}. Connect the account to publish for real later.`
-            : `${meta.label} draft ready${mediaNote}. Live API publish will be connected later.`
+            ? `Preview posted to ${meta.label} as “${profile.name}”${mediaNote}. Connect the account to publish for real.`
+            : `${meta.label} publishing is not available yet${mediaNote}.`
         );
         this.resetComposerKeepProfile();
       }, 550);
@@ -282,37 +287,37 @@ export class CreatePostComponent implements OnInit, OnDestroy {
     this.message.set('');
     this.messageOk.set(false);
 
-    const payloadContent =
-      this.platform() === 'youtube' && title ? `${title}\n\n${content}` : content;
+    const formData = new FormData();
+    formData.append('socialProfileId', profile.id);
+    formData.append('content', content);
+    if (title) formData.append('title', title);
+    if (this.platform() === 'youtube') {
+      formData.append('visibility', this.ytVisibility().toLowerCase());
+    }
+    if (file) {
+      formData.append('mediaFile', file, file.name);
+    } else if (mediaUrl && !mediaUrl.startsWith('blob:')) {
+      formData.append('mediaUrl', mediaUrl);
+    }
 
-    this.processApi
-      .createPost(this.processRoute.currentMenuType(), {
-        socialProfileId: profile.id,
-        content: payloadContent,
-        mediaUrl
-      })
-      .subscribe({
-        next: (res: ApiResponse<PublishPostResponse>) => {
-          this.publishing.set(false);
-          const ok = !!res.data?.success;
-          this.messageOk.set(ok);
-          this.message.set(
-            ok
-              ? `Published to ${meta.label}.`
-              : res.data?.errorMessage || res.message || 'Publish failed.'
-          );
-          if (ok) this.resetComposerKeepProfile();
-        },
-        error: (err: { error?: { message?: string } }) => {
-          // Fall back to local success so the studio remains usable when API is unavailable.
-          this.publishing.set(false);
-          this.messageOk.set(true);
-          this.message.set(
-            `Saved locally for ${meta.label}. API publish unavailable (${err?.error?.message || 'network'}).`
-          );
-          this.resetComposerKeepProfile();
-        }
-      });
+    this.processApi.createPost(this.processRoute.currentMenuType(), formData).subscribe({
+      next: (res: ApiResponse<PublishPostResponse>) => {
+        this.publishing.set(false);
+        const ok = !!res.success && !!res.data?.success;
+        this.messageOk.set(ok);
+        this.message.set(
+          ok
+            ? `Published to ${meta.label} as “${profile.name}”.`
+            : res.data?.errorMessage || res.message || 'Publish failed.'
+        );
+        if (ok) this.resetComposerKeepProfile();
+      },
+      error: (err: { error?: { message?: string } }) => {
+        this.publishing.set(false);
+        this.messageOk.set(false);
+        this.message.set(err?.error?.message || 'Publish failed. Check the connection and try again.');
+      }
+    });
   }
 
   private resetComposerKeepProfile(): void {

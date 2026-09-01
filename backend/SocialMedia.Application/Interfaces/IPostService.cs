@@ -6,7 +6,11 @@ namespace SocialMedia.Application.Interfaces;
 
 public interface IPostService
 {
-    Task<ApiResponse<PublishPostResponse>> CreateAndPublishAsync(Guid userId, CreatePostRequest request, CancellationToken cancellationToken = default);
+    Task<ApiResponse<PublishPostResponse>> CreateAndPublishAsync(
+        Guid userId,
+        CreatePostRequest request,
+        PublishMediaInput? media = null,
+        CancellationToken cancellationToken = default);
     Task<ApiResponse<IReadOnlyList<SocialPostDto>>> GetPostsAsync(
         Guid userId,
         Guid? platformId = null,

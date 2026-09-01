@@ -7,6 +7,16 @@ public class CreatePostRequest
     public Guid SocialProfileId { get; set; }
     public string Content { get; set; } = string.Empty;
     public string? MediaUrl { get; set; }
+    public string? Title { get; set; }
+    /// <summary>YouTube privacy: public, unlisted, or private.</summary>
+    public string? Visibility { get; set; }
+}
+
+public sealed class PublishMediaInput
+{
+    public Stream Stream { get; set; } = Stream.Null;
+    public string FileName { get; set; } = string.Empty;
+    public string ContentType { get; set; } = "application/octet-stream";
 }
 
 public class SocialPostDto

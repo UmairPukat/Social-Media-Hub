@@ -26,9 +26,31 @@ public abstract class ProcessPostsControllerBase : ControllerBase
     }
 
     [HttpPost("posts")]
-    public async Task<IActionResult> CreateAndPublish([FromBody] CreatePostRequest model)
+    [RequestSizeLimit(524_288_000)]
+    [RequestFormLimits(MultipartBodyLengthLimit = 524_288_000)]
+    public async Task<IActionResult> CreateAndPublish([FromForm] CreatePostForm form)
     {
-        var response = await _postService.CreateAndPublishAsync(User.GetUserId(), model);
+        PublishMediaInput? media = null;
+        if (form.MediaFile is { Length: > 0 })
+        {
+            media = new PublishMediaInput
+            {
+                Stream = form.MediaFile.OpenReadStream(),
+                FileName = form.MediaFile.FileName,
+                ContentType = form.MediaFile.ContentType ?? "application/octet-stream"
+            };
+        }
+
+        var request = new CreatePostRequest
+        {
+            SocialProfileId = form.SocialProfileId,
+            Content = form.Content ?? string.Empty,
+            MediaUrl = string.IsNullOrWhiteSpace(form.MediaUrl) ? null : form.MediaUrl.Trim(),
+            Title = string.IsNullOrWhiteSpace(form.Title) ? null : form.Title.Trim(),
+            Visibility = string.IsNullOrWhiteSpace(form.Visibility) ? null : form.Visibility.Trim()
+        };
+
+        var response = await _postService.CreateAndPublishAsync(User.GetUserId(), request, media);
         return Ok(response);
     }
 

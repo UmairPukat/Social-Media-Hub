@@ -92,8 +92,8 @@ export class ProcessApiService {
     return this.http.get<ApiResponse<SocialPost[]>>(`${this.base(menuType)}/posts${q}`);
   }
 
-  createPost(menuType: ProcessMenuType, body: unknown): Observable<ApiResponse<PublishPostResponse>> {
-    return this.http.post<ApiResponse<PublishPostResponse>>(`${this.base(menuType)}/posts`, body);
+  createPost(menuType: ProcessMenuType, formData: FormData): Observable<ApiResponse<PublishPostResponse>> {
+    return this.http.post<ApiResponse<PublishPostResponse>>(`${this.base(menuType)}/posts`, formData);
   }
 
   deletePost(menuType: ProcessMenuType, id: string): Observable<ApiResponse<object>> {

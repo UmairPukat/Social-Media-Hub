@@ -37,6 +37,15 @@ public interface IYouTubeService
         string parentCommentId,
         string message,
         CancellationToken cancellationToken = default);
+
+    Task<YouTubeVideoSnapshot> UploadVideoAsync(
+        string accessToken,
+        string title,
+        string description,
+        Stream videoStream,
+        string contentType,
+        string privacyStatus = "public",
+        CancellationToken cancellationToken = default);
 }
 
 public sealed class YouTubeVideoSnapshot

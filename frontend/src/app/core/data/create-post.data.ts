@@ -24,7 +24,7 @@ export interface CreatePlatformMeta {
   label: string;
   icon: string;
   color: string;
-  /** Real Graph publish is wired later; UI always works in local/demo mode. */
+  /** Connected accounts can publish through the API. */
   supportsPublish: boolean;
   supportsFiles: boolean;
   requiresMedia: boolean;
@@ -83,7 +83,7 @@ export const CREATE_PLATFORMS: CreatePlatformMeta[] = [
     label: 'YouTube',
     icon: 'smart_display',
     color: PLATFORM_COLORS['youtube'],
-    supportsPublish: false,
+    supportsPublish: true,
     supportsFiles: true,
     requiresMedia: true,
     accept: 'video/*,image/*',
