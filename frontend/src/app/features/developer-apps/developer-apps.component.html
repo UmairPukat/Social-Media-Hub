@@ -432,14 +432,6 @@
                 <dd><code>{{ info.pageId || '—' }}</code></dd>
               </div>
               <div>
-                <dt>OAuth callback URL</dt>
-                <dd><code>{{ moduleRedirectUri }}</code></dd>
-              </div>
-              <div>
-                <dt>Webhook URL</dt>
-                <dd><code>{{ moduleWebhookUri }}</code></dd>
-              </div>
-              <div>
                 <dt>Connected</dt>
                 <dd>{{ info.connectedAt ? (info.connectedAt | date: 'medium') : '—' }}</dd>
               </div>
@@ -469,14 +461,6 @@
                 <dd><code>{{ info.pageId || '—' }}</code></dd>
               </div>
               <div>
-                <dt>OAuth callback URL</dt>
-                <dd><code>{{ moduleRedirectUri }}</code></dd>
-              </div>
-              <div>
-                <dt>Webhook URL</dt>
-                <dd><code>{{ moduleWebhookUri }}</code></dd>
-              </div>
-              <div>
                 <dt>Connected</dt>
                 <dd>{{ info.connectedAt ? (info.connectedAt | date: 'medium') : '—' }}</dd>
               </div>
@@ -492,20 +476,6 @@
               <div>
                 <dt>Instagram login name</dt>
                 <dd>{{ info.accountName || '—' }}</dd>
-              </div>
-              <div>
-                <dt>OAuth callback URL</dt>
-                <dd><code>{{ moduleRedirectUri }}</code></dd>
-              </div>
-              <div>
-                <dt>Webhook URL</dt>
-                <dd><code>{{ moduleWebhookUri }}</code></dd>
-              </div>
-              <div>
-                <dt>Webhook setup</dt>
-                <dd class="section-note">
-                  Configure in Meta App Dashboard → Webhooks using the URL above and your saved verify token. Subscribe to comments and messages.
-                </dd>
               </div>
               <div>
                 <dt>Connected</dt>
@@ -547,20 +517,6 @@
                   <dd><code>{{ info.whatsAppWabaId }}</code></dd>
                 </div>
               }
-              <div>
-                <dt>OAuth callback URL</dt>
-                <dd><code>{{ moduleRedirectUri }}</code></dd>
-              </div>
-              <div>
-                <dt>Webhook URL</dt>
-                <dd><code>{{ moduleWebhookUri }}</code></dd>
-              </div>
-              <div>
-                <dt>Webhook setup</dt>
-                <dd class="section-note">
-                  In Meta App Dashboard → WhatsApp → Configuration, set the callback URL above and the verify token from app configuration. Subscribe to the <strong>messages</strong> field.
-                </dd>
-              </div>
               <div>
                 <dt>Connected</dt>
                 <dd>{{ info.connectedAt ? (info.connectedAt | date: 'medium') : '—' }}</dd>
