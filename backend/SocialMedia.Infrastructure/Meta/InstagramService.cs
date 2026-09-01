@@ -20,6 +20,7 @@ public class InstagramService : IInstagramService
 {
     private readonly MetaGraphClient _graph;
     private readonly IFacebookService _facebookService;
+    private readonly IPublishMediaCacheService _publishMediaCache;
     private readonly InstagramSettings _instagram;
     private readonly InstagramLoginSettings _instagramLogin;
     private readonly FacebookSettings _facebook;
@@ -32,6 +33,7 @@ public class InstagramService : IInstagramService
     public InstagramService(
         MetaGraphClient graph,
         IFacebookService facebookService,
+        IPublishMediaCacheService publishMediaCache,
         IOptions<MetaSettings> options,
         IProcessDataStoreFactory processData,
         IInboxRealtimeNotifier inboxRealtime,
@@ -39,6 +41,7 @@ public class InstagramService : IInstagramService
     {
         _graph = graph;
         _facebookService = facebookService;
+        _publishMediaCache = publishMediaCache;
         _instagram = options.Value.Instagram;
         _instagramLogin = options.Value.InstagramLogin;
         _facebook = options.Value.Facebook;
@@ -275,27 +278,40 @@ public class InstagramService : IInstagramService
         string? mediaContentType = null,
         CancellationToken cancellationToken = default)
     {
+        var connectionType = context.InstagramConnectionType;
         var resolvedUrl = mediaUrl;
+
         if (mediaStream is not null)
         {
-            if (string.IsNullOrWhiteSpace(context.PageExternalId))
-                throw new InvalidOperationException("Instagram media uploads require a linked Facebook Page.");
-
-            if (IsVideoMedia(mediaContentType, mediaFileName))
-                throw new InvalidOperationException("Instagram video uploads from files are not supported yet. Use a public video URL.");
-
             mediaStream.Position = 0;
-            resolvedUrl = await _facebookService.UploadUnpublishedPhotoUrlAsync(
-                context.PageExternalId,
-                context.AccessToken,
-                mediaStream,
-                mediaFileName ?? "photo.jpg",
-                mediaContentType,
-                cancellationToken);
+            if (connectionType == InstagramConnectionType.InstagramLogin)
+            {
+                resolvedUrl = await _publishMediaCache.StoreAsync(
+                    mediaStream,
+                    mediaFileName,
+                    mediaContentType,
+                    cancellationToken);
+            }
+            else
+            {
+                if (string.IsNullOrWhiteSpace(context.PageExternalId))
+                    throw new InvalidOperationException("Instagram via Facebook Login requires a linked Facebook Page for file uploads.");
+
+                if (IsVideoMedia(mediaContentType, mediaFileName))
+                    throw new InvalidOperationException("Instagram video uploads from files are not supported yet. Use a public video URL.");
+
+                resolvedUrl = await _facebookService.UploadUnpublishedPhotoUrlAsync(
+                    context.PageExternalId,
+                    context.AccessToken,
+                    mediaStream,
+                    mediaFileName ?? "photo.jpg",
+                    mediaContentType,
+                    cancellationToken);
+            }
         }
 
         if (string.IsNullOrWhiteSpace(resolvedUrl))
-            throw new InvalidOperationException("Instagram posts require an image or video URL.");
+            throw new InvalidOperationException("Instagram posts require an image or video.");
 
         var isVideo = IsVideoMedia(mediaContentType, resolvedUrl);
         var mediaFields = new Dictionary<string, string> { ["caption"] = content };
@@ -304,7 +320,6 @@ public class InstagramService : IInstagramService
         else
             mediaFields["image_url"] = resolvedUrl;
 
-        var connectionType = context.InstagramConnectionType;
         using var containerDoc = connectionType == InstagramConnectionType.InstagramLogin
             ? await _graph.PostInstagramAsync(InstagramLoginGraphVersion, $"{context.ProfileExternalId}/media", context.AccessToken, mediaFields, cancellationToken)
             : await _graph.PostAsync(GraphVersion, $"{context.ProfileExternalId}/media", context.AccessToken, mediaFields, cancellationToken);

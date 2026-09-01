@@ -123,6 +123,15 @@ app.UseSwagger();
 app.UseSwaggerUI();
 
 app.UseCors("Frontend");
+
+var publishCachePath = Path.Combine(app.Environment.ContentRootPath, "publish-cache");
+Directory.CreateDirectory(publishCachePath);
+app.UseStaticFiles(new StaticFileOptions
+{
+    FileProvider = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(publishCachePath),
+    RequestPath = "/publish-cache"
+});
+
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();

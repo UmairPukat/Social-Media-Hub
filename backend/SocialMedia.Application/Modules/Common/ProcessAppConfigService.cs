@@ -434,7 +434,7 @@ public class ProcessAppConfigService : IProcessAppConfigService
     {
         "facebook" => "public_profile,pages_show_list,pages_read_engagement,pages_read_user_content,pages_manage_engagement,pages_manage_metadata,pages_messaging,business_management",
         "instagram" => "pages_read_user_content,pages_show_list,pages_manage_metadata,pages_messaging,business_management,instagram_basic,instagram_manage_comments,instagram_manage_messages",
-        "instagram_login" => "instagram_business_basic,instagram_business_manage_messages,instagram_business_manage_comments",
+        "instagram_login" => "instagram_business_basic,instagram_business_content_publish,instagram_business_manage_messages,instagram_business_manage_comments",
         "whatsapp" => "whatsapp_business_management,whatsapp_business_messaging,business_management",
         "youtube" => PlatformCatalog.DefaultScopes("youtube"),
         _ => string.Empty

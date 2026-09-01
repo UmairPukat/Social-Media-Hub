@@ -7,6 +7,7 @@ using SocialMedia.Application.Interfaces;
 using SocialMedia.Application.Settings;
 using SocialMedia.Domain.Interfaces;
 using SocialMedia.Infrastructure.Auth;
+using SocialMedia.Infrastructure.Media;
 using SocialMedia.Infrastructure.Meta;
 using SocialMedia.Infrastructure.Persistence;
 using SocialMedia.Infrastructure.Repositories;
@@ -46,6 +47,7 @@ public static class DependencyInjection
         services.AddScoped<IInstagramService, InstagramService>();
         services.AddScoped<IWhatsAppService, WhatsAppService>();
         services.AddScoped<IYouTubeService, YouTubeService>();
+        services.AddSingleton<IPublishMediaCacheService, PublishMediaCacheService>();
 
         var jwt = configuration.GetSection(JwtSettings.SectionName).Get<JwtSettings>()
             ?? throw new InvalidOperationException("JwtSettings section is missing.");
