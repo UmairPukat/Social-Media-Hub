@@ -45,6 +45,7 @@ public class InboxPostMetaDto
     public int LikesCount { get; set; }
     public int CommentsCount { get; set; }
     public int SharesCount { get; set; }
+    public int ViewsCount { get; set; }
     public DateTime PostedAt { get; set; }
 }
 

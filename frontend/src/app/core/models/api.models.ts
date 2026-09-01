@@ -184,6 +184,7 @@ export interface InboxPostMeta {
   likesCount: number;
   commentsCount: number;
   sharesCount: number;
+  viewsCount?: number;
   postedAt: string;
 }
 

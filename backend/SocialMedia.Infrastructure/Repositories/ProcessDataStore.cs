@@ -425,15 +425,15 @@ public sealed class ProcessDataStore : IProcessDataStore
         => _menuType switch
         {
             MenuTypes.AppConnection => AsBase<AppConnectionPost, PostEntityBase>(
-                _context.AppConnectionPosts
+                _context.AppConnectionPosts.AsNoTracking()
                     .Include(p => p.MediaItems)
                     .FirstOrDefaultAsync(p => p.SocialProfileId == socialProfileId && p.ExternalPostId == externalPostId, cancellationToken)),
             MenuTypes.DeveloperApp => AsBase<DeveloperAppPost, PostEntityBase>(
-                _context.DeveloperAppPosts
+                _context.DeveloperAppPosts.AsNoTracking()
                     .Include(p => p.MediaItems)
                     .FirstOrDefaultAsync(p => p.SocialProfileId == socialProfileId && p.ExternalPostId == externalPostId, cancellationToken)),
             _ => AsBase<IntegrationPost, PostEntityBase>(
-                _context.IntegrationPosts
+                _context.IntegrationPosts.AsNoTracking()
                     .Include(p => p.MediaItems)
                     .FirstOrDefaultAsync(p => p.SocialProfileId == socialProfileId && p.ExternalPostId == externalPostId, cancellationToken))
         };
@@ -547,11 +547,14 @@ public sealed class ProcessDataStore : IProcessDataStore
         => _menuType switch
         {
             MenuTypes.AppConnection => AsBase<AppConnectionComment, CommentEntityBase>(
-                _context.AppConnectionComments.FirstOrDefaultAsync(c => c.ExternalCommentId == externalCommentId, cancellationToken)),
+                _context.AppConnectionComments.AsNoTracking()
+                    .FirstOrDefaultAsync(c => c.ExternalCommentId == externalCommentId, cancellationToken)),
             MenuTypes.DeveloperApp => AsBase<DeveloperAppComment, CommentEntityBase>(
-                _context.DeveloperAppComments.FirstOrDefaultAsync(c => c.ExternalCommentId == externalCommentId, cancellationToken)),
+                _context.DeveloperAppComments.AsNoTracking()
+                    .FirstOrDefaultAsync(c => c.ExternalCommentId == externalCommentId, cancellationToken)),
             _ => AsBase<IntegrationComment, CommentEntityBase>(
-                _context.IntegrationComments.FirstOrDefaultAsync(c => c.ExternalCommentId == externalCommentId, cancellationToken))
+                _context.IntegrationComments.AsNoTracking()
+                    .FirstOrDefaultAsync(c => c.ExternalCommentId == externalCommentId, cancellationToken))
         };
 
     public async Task AddCommentAsync(CommentEntityBase comment, CancellationToken cancellationToken = default)
@@ -1085,7 +1088,7 @@ public sealed class ProcessDataStore : IProcessDataStore
 
     /// <summary>
     /// Applies updates to an entity already tracked in this context, avoiding duplicate-key tracking errors
-    /// when callers load rows with AsNoTracking and then call Update.
+    /// when callers load rows with AsNoTracking (often with Include navigations) and then call Update.
     /// </summary>
     private void UpdateTracked<TEntity>(DbSet<TEntity> set, TEntity entity)
         where TEntity : BaseEntity
@@ -1097,7 +1100,21 @@ public sealed class ProcessDataStore : IProcessDataStore
             return;
         }
 
-        set.Update(entity);
+        var entry = _context.Entry(entity);
+        foreach (var navigation in entry.Navigations)
+            navigation.CurrentValue = null;
+        foreach (var collection in entry.Collections)
+            collection.CurrentValue = null;
+
+        tracked = set.Local.FirstOrDefault(e => e.Id == entity.Id);
+        if (tracked is not null)
+        {
+            _context.Entry(tracked).CurrentValues.SetValues(entity);
+            return;
+        }
+
+        set.Attach(entity);
+        entry.State = EntityState.Modified;
     }
 
     private static void RemoveTracked<TEntity>(DbSet<TEntity> set, TEntity entity)

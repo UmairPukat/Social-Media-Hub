@@ -73,9 +73,14 @@
                 </div>
                 <p class="snippet">{{ thread.post.postText }}</p>
                 <div class="eng-mini">
+                  @if (thread.platformCode === 'youtube') {
+                    <span><mat-icon>visibility</mat-icon> {{ formatCount(thread.post.viewsCount ?? 0) }}</span>
+                  }
                   <span><mat-icon>thumb_up</mat-icon> {{ formatCount(thread.post.likesCount) }}</span>
                   <span><mat-icon>chat_bubble</mat-icon> {{ formatCount(thread.post.commentsCount) }}</span>
-                  <span><mat-icon>share</mat-icon> {{ formatCount(thread.post.sharesCount) }}</span>
+                  @if (thread.platformCode !== 'youtube') {
+                    <span><mat-icon>share</mat-icon> {{ formatCount(thread.post.sharesCount) }}</span>
+                  }
                 </div>
               </div>
               @if (thread.unreadCount > 0) {
@@ -144,15 +149,26 @@
             }
 
             <div class="stats-row">
-              <span class="likes">
-                <span class="react-stack">
-                  <i class="r like"></i>
-                  <i class="r love"></i>
+              @if (thread.platformCode === 'youtube') {
+                <span class="views">
+                  <mat-icon>visibility</mat-icon>
+                  {{ (thread.post.viewsCount ?? 0) | number }} views
                 </span>
-                {{ thread.post.likesCount | number }}
-              </span>
+              } @else {
+                <span class="likes">
+                  <span class="react-stack">
+                    <i class="r like"></i>
+                    <i class="r love"></i>
+                  </span>
+                  {{ thread.post.likesCount | number }}
+                </span>
+              }
               <span class="right-stats">
-                {{ thread.post.commentsCount | number }} comments · {{ thread.post.sharesCount | number }} shares
+                @if (thread.platformCode === 'youtube') {
+                  {{ thread.post.likesCount | number }} likes · {{ thread.post.commentsCount | number }} comments
+                } @else {
+                  {{ thread.post.commentsCount | number }} comments · {{ thread.post.sharesCount | number }} shares
+                }
               </span>
             </div>
 

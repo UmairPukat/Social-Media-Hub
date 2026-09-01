@@ -117,6 +117,7 @@ public class InboxService : IInboxService
                             LikesCount = row.Post.LikeCount,
                             CommentsCount = row.Post.CommentCount,
                             SharesCount = row.Post.ShareCount,
+                            ViewsCount = row.Post.ViewCount,
                             PostedAt = row.Post.PublishedAt ?? row.Post.CreatedAt
                         }
                     };
@@ -788,6 +789,7 @@ public class InboxService : IInboxService
                 LikesCount = post.LikeCount,
                 CommentsCount = post.CommentCount,
                 SharesCount = post.ShareCount,
+                ViewsCount = post.ViewCount,
                 PostedAt = post.PublishedAt ?? post.CreatedAt
             }
         };

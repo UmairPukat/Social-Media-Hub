@@ -552,6 +552,7 @@ public class FacebookService : IFacebookService
                 LikesCount = post.LikeCount,
                 CommentsCount = post.CommentCount,
                 SharesCount = post.ShareCount,
+                ViewsCount = post.ViewCount,
                 PostedAt = post.PublishedAt ?? post.CreatedAt
             }
         };
