@@ -290,9 +290,17 @@ public class YouTubeService : IYouTubeService
         };
 
     private static string? ReadString(JsonElement element, string property)
-        => element.ValueKind == JsonValueKind.Object && element.TryGetProperty(property, out var value)
-            ? value.GetString()
-            : null;
+    {
+        if (element.ValueKind != JsonValueKind.Object || !element.TryGetProperty(property, out var value))
+            return null;
+
+        return value.ValueKind switch
+        {
+            JsonValueKind.String => value.GetString(),
+            JsonValueKind.Object when value.TryGetProperty("value", out var nested) => nested.GetString(),
+            _ => null
+        };
+    }
 
     private static long ReadLong(JsonElement element, string property)
     {
