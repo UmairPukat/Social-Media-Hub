@@ -153,9 +153,7 @@
             @if (isYouTubePlatform(configPlatformCode())) {
               Google OAuth credentials for Developer Apps. Use the Developer Apps callback URL below in Google Cloud Console.
             } @else if (isWhatsAppPlatform(configPlatformCode())) {
-              Meta app credentials and WhatsApp routing for Developer Apps. Save Phone number Id and webhook verify token, then register the callback and webhook URLs in Meta.
-            } @else if (usesMetaWebhooks(configPlatformCode())) {
-              Meta app credentials for Developer Apps. Register the OAuth callback and webhook URLs below in your Meta App Dashboard for comments and messages.
+              Meta app credentials and WhatsApp routing for Developer Apps.
             } @else {
               Meta app credentials used when connecting from Developer Apps.
             }
@@ -204,8 +202,6 @@
               <mat-hint>
                 Add this exact URL in Google Cloud Console → Credentials → OAuth client → Authorized redirect URIs.
               </mat-hint>
-            } @else {
-              <mat-hint>OAuth callback for the Developer Apps process module.</mat-hint>
             }
           </mat-form-field>
 
@@ -229,8 +225,6 @@
             <textarea matInput rows="3" [ngModel]="configForm().scopes" name="scopes" (ngModelChange)="updateConfigField('scopes', $event)"></textarea>
             @if (isYouTubePlatform(configPlatformCode())) {
               <mat-hint>Google OAuth scopes must be space-separated (not comma-separated).</mat-hint>
-            } @else {
-              <mat-hint>Comma-separated for Meta platforms.</mat-hint>
             }
           </mat-form-field>
 
@@ -238,13 +232,6 @@
             <mat-form-field appearance="outline">
               <mat-label>Webhook URL (Developer Apps)</mat-label>
               <input matInput [ngModel]="moduleWebhookUri" name="webhookUrl" readonly />
-              @if (isWhatsAppPlatform(configPlatformCode())) {
-                <mat-hint>Meta → WhatsApp → Configuration. Subscribe to the messages field.</mat-hint>
-              } @else if (isInstagramLoginPlatform(configPlatformCode())) {
-                <mat-hint>Meta App Dashboard → Webhooks. Required for Instagram Login comments and DMs.</mat-hint>
-              } @else {
-                <mat-hint>Page webhooks are auto-subscribed on connect; use this URL for Instagram Login or manual setup.</mat-hint>
-              }
             </mat-form-field>
           }
 
@@ -268,11 +255,10 @@
             </mat-form-field>
           }
 
-          <footer class="picker-foot">
-            <span class="picker-count">Secrets are stored on the server only.</span>
+          <footer class="picker-foot config-foot">
             <div class="picker-actions">
-              <button mat-stroked-button type="button" (click)="closeConfig()">Cancel</button>
-              <button mat-flat-button color="primary" type="submit" [disabled]="configSaving()">
+              <button mat-stroked-button type="button" class="config-btn config-btn-secondary" (click)="closeConfig()">Cancel</button>
+              <button mat-flat-button color="primary" type="submit" class="config-btn config-btn-primary" [disabled]="configSaving()">
                 {{ configSaving() ? 'Saving…' : 'Save configuration' }}
               </button>
             </div>

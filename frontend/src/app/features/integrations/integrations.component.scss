@@ -783,9 +783,42 @@
   grid-column: 1 / -1;
 }
 
+.config-form .picker-foot.config-foot {
+  grid-column: 1 / -1;
+  justify-content: flex-end;
+  margin: 4px -22px -8px;
+  padding: 16px 22px;
+  background: var(--app-surface-soft, #f8fafc);
+}
+
+.picker-foot.config-foot .picker-actions {
+  margin-left: auto;
+}
+
+.picker-foot.config-foot .config-btn {
+  min-height: 40px;
+  padding: 0 20px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+}
+
+.picker-foot.config-foot .config-btn-primary {
+  font-weight: 600;
+  padding: 0 24px;
+}
+
+.picker-foot.config-foot .config-btn-secondary {
+  border-color: var(--app-border, rgba(15, 23, 42, 0.18));
+  color: var(--app-text, #0f172a);
+}
+
 @media (max-width: 700px) {
   .config-form {
     grid-template-columns: 1fr;
+  }
+
+  .config-form .picker-foot.config-foot {
+    margin-inline: -22px;
   }
 }
 
