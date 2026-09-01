@@ -1,6 +1,7 @@
 using System.Net.Http.Headers;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
+using SocialMedia.Application.YouTube;
 
 namespace SocialMedia.Infrastructure.YouTube;
 
@@ -58,6 +59,13 @@ public sealed class YouTubeApiClient
         var body = await response.Content.ReadAsStringAsync(cancellationToken);
         if (!response.IsSuccessStatusCode)
         {
+            if (YouTubeApiErrors.IsCommentsDisabled((int)response.StatusCode, body) &&
+                path.Contains("commentThreads", StringComparison.OrdinalIgnoreCase))
+            {
+                query.TryGetValue("videoId", out var videoId);
+                throw new YouTubeCommentsDisabledException(videoId ?? "unknown");
+            }
+
             _logger.LogWarning("YouTube API GET {Path} failed ({Status}): {Body}", path, (int)response.StatusCode, body);
             throw new InvalidOperationException($"YouTube API request failed ({(int)response.StatusCode}): {body}");
         }

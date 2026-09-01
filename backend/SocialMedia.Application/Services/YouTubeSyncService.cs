@@ -6,6 +6,7 @@ using SocialMedia.Application.Interfaces;
 using SocialMedia.Application.Meta;
 using SocialMedia.Domain.Enums;
 using SocialMedia.Domain.Modules.Common.Entities;
+using SocialMedia.Application.YouTube;
 
 namespace SocialMedia.Application.Services;
 
@@ -120,7 +121,20 @@ public class YouTubeSyncService : IYouTubeSyncService
                     break;
                 case SyncKind.Comments:
                     await SyncCommentsForProfileAsync(store, account, profile, token, result, cancellationToken);
-                    result.Message = $"Fetched {result.Fetched} comments; stored {result.Stored}, updated {result.Updated}.";
+                    if (result.Skipped > 0 && result.Fetched == 0 && result.Stored == 0 && result.Updated == 0)
+                    {
+                        result.Message =
+                            $"No comments were fetched. {result.Skipped} video(s) have comments disabled on YouTube. Enable comments in YouTube Studio or fetch posts again after enabling comments.";
+                    }
+                    else if (result.Skipped > 0)
+                    {
+                        result.Message =
+                            $"Fetched {result.Fetched} comments; stored {result.Stored}, updated {result.Updated}; skipped {result.Skipped} video(s) with comments disabled on YouTube.";
+                    }
+                    else
+                    {
+                        result.Message = $"Fetched {result.Fetched} comments; stored {result.Stored}, updated {result.Updated}.";
+                    }
                     break;
                 case SyncKind.Statistics:
                     await SyncStatisticsForProfileAsync(store, account, profile, token, result, cancellationToken);
@@ -200,8 +214,18 @@ public class YouTubeSyncService : IYouTubeSyncService
 
         foreach (var post in profilePosts)
         {
-            var comments = await _youtube.ListVideoCommentsAsync(
-                accessToken, post.ExternalPostId!, maxResults: 50, cancellationToken);
+            IReadOnlyList<YouTubeCommentSnapshot> comments;
+            try
+            {
+                comments = await _youtube.ListVideoCommentsAsync(
+                    accessToken, post.ExternalPostId!, maxResults: 50, cancellationToken);
+            }
+            catch (Exception ex) when (IsCommentsDisabledError(ex))
+            {
+                result.Skipped++;
+                continue;
+            }
+
             result.Fetched += comments.Count;
 
             var localByExternal = new Dictionary<string, Guid>(StringComparer.Ordinal);
@@ -387,8 +411,11 @@ public class YouTubeSyncService : IYouTubeSyncService
         if (!string.IsNullOrWhiteSpace(auth.AccessToken))
             return auth.AccessToken;
 
-        return string.IsNullOrWhiteSpace(auth.RefreshToken) ? null : auth.RefreshToken;
+        return null;
     }
+
+    private static bool IsCommentsDisabledError(Exception ex)
+        => ex is YouTubeCommentsDisabledException || YouTubeApiErrors.IsCommentsDisabledMessage(ex.Message);
 
     private enum SyncKind
     {
