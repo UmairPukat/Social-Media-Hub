@@ -11,10 +11,12 @@
             Comments
           </button>
         }
-        <button type="button" [class.active]="mode() === 'messages'" (click)="setMode('messages')">
-          <mat-icon>forum</mat-icon>
-          Messages
-        </button>
+        @if (showMessagesMode()) {
+          <button type="button" [class.active]="mode() === 'messages'" (click)="setMode('messages')">
+            <mat-icon>forum</mat-icon>
+            Messages
+          </button>
+        }
       </div>
     </div>
 

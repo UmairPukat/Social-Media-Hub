@@ -102,6 +102,8 @@ export class InboxComponent implements OnInit, OnDestroy {
 
   readonly showCommentsMode = computed(() => this.platformCode() !== 'whatsapp');
 
+  readonly showMessagesMode = computed(() => this.platformCode() !== 'youtube');
+
   readonly supportsCommentReplies = computed(() => {
     const code = this.platformCode();
     return code !== 'youtube' && code !== 'whatsapp';
@@ -112,7 +114,8 @@ export class InboxComponent implements OnInit, OnDestroy {
     const kind = this.mode() === 'comments' ? 'comment' : 'message';
     return this.items().filter(i =>
       i.itemKind === kind &&
-      (!code || i.platformCode === code)
+      (!code || i.platformCode === code) &&
+      !(kind === 'message' && i.platformCode === 'youtube')
     );
   });
 
@@ -383,6 +386,7 @@ export class InboxComponent implements OnInit, OnDestroy {
 
   setMode(mode: 'messages' | 'comments'): void {
     if (mode === 'comments' && !this.showCommentsMode()) return;
+    if (mode === 'messages' && !this.showMessagesMode()) return;
     this.mode.set(mode);
     this.selectedKey.set(null);
     queueMicrotask(() => this.autoSelectFirst());
