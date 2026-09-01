@@ -76,7 +76,7 @@ public static class MetaOAuthState
                 return false;
             }
 
-            if (payload.Platform is not ("facebook" or "instagram" or "instagram_login" or "whatsapp"))
+            if (payload.Platform is not ("facebook" or "instagram" or "instagram_login" or "whatsapp" or "youtube"))
             {
                 error = $"Unsupported platform '{payload.Platform}'.";
                 return false;
