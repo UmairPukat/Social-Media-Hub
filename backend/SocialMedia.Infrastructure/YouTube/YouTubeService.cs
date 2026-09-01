@@ -246,6 +246,29 @@ public class YouTubeService : IYouTubeService
         return comments;
     }
 
+    public async Task<string?> ReplyCommentAsync(
+        string accessToken,
+        string parentCommentId,
+        string message,
+        CancellationToken cancellationToken = default)
+    {
+        using var doc = await _api.PostAsync(
+            accessToken,
+            "comments",
+            new Dictionary<string, string?> { ["part"] = "snippet" },
+            new
+            {
+                snippet = new
+                {
+                    parentId = parentCommentId,
+                    textOriginal = message
+                }
+            },
+            cancellationToken);
+
+        return doc.RootElement.TryGetProperty("id", out var idEl) ? idEl.GetString() : null;
+    }
+
     private async Task<string?> ResolveUploadsPlaylistIdAsync(
         string accessToken,
         string channelId,

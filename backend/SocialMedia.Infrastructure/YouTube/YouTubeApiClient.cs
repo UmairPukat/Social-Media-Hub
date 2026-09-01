@@ -1,4 +1,5 @@
 using System.Net.Http.Headers;
+using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using SocialMedia.Application.YouTube;
@@ -71,5 +72,33 @@ public sealed class YouTubeApiClient
         }
 
         return JsonDocument.Parse(body);
+    }
+
+    public async Task<JsonDocument> PostAsync(
+        string accessToken,
+        string path,
+        IReadOnlyDictionary<string, string?> query,
+        object body,
+        CancellationToken cancellationToken)
+    {
+        var queryString = string.Join("&",
+            query.Where(kv => !string.IsNullOrWhiteSpace(kv.Value))
+                .Select(kv => $"{Uri.EscapeDataString(kv.Key)}={Uri.EscapeDataString(kv.Value!)}"));
+        var url = $"https://www.googleapis.com/youtube/v3/{path.TrimStart('/')}" +
+                  (string.IsNullOrWhiteSpace(queryString) ? string.Empty : $"?{queryString}");
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, url);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+        request.Content = new StringContent(JsonSerializer.Serialize(body), Encoding.UTF8, "application/json");
+
+        using var response = await _http.SendAsync(request, cancellationToken);
+        var bodyText = await response.Content.ReadAsStringAsync(cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            _logger.LogWarning("YouTube API POST {Path} failed ({Status}): {Body}", path, (int)response.StatusCode, bodyText);
+            throw new InvalidOperationException($"YouTube API request failed ({(int)response.StatusCode}): {bodyText}");
+        }
+
+        return JsonDocument.Parse(bodyText);
     }
 }

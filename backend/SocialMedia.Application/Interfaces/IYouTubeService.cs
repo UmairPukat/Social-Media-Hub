@@ -31,6 +31,12 @@ public interface IYouTubeService
         string videoId,
         int maxResults = 50,
         CancellationToken cancellationToken = default);
+
+    Task<string?> ReplyCommentAsync(
+        string accessToken,
+        string parentCommentId,
+        string message,
+        CancellationToken cancellationToken = default);
 }
 
 public sealed class YouTubeVideoSnapshot

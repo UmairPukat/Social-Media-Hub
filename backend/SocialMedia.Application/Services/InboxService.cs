@@ -14,6 +14,7 @@ public class InboxService : IInboxService
     private readonly IFacebookService _facebookService;
     private readonly IInstagramService _instagramService;
     private readonly IWhatsAppService _whatsAppService;
+    private readonly IYouTubeService _youTubeService;
     private readonly IInboxRealtimeNotifier _inboxRealtime;
 
     public InboxService(
@@ -21,12 +22,14 @@ public class InboxService : IInboxService
         IFacebookService facebookService,
         IInstagramService instagramService,
         IWhatsAppService whatsAppService,
+        IYouTubeService youTubeService,
         IInboxRealtimeNotifier inboxRealtime)
     {
         _processData = processData;
         _facebookService = facebookService;
         _instagramService = instagramService;
         _whatsAppService = whatsAppService;
+        _youTubeService = youTubeService;
         _inboxRealtime = inboxRealtime;
     }
 
@@ -298,7 +301,7 @@ public class InboxService : IInboxService
             if (string.IsNullOrWhiteSpace(replyTargetExternalId) ||
                 replyTargetExternalId.StartsWith("local_reply_", StringComparison.OrdinalIgnoreCase) ||
                 replyTargetExternalId.StartsWith("local_", StringComparison.OrdinalIgnoreCase))
-                return ApiResponse<object>.Fail("Cannot reply until the original comment is synced from Meta.");
+                return ApiResponse<object>.Fail("Cannot reply until the original comment is synced from the platform.");
 
             var connectionType = InstagramConnectionResolver.FromProfile(profile, code);
             var tokens = CandidateTokens(auth);
@@ -309,21 +312,18 @@ public class InboxService : IInboxService
             Exception? lastError = null;
             foreach (var token in tokens)
             {
-                var context = new MetaCallContext
-                {
-                    AccessToken = token,
-                    ProfileExternalId = profile.ExternalProfileId,
-                    PageExternalId = connectionType == InstagramConnectionType.FacebookLogin
-                        ? ReadPageId(profile.MetadataJson)
-                        : null,
-                    InstagramConnectionType = connectionType
-                };
-
                 try
                 {
-                    remoteCommentId = code == "facebook"
-                        ? await _facebookService.ReplyCommentAsync(context, replyTargetExternalId, request.Message.Trim(), cancellationToken)
-                        : await _instagramService.ReplyCommentAsync(context, replyTargetExternalId, request.Message.Trim(), cancellationToken);
+                    remoteCommentId = code switch
+                    {
+                        "facebook" => await ReplyViaFacebookAsync(
+                            token, profile, connectionType, replyTargetExternalId, request.Message.Trim(), cancellationToken),
+                        "youtube" => await _youTubeService.ReplyCommentAsync(
+                            token, replyTargetExternalId, request.Message.Trim(), cancellationToken),
+                        _ when InstagramConnectionResolver.IsInstagramPlatform(code) => await ReplyViaInstagramAsync(
+                            token, profile, connectionType, replyTargetExternalId, request.Message.Trim(), cancellationToken),
+                        _ => null
+                    };
                     lastError = null;
                     break;
                 }
@@ -477,7 +477,45 @@ public class InboxService : IInboxService
         => code is "facebook" or "whatsapp" || InstagramConnectionResolver.IsInstagramPlatform(code);
 
     private static bool SupportsCommentReplies(string code)
-        => code is "facebook" || InstagramConnectionResolver.IsInstagramPlatform(code);
+        => code is "facebook" or "youtube" || InstagramConnectionResolver.IsInstagramPlatform(code);
+
+    private async Task<string?> ReplyViaFacebookAsync(
+        string token,
+        SocialProfileEntityBase profile,
+        InstagramConnectionType connectionType,
+        string replyTargetExternalId,
+        string message,
+        CancellationToken cancellationToken)
+    {
+        var context = BuildMetaCallContext(token, profile, connectionType);
+        return await _facebookService.ReplyCommentAsync(context, replyTargetExternalId, message, cancellationToken);
+    }
+
+    private async Task<string?> ReplyViaInstagramAsync(
+        string token,
+        SocialProfileEntityBase profile,
+        InstagramConnectionType connectionType,
+        string replyTargetExternalId,
+        string message,
+        CancellationToken cancellationToken)
+    {
+        var context = BuildMetaCallContext(token, profile, connectionType);
+        return await _instagramService.ReplyCommentAsync(context, replyTargetExternalId, message, cancellationToken);
+    }
+
+    private static MetaCallContext BuildMetaCallContext(
+        string token,
+        SocialProfileEntityBase profile,
+        InstagramConnectionType connectionType)
+        => new()
+        {
+            AccessToken = token,
+            ProfileExternalId = profile.ExternalProfileId,
+            PageExternalId = connectionType == InstagramConnectionType.FacebookLogin
+                ? ReadPageId(profile.MetadataJson)
+                : null,
+            InstagramConnectionType = connectionType
+        };
 
     private async Task<(SocialAccountEntityBase Account, SocialAuthEntityBase Auth)?> FindAccountByRoutingHintsAsync(
         Guid userId,

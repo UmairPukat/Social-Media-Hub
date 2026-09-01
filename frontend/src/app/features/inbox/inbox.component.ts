@@ -105,8 +105,8 @@ export class InboxComponent implements OnInit, OnDestroy {
   readonly showMessagesMode = computed(() => this.platformCode() !== 'youtube');
 
   readonly supportsCommentReplies = computed(() => {
-    const code = this.platformCode();
-    return code !== 'youtube' && code !== 'whatsapp';
+    const code = this.selectedCommentThread()?.platformCode ?? this.platformCode();
+    return code !== 'whatsapp';
   });
 
   readonly filteredItems = computed(() => {
