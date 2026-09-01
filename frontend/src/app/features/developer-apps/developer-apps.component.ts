@@ -82,6 +82,7 @@ export class DeveloperAppsComponent implements OnInit {
   private readonly processApi = inject(ProcessApiService);
   private readonly metaAuth = inject(MetaAuthUrlService);
   private readonly menuType = MENU_TYPES.developerApp;
+  readonly moduleRedirectUri = defaultOAuthRedirectUri(MENU_TYPES.developerApp);
 
   readonly cards = signal<PlatformCard[]>([]);
   readonly message = signal('');
@@ -336,6 +337,7 @@ export class DeveloperAppsComponent implements OnInit {
       ...form,
       platformCode: code,
       menuType: this.menuType,
+      redirectUri: this.moduleRedirectUri,
       scopes: this.isYouTubePlatform(code) ? formatYouTubeOAuthScopes(form.scopes) : form.scopes
     }).subscribe({
       next: (res) => {
@@ -571,7 +573,7 @@ export class DeveloperAppsComponent implements OnInit {
       menuType: this.menuType,
       clientId: '',
       clientSecret: '',
-      redirectUri: defaultOAuthRedirectUri(this.menuType),
+      redirectUri: this.moduleRedirectUri,
       authUrl: DEFAULT_AUTH_URLS[code] || '',
       baseUrl: DEFAULT_BASE_URLS[code] || 'https://graph.facebook.com',
       scopes: DEFAULT_SCOPES[code] || '',
@@ -589,7 +591,7 @@ export class DeveloperAppsComponent implements OnInit {
       label: config.label,
       clientId: config.clientId,
       clientSecret: config.clientSecret,
-      redirectUri: config.redirectUri || defaultOAuthRedirectUri(this.menuType),
+      redirectUri: this.moduleRedirectUri,
       authUrl: config.authUrl,
       baseUrl: config.baseUrl,
       scopes: config.scopes

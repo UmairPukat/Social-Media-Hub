@@ -275,10 +275,19 @@ public class IntegrationService : IIntegrationService
             .Concat(fromEnv)
             .Append(frontendBase)
             .Where(o => !string.IsNullOrWhiteSpace(o))
-            .Select(o => o!.TrimEnd('/'))
+            .Select(NormalizeFrontendOrigin)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .DefaultIfEmpty("http://localhost:4200")
             .ToList();
+    }
+
+    private static string NormalizeFrontendOrigin(string origin)
+    {
+        var trimmed = origin.Trim().TrimEnd('/');
+        if (!Uri.TryCreate(trimmed, UriKind.Absolute, out var uri))
+            return trimmed;
+
+        return $"{uri.Scheme}://{uri.Authority}";
     }
 
     private async Task<ApiResponse<SocialAccountDto>> HandleYouTubeAuthCodeAsync(
@@ -310,7 +319,12 @@ public class IntegrationService : IIntegrationService
             var channels = await _youTubeService.DiscoverChannelsAsync(token.AccessToken, cancellationToken);
             var channel = channels.FirstOrDefault();
             if (channel is null)
-                return ApiResponse<SocialAccountDto>.Fail("No YouTube channel was found for this Google account.");
+            {
+                return ApiResponse<SocialAccountDto>.Fail(
+                    "No YouTube channel was found for this Google account. " +
+                    "Sign in with a Google account that owns a YouTube channel (create one at youtube.com if needed), " +
+                    "then try connecting again.");
+            }
 
             var response = await PersistConnectedAccountAsync(
                 userId,
@@ -400,6 +414,9 @@ public class IntegrationService : IIntegrationService
         var backendBase = FirstNonEmpty(
             _configuration["BackendBaseUrl"],
             _configuration["backendBaseUrl"]);
+
+        if (ProcessOAuthRedirect.SupportsAutoRedirect(platformCode))
+            return ProcessOAuthRedirect.Resolve(menuType, null, backendBase);
 
         return ProcessOAuthRedirect.Resolve(menuType, configRedirectUri, backendBase);
     }

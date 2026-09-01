@@ -46,11 +46,31 @@ public class YouTubeService : IYouTubeService
         string accessToken,
         CancellationToken cancellationToken = default)
     {
-        using var doc = await _api.GetAsync(accessToken, "channels", new Dictionary<string, string?>
+        var owned = await ListChannelsAsync(accessToken, mine: true, cancellationToken: cancellationToken);
+        if (owned.Count > 0)
+            return owned;
+
+        return await ListChannelsAsync(accessToken, managedByMe: true, cancellationToken: cancellationToken);
+    }
+
+    private async Task<IReadOnlyList<SocialProfileDraft>> ListChannelsAsync(
+        string accessToken,
+        bool mine = false,
+        bool managedByMe = false,
+        CancellationToken cancellationToken = default)
+    {
+        var query = new Dictionary<string, string?>
         {
             ["part"] = "snippet,contentDetails,statistics",
-            ["mine"] = "true"
-        }, cancellationToken);
+            ["maxResults"] = "50"
+        };
+
+        if (mine)
+            query["mine"] = "true";
+        if (managedByMe)
+            query["managedByMe"] = "true";
+
+        using var doc = await _api.GetAsync(accessToken, "channels", query, cancellationToken);
 
         if (!doc.RootElement.TryGetProperty("items", out var items) || items.ValueKind != JsonValueKind.Array)
             return Array.Empty<SocialProfileDraft>();

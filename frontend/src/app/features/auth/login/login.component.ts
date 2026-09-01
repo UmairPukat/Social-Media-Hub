@@ -1,4 +1,4 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, OnInit, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Router } from '@angular/router';
 import { MatFormFieldModule } from '@angular/material/form-field';
@@ -7,6 +7,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { AuthService } from '../../../core/services/auth.service';
 import { ApiResponse, AuthResponse } from '../../../core/models/api.models';
+import { handleOAuthRelayHash } from '../../../core/services/oauth-relay.service';
 
 @Component({
   selector: 'app-login',
@@ -21,7 +22,7 @@ import { ApiResponse, AuthResponse } from '../../../core/models/api.models';
   templateUrl: './login.component.html',
   styleUrl: './login.component.scss'
 })
-export class LoginComponent {
+export class LoginComponent implements OnInit {
   private readonly fb = inject(FormBuilder);
   private readonly auth = inject(AuthService);
   private readonly router = inject(Router);
@@ -34,6 +35,19 @@ export class LoginComponent {
     email: ['Admin@gmail.com', [Validators.required, Validators.email]],
     password: ['Admin@321', [Validators.required]]
   });
+
+  ngOnInit(): void {
+    const payload = handleOAuthRelayHash();
+    if (!payload) return;
+
+    window.setTimeout(() => {
+      try {
+        window.close();
+      } catch {
+        // ignore
+      }
+    }, 800);
+  }
 
   submit(): void {
     if (this.form.invalid) return;

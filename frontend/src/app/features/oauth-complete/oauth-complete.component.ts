@@ -1,17 +1,6 @@
 import { Component, OnInit, signal } from '@angular/core';
-import { META_OAUTH_MESSAGE, OAUTH_RESULT_STORAGE_KEY } from '../../core/config/oauth.constants';
+import { handleOAuthRelayHash } from '../../core/services/oauth-relay.service';
 
-interface OAuthPopupPayload {
-  type?: string;
-  platform?: string;
-  ok?: boolean;
-  message?: string;
-}
-
-/**
- * OAuth relay page on the frontend origin. Google/Meta redirects can sever
- * window.opener; this page receives the result and notifies the parent tab.
- */
 @Component({
   selector: 'app-oauth-complete',
   standalone: true,
@@ -40,13 +29,12 @@ export class OAuthCompleteComponent implements OnInit {
   readonly status = signal('Finishing connection…');
 
   ngOnInit(): void {
-    const payload = this.readPayload();
+    const payload = handleOAuthRelayHash();
     if (!payload) {
       this.status.set('Missing OAuth result. You can close this window.');
       return;
     }
 
-    this.deliver(payload);
     this.status.set(
       payload.ok
         ? 'Connected. You can close this window.'
@@ -60,45 +48,5 @@ export class OAuthCompleteComponent implements OnInit {
         // ignore
       }
     }, 1200);
-  }
-
-  private readPayload(): OAuthPopupPayload | null {
-    const hash = window.location.hash.startsWith('#')
-      ? window.location.hash.slice(1)
-      : window.location.hash;
-    if (!hash) return null;
-
-    const params = new URLSearchParams(hash);
-    const encoded = params.get('payload');
-    if (!encoded) return null;
-
-    try {
-      const parsed = JSON.parse(decodeURIComponent(encoded)) as OAuthPopupPayload;
-      return parsed?.type === META_OAUTH_MESSAGE ? parsed : null;
-    } catch {
-      return null;
-    }
-  }
-
-  private deliver(payload: OAuthPopupPayload): void {
-    try {
-      localStorage.setItem(OAUTH_RESULT_STORAGE_KEY, JSON.stringify(payload));
-    } catch {
-      // ignore
-    }
-
-    if (!window.opener) return;
-
-    try {
-      window.opener.postMessage(payload, '*');
-    } catch {
-      // ignore
-    }
-
-    try {
-      window.opener.postMessage(payload, window.location.origin);
-    } catch {
-      // ignore
-    }
   }
 }

@@ -333,7 +333,8 @@ public class ProcessAppConfigService : IProcessAppConfigService
             return NullIfEmpty(configRedirectUri);
 
         var backendBase = _configuration["BackendBaseUrl"] ?? _configuration["backendBaseUrl"];
-        var resolved = ProcessOAuthRedirect.Resolve(menuType, configRedirectUri, backendBase);
+        // OAuth callbacks are always scoped to the active process module.
+        var resolved = ProcessOAuthRedirect.Resolve(menuType, null, backendBase);
         return NullIfEmpty(resolved);
     }
 
