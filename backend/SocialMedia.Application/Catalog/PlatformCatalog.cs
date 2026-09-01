@@ -97,7 +97,7 @@ public static class PlatformCatalog
         Add("social", "Social", TikTokId, "tiktok", "TikTok", "tiktok",
             "Coming soon — short-form video publishing.");
         Add("social", "Social", YouTubeId, "youtube", "YouTube", "youtube",
-            "Coming soon — video titles, descriptions, and uploads.");
+            "Fetch channel videos, comments, and statistics via manual sync.", true, false, true, true);
         Add("social", "Social", NewId(9), "pinterest", "Pinterest", "pinterest",
             "Coming soon — pins and board publishing.");
         Add("social", "Social", NewId(10), "reddit", "Reddit", "reddit",
@@ -213,6 +213,9 @@ public static class PlatformCatalog
     public static string DefaultAuthUrl(string platformCode, string graphVersion)
     {
         var code = platformCode.ToLowerInvariant();
+        if (code == "youtube")
+            return "https://accounts.google.com/o/oauth2/v2/auth";
+
         return code == "instagram_login"
             ? "https://www.instagram.com/oauth/authorize"
             : $"https://www.facebook.com/{graphVersion}/dialog/oauth";
@@ -221,10 +224,21 @@ public static class PlatformCatalog
     public static string DefaultBaseUrl(string platformCode)
     {
         var code = platformCode.ToLowerInvariant();
+        if (code == "youtube")
+            return "https://www.googleapis.com/youtube/v3";
+
         return code == "instagram_login"
             ? "https://graph.instagram.com"
             : "https://graph.facebook.com";
     }
+
+    public static string DefaultScopes(string platformCode)
+        => platformCode.ToLowerInvariant() switch
+        {
+            "youtube" =>
+                "https://www.googleapis.com/auth/youtube.readonly https://www.googleapis.com/auth/youtube.force-ssl",
+            _ => string.Empty
+        };
 
     private static Guid NewId(int n) =>
         Guid.Parse($"aaaaaaaa-bbbb-cccc-dddd-{n:D12}");

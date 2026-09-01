@@ -1,4 +1,4 @@
-import { Component, OnInit, computed, inject, signal } from '@angular/core';
+import { Component, ElementRef, OnInit, computed, inject, signal, viewChild } from '@angular/core';
 import { DatePipe, DecimalPipe } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
@@ -12,7 +12,8 @@ import {
   ApiResponse,
   PLATFORM_COLORS,
   PlatformCard,
-  SocialPost
+  SocialPost,
+  YouTubePostStatistics
 } from '../../core/models/api.models';
 import { CREATE_PLATFORMS } from '../../core/data/create-post.data';
 
@@ -72,6 +73,12 @@ export class PostsComponent implements OnInit {
   readonly selectedStatus = signal<PostStatusFilter>('all');
   readonly pendingDelete = signal<string | null>(null);
   readonly deleting = signal<string | null>(null);
+  readonly statsPostId = signal<string | null>(null);
+  readonly statsLoading = signal(false);
+  readonly statsError = signal('');
+  readonly statsData = signal<YouTubePostStatistics | null>(null);
+
+  private readonly statsDialog = viewChild<ElementRef<HTMLDialogElement>>('statsDialog');
 
   readonly statusFilters: { value: PostStatusFilter; label: string; icon: string }[] = [
     { value: 'all', label: 'All posts', icon: 'view_stream' },
@@ -210,6 +217,77 @@ export class PostsComponent implements OnInit {
 
   isDemo(post: SocialPost): boolean {
     return post.id.startsWith('demo-');
+  }
+
+  supportsStatistics(post: SocialPost): boolean {
+    return this.platformCode(post) === 'youtube' && post.status === 1 && !this.isDemo(post);
+  }
+
+  openStatistics(post: SocialPost): void {
+    if (!this.supportsStatistics(post)) return;
+
+    this.statsPostId.set(post.id);
+    this.statsLoading.set(true);
+    this.statsError.set('');
+    this.statsData.set(null);
+
+    const dialog = this.statsDialog()?.nativeElement;
+    if (dialog && !dialog.open) dialog.showModal();
+
+    this.processApi
+      .getPostStatistics(this.processRoute.currentMenuType(), post.id, true)
+      .pipe(finalize(() => this.statsLoading.set(false)))
+      .subscribe({
+        next: (res) => {
+          if (!res.success || !res.data) {
+            this.statsError.set(res.message || 'Could not load statistics.');
+            return;
+          }
+          this.statsData.set(res.data);
+          this.posts.update((items) =>
+            items.map((item) =>
+              item.id === post.id
+                ? {
+                    ...item,
+                    viewCount: res.data!.viewCount,
+                    likeCount: res.data!.likeCount,
+                    commentCount: res.data!.commentCount,
+                    shareCount: res.data!.shareCount
+                  }
+                : item
+            )
+          );
+        },
+        error: (err: { error?: { message?: string } }) =>
+          this.statsError.set(err?.error?.message || 'Could not load statistics.')
+      });
+  }
+
+  closeStatistics(): void {
+    const dialog = this.statsDialog()?.nativeElement;
+    if (dialog?.open) {
+      dialog.close();
+      return;
+    }
+    this.resetStatistics();
+  }
+
+  onStatsClosed(): void {
+    this.resetStatistics();
+  }
+
+  private resetStatistics(): void {
+    this.statsPostId.set(null);
+    this.statsLoading.set(false);
+    this.statsError.set('');
+    this.statsData.set(null);
+  }
+
+  statsPostTitle(): string {
+    const stats = this.statsData();
+    if (stats?.title) return stats.title;
+    const post = this.posts().find((item) => item.id === this.statsPostId());
+    return this.content(post || ({} as SocialPost)) || 'Video statistics';
   }
 
   initials(post: SocialPost): string {

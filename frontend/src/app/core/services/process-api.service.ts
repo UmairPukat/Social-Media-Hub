@@ -11,7 +11,9 @@ import {
   PlatformCard,
   PublishPostResponse,
   SocialAccount,
-  SocialPost
+  SocialPost,
+  YouTubePostStatistics,
+  YouTubeSyncResult
 } from '../models/api.models';
 import { PROCESS_MODULES, PROCESS_MODULE_LIST, ProcessMenuType } from '../config/process.config';
 
@@ -142,5 +144,37 @@ export class ProcessApiService {
 
   getDashboardSummary(menuType: ProcessMenuType): Observable<ApiResponse<DashboardSummary>> {
     return this.http.get<ApiResponse<DashboardSummary>>(`${this.base(menuType)}/analytics/summary`);
+  }
+
+  syncYouTubePosts(menuType: ProcessMenuType, platformCode = 'youtube'): Observable<ApiResponse<YouTubeSyncResult>> {
+    return this.http.post<ApiResponse<YouTubeSyncResult>>(
+      `${this.base(menuType)}/sync/youtube/posts?platformCode=${encodeURIComponent(platformCode)}`,
+      {}
+    );
+  }
+
+  syncYouTubeComments(menuType: ProcessMenuType, platformCode = 'youtube'): Observable<ApiResponse<YouTubeSyncResult>> {
+    return this.http.post<ApiResponse<YouTubeSyncResult>>(
+      `${this.base(menuType)}/sync/youtube/comments?platformCode=${encodeURIComponent(platformCode)}`,
+      {}
+    );
+  }
+
+  syncYouTubeStatistics(menuType: ProcessMenuType, platformCode = 'youtube'): Observable<ApiResponse<YouTubeSyncResult>> {
+    return this.http.post<ApiResponse<YouTubeSyncResult>>(
+      `${this.base(menuType)}/sync/youtube/statistics?platformCode=${encodeURIComponent(platformCode)}`,
+      {}
+    );
+  }
+
+  getPostStatistics(
+    menuType: ProcessMenuType,
+    postId: string,
+    refresh = false
+  ): Observable<ApiResponse<YouTubePostStatistics>> {
+    const q = refresh ? '?refresh=true' : '';
+    return this.http.get<ApiResponse<YouTubePostStatistics>>(
+      `${this.base(menuType)}/posts/${postId}/statistics${q}`
+    );
   }
 }

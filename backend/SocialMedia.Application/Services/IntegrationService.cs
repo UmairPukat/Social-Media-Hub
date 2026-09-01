@@ -28,8 +28,11 @@ public class IntegrationService : IIntegrationService
         ["facebook"] = "public_profile,pages_show_list,pages_read_engagement,pages_read_user_content,pages_manage_engagement,pages_manage_metadata,pages_messaging,business_management,ads_management",
         ["instagram"] = "pages_read_user_content,pages_show_list,pages_manage_metadata,pages_messaging,business_management,read_insights,pages_read_engagement,public_profile,instagram_manage_insights,instagram_basic,email,instagram_manage_comments,instagram_manage_messages",
         ["instagram_login"] = "instagram_business_basic,instagram_business_manage_messages,instagram_business_manage_comments",
-        ["whatsapp"] = "whatsapp_business_management,whatsapp_business_messaging,business_management"
+        ["whatsapp"] = "whatsapp_business_management,whatsapp_business_messaging,business_management",
+        ["youtube"] = PlatformCatalog.DefaultScopes("youtube")
     };
+
+    private readonly IYouTubeService _youTubeService;
 
     private readonly IUnitOfWork _unitOfWork;
     private readonly IProcessDataStoreFactory _processData;
@@ -46,6 +49,7 @@ public class IntegrationService : IIntegrationService
         IFacebookService facebookService,
         IInstagramService instagramService,
         IWhatsAppService whatsAppService,
+        IYouTubeService youTubeService,
         IMetaOAuthExchange metaOAuthExchange,
         IOptions<JwtSettings> jwtOptions,
         IConfiguration configuration)
@@ -55,6 +59,7 @@ public class IntegrationService : IIntegrationService
         _facebookService = facebookService;
         _instagramService = instagramService;
         _whatsAppService = whatsAppService;
+        _youTubeService = youTubeService;
         _metaOAuthExchange = metaOAuthExchange;
         _jwt = jwtOptions.Value;
         _configuration = configuration;
@@ -138,7 +143,7 @@ public class IntegrationService : IIntegrationService
     {
         var platformCode = (request.PlatformCode ?? string.Empty).Trim().ToLowerInvariant();
         var menuType = MenuTypes.Normalize(request.MenuType);
-        if (platformCode is not ("facebook" or "instagram" or "instagram_login" or "whatsapp"))
+        if (platformCode is not ("facebook" or "instagram" or "instagram_login" or "whatsapp" or "youtube"))
             return ApiResponse<BeginOAuthResponse>.Fail($"Unsupported platform '{request.PlatformCode}'.");
 
         var config = await LoadStoredAppConfigAsync(userId, platformCode, menuType, cancellationToken);
@@ -159,19 +164,29 @@ public class IntegrationService : IIntegrationService
 
         var state = MetaOAuthState.Create(userId, platformCode, menuType, _jwt.SecretKey);
 
-        var authUrl = platformCode == "instagram_login"
-            ? authBase
-              + $"?client_id={Uri.EscapeDataString(appId)}"
-              + $"&redirect_uri={Uri.EscapeDataString(redirectUri)}"
-              + $"&state={Uri.EscapeDataString(state)}"
-              + $"&scope={Uri.EscapeDataString(scopes)}"
-              + "&response_type=code"
-            : authBase
-              + $"?client_id={Uri.EscapeDataString(appId)}"
-              + $"&redirect_uri={Uri.EscapeDataString(redirectUri)}"
-              + $"&state={Uri.EscapeDataString(state)}"
-              + $"&scope={Uri.EscapeDataString(scopes)}"
-              + "&response_type=code";
+        var authUrl = platformCode switch
+        {
+            "instagram_login" => authBase
+                                 + $"?client_id={Uri.EscapeDataString(appId)}"
+                                 + $"&redirect_uri={Uri.EscapeDataString(redirectUri)}"
+                                 + $"&state={Uri.EscapeDataString(state)}"
+                                 + $"&scope={Uri.EscapeDataString(scopes)}"
+                                 + "&response_type=code",
+            "youtube" => authBase
+                         + $"?client_id={Uri.EscapeDataString(appId)}"
+                         + $"&redirect_uri={Uri.EscapeDataString(redirectUri)}"
+                         + $"&state={Uri.EscapeDataString(state)}"
+                         + $"&scope={Uri.EscapeDataString(scopes)}"
+                         + "&response_type=code"
+                         + "&access_type=offline"
+                         + "&prompt=consent",
+            _ => authBase
+                 + $"?client_id={Uri.EscapeDataString(appId)}"
+                 + $"&redirect_uri={Uri.EscapeDataString(redirectUri)}"
+                 + $"&state={Uri.EscapeDataString(state)}"
+                 + $"&scope={Uri.EscapeDataString(scopes)}"
+                 + "&response_type=code"
+        };
 
         return ApiResponse<BeginOAuthResponse>.Ok(new BeginOAuthResponse
         {
@@ -246,7 +261,9 @@ public class IntegrationService : IIntegrationService
         var code = (request.PlatformCode ?? string.Empty).Trim().ToLowerInvariant();
         return code is "facebook" or "instagram" or "instagram_login" or "whatsapp"
             ? HandleMetaAuthCodeAsync(userId, code, request, cancellationToken)
-            : Task.FromResult(ApiResponse<SocialAccountDto>.Fail($"Unsupported platform '{request.PlatformCode}'."));
+            : code == "youtube"
+                ? HandleYouTubeAuthCodeAsync(userId, request, cancellationToken)
+                : Task.FromResult(ApiResponse<SocialAccountDto>.Fail($"Unsupported platform '{request.PlatformCode}'."));
     }
 
     private IReadOnlyList<string> ResolveFrontendOrigins()
@@ -267,6 +284,79 @@ public class IntegrationService : IIntegrationService
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .DefaultIfEmpty("http://localhost:4200")
             .ToList();
+    }
+
+    private async Task<ApiResponse<SocialAccountDto>> HandleYouTubeAuthCodeAsync(
+        Guid userId,
+        OAuthCallbackRequest request,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(request.Code))
+                return ApiResponse<SocialAccountDto>.Fail("Authorization code is required.");
+
+            var normalizedMenu = MenuTypes.Normalize(request.MenuType);
+            var config = await LoadStoredAppConfigAsync(userId, "youtube", normalizedMenu, cancellationToken);
+            if (config is null)
+                return ApiResponse<SocialAccountDto>.Fail("Save YouTube Google OAuth credentials before connecting.");
+
+            var redirectUri = ResolveProcessRedirectUri("youtube", normalizedMenu, config.RedirectUri);
+            if (string.IsNullOrWhiteSpace(redirectUri))
+                return ApiResponse<SocialAccountDto>.Fail("Redirect URI is not configured.");
+
+            var token = await _youTubeService.ExchangeAuthorizationCodeAsync(
+                config.ClientId.Trim(),
+                config.ClientSecret.Trim(),
+                redirectUri,
+                request.Code,
+                cancellationToken);
+
+            var channels = await _youTubeService.DiscoverChannelsAsync(token.AccessToken, cancellationToken);
+            var channel = channels.FirstOrDefault();
+            if (channel is null)
+                return ApiResponse<SocialAccountDto>.Fail("No YouTube channel was found for this Google account.");
+
+            var response = await PersistConnectedAccountAsync(
+                userId,
+                "youtube",
+                normalizedMenu,
+                token.AccessToken,
+                token.ExpiresAt,
+                channel.ExternalProfileId,
+                channel.Name ?? "YouTube Channel",
+                cancellationToken);
+
+            if (!response.Success)
+                return response;
+
+            var store = _processData.ForMenu(normalizedMenu);
+            var platform = await store.GetPlatformByCodeAsync("youtube", cancellationToken);
+            var account = platform is null
+                ? null
+                : await store.GetSocialAccountByUserAndPlatformAsync(userId, platform.Id, cancellationToken);
+            if (account is not null)
+            {
+                var auth = await store.GetSocialAuthByAccountIdAsync(account.Id, cancellationToken);
+                if (auth is not null && !string.IsNullOrWhiteSpace(token.RefreshToken))
+                {
+                    auth.RefreshToken = token.RefreshToken;
+                    auth.UpdatedAt = DateTime.UtcNow;
+                    store.UpdateSocialAuth(auth);
+                    await store.SaveChangesAsync(cancellationToken);
+                }
+
+                foreach (var draft in channels)
+                    await UpsertProfileAsync(store, account, draft, cancellationToken);
+                await store.SaveChangesAsync(cancellationToken);
+            }
+
+            return response;
+        }
+        catch (Exception ex)
+        {
+            return ApiResponse<SocialAccountDto>.Fail(ex.Message);
+        }
     }
 
     private async Task<ApiResponse<SocialAccountDto>> HandleMetaAuthCodeAsync(
@@ -584,6 +674,7 @@ public class IntegrationService : IIntegrationService
                 "instagram_login" => await _instagramService.DiscoverInstagramLoginProfilesAsync(accessToken, cancellationToken),
                 "whatsapp" => await _whatsAppService.DiscoverProfilesAsync(
                     accessToken, whatsAppIds.PhoneNumberId, whatsAppIds.WabaId, cancellationToken),
+                "youtube" => await _youTubeService.DiscoverChannelsAsync(accessToken, cancellationToken),
                 _ => Array.Empty<SocialProfileDraft>()
             };
 
@@ -1262,6 +1353,7 @@ public class IntegrationService : IIntegrationService
         "facebookpage" or "page" => ProfileType.FacebookPage,
         "instagrambusiness" or "instagram" => ProfileType.InstagramBusiness,
         "instagramlogin" => ProfileType.InstagramLogin,
+        "youtubechannel" or "youtube" => ProfileType.YouTubeChannel,
         "whatsappphone" or "whatsapp" => ProfileType.WhatsAppPhone,
         _ => ProfileType.Other
     };

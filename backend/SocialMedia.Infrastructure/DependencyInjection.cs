@@ -10,6 +10,7 @@ using SocialMedia.Infrastructure.Auth;
 using SocialMedia.Infrastructure.Meta;
 using SocialMedia.Infrastructure.Persistence;
 using SocialMedia.Infrastructure.Repositories;
+using SocialMedia.Infrastructure.YouTube;
 using System.Text;
 
 namespace SocialMedia.Infrastructure;
@@ -39,10 +40,12 @@ public static class DependencyInjection
         services.AddScoped<IInboxRealtimeNotifier, Application.Realtime.NullInboxRealtimeNotifier>();
 
         services.AddHttpClient<MetaGraphClient>();
+        services.AddHttpClient<YouTubeApiClient>();
         services.AddScoped<IMetaOAuthExchange, MetaOAuthExchangeService>();
         services.AddScoped<IFacebookService, FacebookService>();
         services.AddScoped<IInstagramService, InstagramService>();
         services.AddScoped<IWhatsAppService, WhatsAppService>();
+        services.AddScoped<IYouTubeService, YouTubeService>();
 
         var jwt = configuration.GetSection(JwtSettings.SectionName).Get<JwtSettings>()
             ?? throw new InvalidOperationException("JwtSettings section is missing.");

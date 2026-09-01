@@ -1,0 +1,138 @@
+<section class="page platform-sync">
+  <header class="sync-hero">
+    <div>
+      <p class="eyebrow">Manual sync</p>
+      <h1>Platform sync</h1>
+      <p class="lede">
+        Some platforms do not push webhooks. Use manual fetch to pull posts, comments, and statistics
+        into Posts and Inbox for this process module.
+      </p>
+    </div>
+    <div class="hero-actions">
+      <button mat-stroked-button type="button" (click)="reload()" [disabled]="loading()">
+        <mat-icon>refresh</mat-icon>
+        Refresh
+      </button>
+      <a mat-flat-button [routerLink]="connectLink()">
+        <mat-icon>hub</mat-icon>
+        Connect accounts
+      </a>
+    </div>
+  </header>
+
+  @if (message()) {
+    <p class="banner">{{ message() }}</p>
+  }
+
+  @if (lastResult()) {
+    <div class="result-card">
+      <mat-icon>cloud_done</mat-icon>
+      <div>
+        <strong>Last sync · YouTube</strong>
+        <p>
+          Fetched {{ lastResult()!.fetched | number }},
+          stored {{ lastResult()!.stored | number }},
+          updated {{ lastResult()!.updated | number }}
+          @if (lastResult()!.skipped) {
+            · skipped {{ lastResult()!.skipped | number }}
+          }
+        </p>
+        @if (lastResult()!.message) {
+          <small>{{ lastResult()!.message }}</small>
+        }
+      </div>
+    </div>
+  }
+
+  @if (loading()) {
+    <div class="stats">
+      @for (item of [1, 2]; track item) {
+        <article class="stat skeleton">
+          <div class="skeleton-line medium"></div>
+          <div class="skeleton-line"></div>
+          <div class="skeleton-line short"></div>
+        </article>
+      }
+    </div>
+  } @else if (manualPlatforms().length) {
+    <section class="category">
+      <div class="category-head">
+        <div>
+          <h2>Webhook-free platforms</h2>
+          <p>Fetch content on demand when live updates are unavailable.</p>
+        </div>
+      </div>
+
+      <div class="stats">
+        @for (entry of manualPlatforms(); track entry.card.platformId) {
+          <article class="stat" [attr.data-tone]="entry.tone" [class.live]="entry.card.isConnected">
+            <div class="stat-top">
+              <span class="stat-ico">
+                <mat-icon>{{ entry.icon }}</mat-icon>
+              </span>
+              <span class="stat-label">
+                @if (entry.card.isConnected) {
+                  Connected
+                } @else if (entry.card.hasAppConfig) {
+                  Configured
+                } @else {
+                  Not connected
+                }
+              </span>
+            </div>
+
+            <strong class="stat-value">{{ entry.card.displayName }}</strong>
+            <p class="stat-hint">
+              @if (entry.card.accountName) {
+                Linked as {{ entry.card.accountName }}
+              } @else {
+                Connect your channel, then fetch posts and comments manually.
+              }
+            </p>
+
+            <div class="sync-actions">
+              <button
+                mat-stroked-button
+                type="button"
+                [disabled]="!entry.card.isConnected || isRunning(entry.card.code, 'posts')"
+                (click)="runSync(entry.card, 'posts')">
+                <mat-icon>video_library</mat-icon>
+                {{ isRunning(entry.card.code, 'posts') ? 'Fetching posts…' : 'Fetch posts' }}
+              </button>
+              <button
+                mat-stroked-button
+                type="button"
+                [disabled]="!entry.card.isConnected || isRunning(entry.card.code, 'comments')"
+                (click)="runSync(entry.card, 'comments')">
+                <mat-icon>mode_comment</mat-icon>
+                {{ isRunning(entry.card.code, 'comments') ? 'Fetching comments…' : 'Fetch comments' }}
+              </button>
+              <button
+                mat-flat-button
+                color="primary"
+                type="button"
+                [disabled]="!entry.card.isConnected || isRunning(entry.card.code, 'statistics')"
+                (click)="runSync(entry.card, 'statistics')">
+                <mat-icon>insights</mat-icon>
+                {{ isRunning(entry.card.code, 'statistics') ? 'Refreshing stats…' : 'Fetch statistics' }}
+              </button>
+            </div>
+
+            @if (!entry.card.isConnected) {
+              <a class="connect-link" [routerLink]="connectLink()">
+                <mat-icon>link</mat-icon>
+                Connect {{ entry.card.displayName }} first
+              </a>
+            }
+          </article>
+        }
+      </div>
+    </section>
+  } @else {
+    <div class="empty">
+      <mat-icon>sync_disabled</mat-icon>
+      <h3>No manual sync platforms available</h3>
+      <p>YouTube will appear here once it is enabled in your platform catalog.</p>
+    </div>
+  }
+</section>

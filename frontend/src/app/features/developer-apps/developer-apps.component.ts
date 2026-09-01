@@ -45,14 +45,21 @@ const DEFAULT_AUTH_URLS: Record<string, string> = {
   instagram_login: 'https://www.instagram.com/oauth/authorize',
   facebook: 'https://www.facebook.com/v21.0/dialog/oauth',
   instagram: 'https://www.facebook.com/v21.0/dialog/oauth',
-  whatsapp: 'https://www.facebook.com/v21.0/dialog/oauth'
+  whatsapp: 'https://www.facebook.com/v21.0/dialog/oauth',
+  youtube: 'https://accounts.google.com/o/oauth2/v2/auth'
 };
 
 const DEFAULT_BASE_URLS: Record<string, string> = {
   instagram_login: 'https://graph.instagram.com',
   facebook: 'https://graph.facebook.com',
   instagram: 'https://graph.facebook.com',
-  whatsapp: 'https://graph.facebook.com'
+  whatsapp: 'https://graph.facebook.com',
+  youtube: 'https://www.googleapis.com/youtube/v3'
+};
+
+const DEFAULT_SCOPES: Record<string, string> = {
+  youtube:
+    'https://www.googleapis.com/auth/youtube.readonly https://www.googleapis.com/auth/youtube.force-ssl'
 };
 
 @Component({
@@ -169,13 +176,17 @@ export class DeveloperAppsComponent implements OnInit {
       return;
     }
 
-    if (!['facebook', 'instagram', 'instagram_login', 'whatsapp'].includes(code)) {
+    if (!['facebook', 'instagram', 'instagram_login', 'whatsapp', 'youtube'].includes(code)) {
       this.message.set(`${card.displayName} is coming soon.`);
       return;
     }
 
     this.connecting.set(code);
-    this.message.set(`Opening Meta login for ${card.displayName}…`);
+    this.message.set(
+      code === 'youtube'
+        ? `Opening Google login for ${card.displayName}…`
+        : `Opening Meta login for ${card.displayName}…`
+    );
 
     try {
       const result = await this.metaAuth.openPopup(code, this.menuType);
@@ -204,7 +215,7 @@ export class DeveloperAppsComponent implements OnInit {
   }
 
   supportsConnectionDetails(code: string): boolean {
-    return ['facebook', 'instagram', 'instagram_login'].includes(code.toLowerCase());
+    return ['facebook', 'instagram', 'instagram_login', 'youtube'].includes(code.toLowerCase());
   }
 
   isInstagramLoginPlatform(code: string | null | undefined): boolean {
@@ -544,7 +555,7 @@ export class DeveloperAppsComponent implements OnInit {
       redirectUri: '',
       authUrl: DEFAULT_AUTH_URLS[code] || '',
       baseUrl: DEFAULT_BASE_URLS[code] || 'https://graph.facebook.com',
-      scopes: '',
+      scopes: DEFAULT_SCOPES[code] || '',
       graphApiVersion: 'v21.0',
       webhookVerifyToken: '',
       phoneNumberId: '',

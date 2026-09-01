@@ -31,6 +31,7 @@ export class ShellComponent {
     { suffix: 'create-post', icon: 'post_add', label: 'Create Post' },
     { suffix: 'posts', icon: 'dynamic_feed', label: 'Posts' },
     { suffix: 'inbox', icon: 'inbox', label: 'Inbox' },
+    { suffix: 'sync', icon: 'sync', label: 'Platform sync' },
     { suffix: 'analytics', icon: 'insights', label: 'Analytics' },
     { suffix: 'accounts', icon: 'link', label: 'Connected Accounts' }
   ];

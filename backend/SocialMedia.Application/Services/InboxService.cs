@@ -599,6 +599,7 @@ public class InboxService : IInboxService
         => profile.ProfileType switch
         {
             ProfileType.InstagramLogin => InstagramConnectionResolver.InstagramLoginPlatformCode,
+            ProfileType.YouTubeChannel => "youtube",
             ProfileType.InstagramBusiness => InstagramConnectionResolver.FacebookLoginPlatformCode,
             ProfileType.FacebookPage => "facebook",
             ProfileType.WhatsAppPhone => "whatsapp",

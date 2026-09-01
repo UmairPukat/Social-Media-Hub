@@ -2,7 +2,7 @@
   <header class="inbox-bar">
     <div class="titles">
       <h1>Inbox</h1>
-      <p>Comments with post engagement · Messenger & WhatsApp chats</p>
+      <p>Comments with post engagement · YouTube · Messenger & WhatsApp chats</p>
 
       <div class="mode-switch">
         @if (showCommentsMode()) {
@@ -174,7 +174,9 @@
                     <p>{{ node.comment.content }}</p>
                   </div>
                   <div class="comment-meta">
-                    <button type="button" (click)="beginCommentReply(node.comment)">Reply</button>
+                    @if (supportsCommentReplies()) {
+                      <button type="button" (click)="beginCommentReply(node.comment)">Reply</button>
+                    }
                     <span>{{ node.comment.commentLikes || 0 }} likes</span>
                     <time>{{ node.comment.receivedAt | date: 'd MMM · HH:mm' }}</time>
                   </div>
@@ -201,7 +203,9 @@
                               <p>{{ r.content }}</p>
                             </div>
                             <div class="comment-meta">
-                              <button type="button" (click)="beginCommentReply(r)">Reply</button>
+                              @if (supportsCommentReplies()) {
+                                <button type="button" (click)="beginCommentReply(r)">Reply</button>
+                              }
                               <span>{{ r.commentLikes || 0 }} likes</span>
                               <time>{{ r.receivedAt | date: 'd MMM · HH:mm' }}</time>
                             </div>
@@ -214,31 +218,33 @@
               </div>
             }
 
-            <div class="composer light">
-              <div class="avatar sm you">You</div>
-              <div class="composer-main">
-                @if (replyTargetAuthor()) {
-                  <div class="replying-to">
-                    Replying to <strong>{{ replyTargetAuthor() }}</strong>
-                    <button type="button" (click)="clearCommentReplyTarget()">Cancel</button>
-                  </div>
-                }
-                <textarea
-                  rows="2"
-                  [placeholder]="replyTargetAuthor() ? 'Write a reply…' : 'Write a comment…'"
-                  [ngModel]="replyText()"
-                  (ngModelChange)="replyText.set($event)"
-                  (keydown)="onComposerKeydown($event)"
-                ></textarea>
+            @if (supportsCommentReplies()) {
+              <div class="composer light">
+                <div class="avatar sm you">You</div>
+                <div class="composer-main">
+                  @if (replyTargetAuthor()) {
+                    <div class="replying-to">
+                      Replying to <strong>{{ replyTargetAuthor() }}</strong>
+                      <button type="button" (click)="clearCommentReplyTarget()">Cancel</button>
+                    </div>
+                  }
+                  <textarea
+                    rows="2"
+                    [placeholder]="replyTargetAuthor() ? 'Write a reply…' : 'Write a comment…'"
+                    [ngModel]="replyText()"
+                    (ngModelChange)="replyText.set($event)"
+                    (keydown)="onComposerKeydown($event)"
+                  ></textarea>
+                </div>
+                <button
+                  type="button"
+                  class="send-btn"
+                  [disabled]="!replyText().trim() || sending()"
+                  (click)="sendReply()">
+                  <mat-icon>send</mat-icon>
+                </button>
               </div>
-              <button
-                type="button"
-                class="send-btn"
-                [disabled]="!replyText().trim() || sending()"
-                (click)="sendReply()">
-                <mat-icon>send</mat-icon>
-              </button>
-            </div>
+            }
           </div>
         </div>
       } @else if (mode() === 'messages') {

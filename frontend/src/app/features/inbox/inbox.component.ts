@@ -96,10 +96,16 @@ export class InboxComponent implements OnInit, OnDestroy {
     { code: null as string | null, label: 'All', icon: 'apps' },
     { code: 'facebook', label: 'Facebook', icon: 'facebook' },
     { code: 'instagram', label: 'Instagram', icon: 'photo_camera' },
+    { code: 'youtube', label: 'YouTube', icon: 'smart_display' },
     { code: 'whatsapp', label: 'WhatsApp', icon: 'chat' }
   ];
 
   readonly showCommentsMode = computed(() => this.platformCode() !== 'whatsapp');
+
+  readonly supportsCommentReplies = computed(() => {
+    const code = this.platformCode();
+    return code !== 'youtube' && code !== 'whatsapp';
+  });
 
   readonly filteredItems = computed(() => {
     const code = this.platformCode();
@@ -370,6 +376,7 @@ export class InboxComponent implements OnInit, OnDestroy {
   setPlatform(code: string | null): void {
     this.platformCode.set(code);
     if (code === 'whatsapp') this.mode.set('messages');
+    if (code === 'youtube') this.mode.set('comments');
     this.selectedKey.set(null);
     queueMicrotask(() => this.autoSelectFirst());
   }
@@ -511,6 +518,7 @@ export class InboxComponent implements OnInit, OnDestroy {
     switch (code?.toLowerCase()) {
       case 'facebook': return 'facebook';
       case 'instagram': return 'photo_camera';
+      case 'youtube': return 'smart_display';
       case 'whatsapp': return 'chat';
       default: return 'public';
     }

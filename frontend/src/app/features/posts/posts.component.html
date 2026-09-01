@@ -232,6 +232,16 @@
                     </div>
                   } @else {
                     <div class="post-actions">
+                      @if (supportsStatistics(post)) {
+                        <button
+                          type="button"
+                          class="more-action"
+                          (click)="openStatistics(post)"
+                          aria-label="View statistics"
+                          matTooltip="View statistics">
+                          <mat-icon>visibility</mat-icon>
+                        </button>
+                      }
                       @if (isDemo(post)) {
                         <span class="preview-label">Preview</span>
                       }
@@ -263,4 +273,58 @@
       </div>
     }
   </section>
+
+  <dialog #statsDialog class="stats-dialog" aria-labelledby="stats-title" (close)="onStatsClosed()">
+    <header class="stats-head">
+      <div>
+        <p class="eyebrow">YouTube statistics</p>
+        <h2 id="stats-title">{{ statsPostTitle() }}</h2>
+      </div>
+      <button type="button" class="close-btn" (click)="closeStatistics()" aria-label="Close">
+        <mat-icon>close</mat-icon>
+      </button>
+    </header>
+
+    @if (statsLoading()) {
+      <div class="stats-body loading">
+        <div class="skeleton-line medium"></div>
+        <div class="skeleton-line"></div>
+        <div class="skeleton-line short"></div>
+      </div>
+    } @else if (statsError()) {
+      <div class="stats-body error">
+        <mat-icon>error_outline</mat-icon>
+        <p>{{ statsError() }}</p>
+      </div>
+    } @else if (statsData(); as stats) {
+      <div class="stats-body">
+        @if (stats.thumbnailUrl) {
+          <img class="stats-thumb" [src]="stats.thumbnailUrl" alt="" />
+        }
+        <div class="stats-grid">
+          <article><mat-icon>visibility</mat-icon><strong>{{ stats.viewCount | number }}</strong><span>Views</span></article>
+          <article><mat-icon>favorite_border</mat-icon><strong>{{ stats.likeCount | number }}</strong><span>Likes</span></article>
+          <article><mat-icon>chat_bubble_outline</mat-icon><strong>{{ stats.commentCount | number }}</strong><span>Comments</span></article>
+          <article><mat-icon>share</mat-icon><strong>{{ stats.shareCount | number }}</strong><span>Shares</span></article>
+        </div>
+        @if (stats.description) {
+          <p class="stats-desc">{{ stats.description }}</p>
+        }
+        <div class="stats-meta">
+          @if (stats.publishedAt) {
+            <span>Published {{ stats.publishedAt | date: 'MMM d, y · h:mm a' }}</span>
+          }
+          @if (stats.refreshedAt) {
+            <span>Refreshed {{ stats.refreshedAt | date: 'MMM d, y · h:mm a' }}</span>
+          }
+        </div>
+        @if (stats.permalink) {
+          <a class="stats-link" [href]="stats.permalink" target="_blank" rel="noopener noreferrer">
+            <mat-icon>open_in_new</mat-icon>
+            Open on YouTube
+          </a>
+        }
+      </div>
+    }
+  </dialog>
 </section>

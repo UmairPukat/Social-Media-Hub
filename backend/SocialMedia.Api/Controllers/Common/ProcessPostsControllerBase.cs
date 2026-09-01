@@ -8,10 +8,12 @@ namespace SocialMedia.Api.Controllers.Common;
 public abstract class ProcessPostsControllerBase : ControllerBase
 {
     private readonly IPostService _postService;
+    private readonly IYouTubeSyncService _youTubeSync;
 
-    protected ProcessPostsControllerBase(IPostService postService)
+    protected ProcessPostsControllerBase(IPostService postService, IYouTubeSyncService youTubeSync)
     {
         _postService = postService;
+        _youTubeSync = youTubeSync;
     }
 
     protected abstract string MenuType { get; }
@@ -34,6 +36,13 @@ public abstract class ProcessPostsControllerBase : ControllerBase
     public async Task<IActionResult> DeletePost(Guid id)
     {
         var response = await _postService.DeletePostAsync(User.GetUserId(), id);
+        return Ok(response);
+    }
+
+    [HttpGet("posts/{id:guid}/statistics")]
+    public async Task<IActionResult> GetPostStatistics(Guid id, [FromQuery] bool refresh = false)
+    {
+        var response = await _youTubeSync.GetPostStatisticsAsync(User.GetUserId(), id, MenuType, refresh);
         return Ok(response);
     }
 }

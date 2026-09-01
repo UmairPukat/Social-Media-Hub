@@ -237,3 +237,28 @@ export const PLATFORM_COLORS: Record<string, string> = {
   twitter: '#0F1419',
   x: '#0F1419'
 };
+
+export interface YouTubeSyncResult {
+  platformCode: string;
+  menuType: string;
+  fetched: number;
+  stored: number;
+  updated: number;
+  skipped: number;
+  message?: string;
+}
+
+export interface YouTubePostStatistics {
+  postId: string;
+  externalPostId?: string;
+  title: string;
+  description?: string;
+  thumbnailUrl?: string;
+  permalink?: string;
+  viewCount: number;
+  likeCount: number;
+  commentCount: number;
+  shareCount: number;
+  publishedAt?: string;
+  refreshedAt?: string;
+}

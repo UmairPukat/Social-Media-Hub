@@ -22,7 +22,18 @@ public class ConnectionController : ProcessConnectionControllerBase
 [ApiController]
 public class PostsController : ProcessPostsControllerBase
 {
-    public PostsController(IPostService postService) : base(postService) { }
+    public PostsController(IPostService postService, IYouTubeSyncService youTubeSync)
+        : base(postService, youTubeSync) { }
+
+    protected override string MenuType => ProcessModules.AppConnections.MenuType;
+}
+
+[Authorize]
+[Route(ProcessModules.AppConnections.ApiRoute)]
+[ApiController]
+public class YouTubeSyncController : ProcessYouTubeSyncControllerBase
+{
+    public YouTubeSyncController(IYouTubeSyncService youTubeSync) : base(youTubeSync) { }
 
     protected override string MenuType => ProcessModules.AppConnections.MenuType;
 }

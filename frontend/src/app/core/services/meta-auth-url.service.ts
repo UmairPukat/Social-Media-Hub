@@ -4,7 +4,7 @@ import { environment } from '../../../environments/environment';
 import { MENU_TYPES, MenuType } from '../models/api.models';
 import { PROCESS_MODULES } from '../config/process.config';
 
-export type MetaPlatform = 'facebook' | 'instagram' | 'instagram_login' | 'whatsapp';
+export type MetaPlatform = 'facebook' | 'instagram' | 'instagram_login' | 'whatsapp' | 'youtube';
 
 export const META_OAUTH_MESSAGE = 'smh-meta-oauth';
 

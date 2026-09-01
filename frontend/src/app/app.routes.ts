@@ -17,6 +17,10 @@ const processChildren = (connectComponent: () => Promise<{ default?: never } & i
     loadComponent: () => import('./features/inbox/inbox.component').then(m => m.InboxComponent)
   },
   {
+    path: 'sync',
+    loadComponent: () => import('./features/platform-sync/platform-sync.component').then(m => m.PlatformSyncComponent)
+  },
+  {
     path: 'analytics',
     loadComponent: () => import('./features/analytics/analytics.component').then(m => m.AnalyticsComponent)
   },
