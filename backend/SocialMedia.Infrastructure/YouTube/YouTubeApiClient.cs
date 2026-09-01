@@ -4,7 +4,7 @@ using Microsoft.Extensions.Logging;
 
 namespace SocialMedia.Infrastructure.YouTube;
 
-internal sealed class YouTubeApiClient
+public sealed class YouTubeApiClient
 {
     private readonly HttpClient _http;
     private readonly ILogger<YouTubeApiClient> _logger;

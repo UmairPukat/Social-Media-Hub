@@ -9,6 +9,7 @@ export const environment = {
     facebook: { appId: '1106538287780623' },
     instagram: { appId: '1106538287780623' },
     instagram_login: { appId: '1038582391966862' },
-    whatsapp: { appId: 'YOUR_WHATSAPP_APP_ID' }
+    whatsapp: { appId: 'YOUR_WHATSAPP_APP_ID' },
+    youtube: { appId: 'YOUR_YOUTUBE_CLIENT_ID' }
   }
 };

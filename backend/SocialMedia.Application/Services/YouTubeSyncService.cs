@@ -131,7 +131,7 @@ public class YouTubeSyncService : IYouTubeSyncService
             account.LastSyncAt = DateTime.UtcNow;
             store.UpdateSocialAccount(account);
             await store.SaveChangesAsync(cancellationToken);
-            return ApiResponse<YouTubeSyncResultDto>.Ok(result, result.Message);
+            return ApiResponse<YouTubeSyncResultDto>.Ok(result, result.Message ?? "Success");
         }
         catch (Exception ex)
         {
