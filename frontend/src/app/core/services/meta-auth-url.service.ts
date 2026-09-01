@@ -38,8 +38,8 @@ export class MetaAuthUrlService {
   }
 
   /**
-   * Opens Meta Login in a popup. Resolves when the backend Callback page posts
-   * a success/error message, or rejects if the window closes early.
+   * Opens OAuth in a popup. Resolves when the backend callback posts a result
+   * via postMessage / BroadcastChannel, or rejects on timeout.
    */
   openPopup(platform: MetaPlatform, menuType: MenuType = MENU_TYPES.integration): Promise<{ ok: boolean; message?: string }> {
     const width = 600;
@@ -56,10 +56,16 @@ export class MetaAuthUrlService {
 
     return new Promise((resolve, reject) => {
       let settled = false;
+      let broadcast: BroadcastChannel | undefined;
 
       const cleanup = () => {
         window.removeEventListener('message', onMessage);
-        window.clearInterval(timer);
+        window.clearTimeout(timeout);
+        try {
+          broadcast?.close();
+        } catch {
+          // ignore
+        }
       };
 
       const settle = (fn: () => void) => {
@@ -69,24 +75,34 @@ export class MetaAuthUrlService {
         fn();
       };
 
-      const onMessage = (event: MessageEvent) => {
-        if (event.origin !== this.backendOrigin) return;
-        const data = event.data;
-        if (!data || data.type !== META_OAUTH_MESSAGE) return;
-        // Error results may not carry a platform (e.g. invalid state) — accept those too.
-        if (data.platform && data.platform !== platform) return;
-        if (data.ok) settle(() => resolve({ ok: true }));
-        else settle(() => resolve({ ok: false, message: data.message || 'Connection failed' }));
+      const handlePayload = (data: unknown) => {
+        if (!data || typeof data !== 'object') return;
+        const payload = data as { type?: string; platform?: string; ok?: boolean; message?: string };
+        if (payload.type !== META_OAUTH_MESSAGE) return;
+        if (payload.platform && payload.platform !== platform) return;
+        if (payload.ok) settle(() => resolve({ ok: true }));
+        else settle(() => resolve({ ok: false, message: payload.message || 'Connection failed' }));
       };
 
-      const timer = window.setInterval(() => {
-        if (popup.closed) {
-          // Give the callback a moment to postMessage before treating close as cancel.
-          window.setTimeout(() => {
-            settle(() => reject(new Error('Login window was closed before completing.')));
-          }, 400);
+      const onMessage = (event: MessageEvent) => {
+        if (event.origin !== this.backendOrigin) return;
+        handlePayload(event.data);
+      };
+
+      if (typeof BroadcastChannel !== 'undefined') {
+        try {
+          broadcast = new BroadcastChannel(META_OAUTH_MESSAGE);
+          broadcast.onmessage = (event: MessageEvent) => handlePayload(event.data);
+        } catch {
+          broadcast = undefined;
         }
-      }, 500);
+      }
+
+      // Do not poll popup.closed — Google OAuth sets COOP and blocks cross-origin opener access.
+      const timeout = window.setTimeout(() => {
+        settle(() =>
+          reject(new Error('Login timed out. Close the popup and try connecting again.')));
+      }, 10 * 60 * 1000);
 
       window.addEventListener('message', onMessage);
 
@@ -104,16 +120,24 @@ export class MetaAuthUrlService {
         .subscribe({
           next: (res) => {
             if (!res.success || !res.data?.authUrl) {
-              popup.close();
-              settle(() => resolve({ ok: false, message: res.message || 'Could not start Meta login.' }));
+              try {
+                popup.close();
+              } catch {
+                // ignore COOP-blocked close
+              }
+              settle(() => resolve({ ok: false, message: res.message || 'Could not start OAuth login.' }));
               return;
             }
             popup.location.href = res.data.authUrl;
           },
           error: (err: { error?: { message?: string } }) => {
-            popup.close();
+            try {
+              popup.close();
+            } catch {
+              // ignore COOP-blocked close
+            }
             settle(() =>
-              resolve({ ok: false, message: err?.error?.message || 'Could not start Meta login.' }));
+              resolve({ ok: false, message: err?.error?.message || 'Could not start OAuth login.' }));
           }
         });
     });

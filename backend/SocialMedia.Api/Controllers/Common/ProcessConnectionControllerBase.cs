@@ -60,6 +60,7 @@ public abstract class ProcessConnectionControllerBase : ControllerBase
         [FromQuery(Name = "error_description")] string? errorDescription = null)
     {
         var result = await _integrationService.CompleteMetaRedirectAsync(code, state, errorDescription ?? error);
+        Response.Headers["Cross-Origin-Opener-Policy"] = "same-origin-allow-popups";
         return OAuthPopupHtmlBuilder.AsHtml(result);
     }
 
