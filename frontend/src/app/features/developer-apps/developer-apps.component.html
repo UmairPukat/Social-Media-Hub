@@ -151,7 +151,7 @@
           <h2 id="config-title">App configuration</h2>
           <p class="picker-lede">
             @if (isYouTubePlatform(configPlatformCode())) {
-              Google OAuth credentials for Developer Apps. Use the Developer Apps callback URL below in Google Cloud Console.
+              Google OAuth credentials for Developer Apps.
             } @else if (isWhatsAppPlatform(configPlatformCode())) {
               Meta app credentials and WhatsApp routing for Developer Apps.
             } @else {
@@ -198,11 +198,6 @@
           <mat-form-field appearance="outline">
             <mat-label>Redirect URI (Developer Apps)</mat-label>
             <input matInput [ngModel]="moduleRedirectUri" name="redirectUri" readonly />
-            @if (isYouTubePlatform(configPlatformCode())) {
-              <mat-hint>
-                Add this exact URL in Google Cloud Console → Credentials → OAuth client → Authorized redirect URIs.
-              </mat-hint>
-            }
           </mat-form-field>
 
           <mat-form-field appearance="outline">
@@ -223,9 +218,6 @@
           <mat-form-field appearance="outline" class="full">
             <mat-label>Scopes</mat-label>
             <textarea matInput rows="3" [ngModel]="configForm().scopes" name="scopes" (ngModelChange)="updateConfigField('scopes', $event)"></textarea>
-            @if (isYouTubePlatform(configPlatformCode())) {
-              <mat-hint>Google OAuth scopes must be space-separated (not comma-separated).</mat-hint>
-            }
           </mat-form-field>
 
           @if (usesMetaWebhooks(configPlatformCode())) {
@@ -235,13 +227,15 @@
             </mat-form-field>
           }
 
-          <mat-form-field appearance="outline">
-            <mat-label>Webhook verify token</mat-label>
-            <input matInput [ngModel]="configForm().webhookVerifyToken" name="webhookVerifyToken" (ngModelChange)="updateConfigField('webhookVerifyToken', $event)" />
-            @if (isWhatsAppPlatform(configPlatformCode())) {
-              <mat-hint>Must match the verify token configured in Meta for this webhook URL.</mat-hint>
-            }
-          </mat-form-field>
+          @if (!isYouTubePlatform(configPlatformCode())) {
+            <mat-form-field appearance="outline">
+              <mat-label>Webhook verify token</mat-label>
+              <input matInput [ngModel]="configForm().webhookVerifyToken" name="webhookVerifyToken" (ngModelChange)="updateConfigField('webhookVerifyToken', $event)" />
+              @if (isWhatsAppPlatform(configPlatformCode())) {
+                <mat-hint>Must match the verify token configured in Meta for this webhook URL.</mat-hint>
+              }
+            </mat-form-field>
+          }
 
           @if (isWhatsAppPlatform(configPlatformCode())) {
             <mat-form-field appearance="outline">
