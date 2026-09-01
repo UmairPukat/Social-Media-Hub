@@ -154,6 +154,8 @@ public class IntegrationService : IIntegrationService
         var version = string.IsNullOrWhiteSpace(config.GraphApiVersion) ? "v21.0" : config.GraphApiVersion.Trim();
         var redirectUri = ResolveProcessRedirectUri(platformCode, menuType, config.RedirectUri);
         var scopes = string.IsNullOrWhiteSpace(config.Scopes) ? PlatformScopes[platformCode] : config.Scopes!;
+        if (platformCode == "youtube")
+            scopes = PlatformCatalog.NormalizeYouTubeScopes(scopes);
         var authBase = ResolveAuthBase(platformCode, config.AuthUrl, version);
 
         if (string.IsNullOrWhiteSpace(appId) || appId.StartsWith("YOUR_", StringComparison.OrdinalIgnoreCase))
@@ -172,14 +174,7 @@ public class IntegrationService : IIntegrationService
                                  + $"&state={Uri.EscapeDataString(state)}"
                                  + $"&scope={Uri.EscapeDataString(scopes)}"
                                  + "&response_type=code",
-            "youtube" => authBase
-                         + $"?client_id={Uri.EscapeDataString(appId)}"
-                         + $"&redirect_uri={Uri.EscapeDataString(redirectUri)}"
-                         + $"&state={Uri.EscapeDataString(state)}"
-                         + $"&scope={Uri.EscapeDataString(scopes)}"
-                         + "&response_type=code"
-                         + "&access_type=offline"
-                         + "&prompt=consent",
+            "youtube" => BuildYouTubeAuthorizationUrl(authBase, appId, redirectUri, state, scopes),
             _ => authBase
                  + $"?client_id={Uri.EscapeDataString(appId)}"
                  + $"&redirect_uri={Uri.EscapeDataString(redirectUri)}"
@@ -449,6 +444,24 @@ public class IntegrationService : IIntegrationService
         };
 
         return (token, me);
+    }
+
+    private static string BuildYouTubeAuthorizationUrl(
+        string authBase,
+        string clientId,
+        string redirectUri,
+        string state,
+        string scopes)
+    {
+        var scopeParam = PlatformCatalog.NormalizeYouTubeScopes(scopes);
+        return authBase
+               + $"?client_id={Uri.EscapeDataString(clientId)}"
+               + $"&redirect_uri={Uri.EscapeDataString(redirectUri)}"
+               + $"&state={Uri.EscapeDataString(state)}"
+               + $"&scope={Uri.EscapeDataString(scopeParam)}"
+               + "&response_type=code"
+               + "&access_type=offline"
+               + "&prompt=consent";
     }
 
     private static string FirstNonEmpty(params string?[] values)

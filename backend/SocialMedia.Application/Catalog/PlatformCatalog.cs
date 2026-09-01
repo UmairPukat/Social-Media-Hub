@@ -235,10 +235,31 @@ public static class PlatformCatalog
     public static string DefaultScopes(string platformCode)
         => platformCode.ToLowerInvariant() switch
         {
-            "youtube" =>
-                "https://www.googleapis.com/auth/youtube.readonly https://www.googleapis.com/auth/youtube.force-ssl",
+            "youtube" => NormalizeYouTubeScopes(null),
             _ => string.Empty
         };
+
+    public static readonly string[] YouTubeOAuthScopes =
+    [
+        "https://www.googleapis.com/auth/youtube.readonly",
+        "https://www.googleapis.com/auth/youtube.force-ssl",
+        "https://www.googleapis.com/auth/yt-analytics.readonly"
+    ];
+
+    /// <summary>
+    /// Google OAuth requires multiple scopes separated by spaces, never commas.
+    /// Accepts comma- or whitespace-separated input and normalizes for the authorize URL.
+    /// </summary>
+    public static string NormalizeYouTubeScopes(string? scopes)
+    {
+        if (string.IsNullOrWhiteSpace(scopes))
+            return string.Join(' ', YouTubeOAuthScopes);
+
+        var tokens = scopes.Split([',', ' ', '\n', '\r', '\t'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        return tokens.Length == 0
+            ? string.Join(' ', YouTubeOAuthScopes)
+            : string.Join(' ', tokens);
+    }
 
     private static Guid NewId(int n) =>
         Guid.Parse($"aaaaaaaa-bbbb-cccc-dddd-{n:D12}");

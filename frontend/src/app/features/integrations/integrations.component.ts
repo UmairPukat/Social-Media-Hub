@@ -19,6 +19,7 @@ import {
 } from '../../core/models/api.models';
 import { PROCESS_MODULES } from '../../core/config/process.config';
 import { defaultOAuthRedirectUri } from '../../core/config/oauth-redirect.config';
+import { formatYouTubeOAuthScopes, youtubeDefaultScopeString } from '../../core/config/oauth-scopes.config';
 
 export interface IntegrationCategoryGroup {
   id: string;
@@ -69,8 +70,7 @@ const DEFAULT_BASE_URLS: Record<string, string> = {
 };
 
 const DEFAULT_SCOPES: Record<string, string> = {
-  youtube:
-    'https://www.googleapis.com/auth/youtube.readonly https://www.googleapis.com/auth/youtube.force-ssl'
+  youtube: youtubeDefaultScopeString()
 };
 
 @Component({
@@ -268,7 +268,12 @@ export class IntegrationsComponent implements OnInit {
     this.configSaving.set(true);
     this.configError.set('');
 
-    this.processApi.saveConfig(this.menuType, { ...form, platformCode: code, menuType: this.menuType }).subscribe({
+    this.processApi.saveConfig(this.menuType, {
+      ...form,
+      platformCode: code,
+      menuType: this.menuType,
+      scopes: this.isYouTubePlatform(code) ? formatYouTubeOAuthScopes(form.scopes) : form.scopes
+    }).subscribe({
       next: (res) => {
         this.configSaving.set(false);
         if (!res.success) {
@@ -607,7 +612,11 @@ export class IntegrationsComponent implements OnInit {
       redirectUri: config.redirectUri || defaultOAuthRedirectUri(this.menuType),
       authUrl: config.authUrl,
       baseUrl: config.baseUrl,
-      scopes: config.scopes,
+      scopes: config.scopes
+        ? this.isYouTubePlatform(config.platformCode)
+          ? formatYouTubeOAuthScopes(config.scopes)
+          : config.scopes
+        : DEFAULT_SCOPES[config.platformCode.toLowerCase()] || '',
       graphApiVersion: config.graphApiVersion,
       webhookVerifyToken: config.webhookVerifyToken,
       phoneNumberId: config.phoneNumberId,

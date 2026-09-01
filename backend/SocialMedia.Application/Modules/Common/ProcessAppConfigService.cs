@@ -279,7 +279,7 @@ public class ProcessAppConfigService : IProcessAppConfigService
         config.RedirectUri = NullIfEmpty(ResolveRedirectUri(menuType, code, request.RedirectUri));
         config.AuthUrl = ResolveStoredAuthUrl(code, NullIfEmpty(request.AuthUrl), version);
         config.BaseUrl = ResolveStoredBaseUrl(code, NullIfEmpty(request.BaseUrl));
-        config.Scopes = NullIfEmpty(request.Scopes) ?? DefaultScopes(code);
+        config.Scopes = NullIfEmpty(NormalizeStoredScopes(code, request.Scopes)) ?? DefaultScopes(code);
         config.GraphApiVersion = version;
         config.WebhookVerifyToken = NullIfEmpty(request.WebhookVerifyToken);
         config.PhoneNumberId = NullIfEmpty(request.PhoneNumberId);
@@ -299,7 +299,7 @@ public class ProcessAppConfigService : IProcessAppConfigService
         config.RedirectUri = NullIfEmpty(ResolveRedirectUri(menuType, code, request.RedirectUri));
         config.AuthUrl = ResolveStoredAuthUrl(code, NullIfEmpty(request.AuthUrl), version);
         config.BaseUrl = ResolveStoredBaseUrl(code, NullIfEmpty(request.BaseUrl));
-        config.Scopes = NullIfEmpty(request.Scopes) ?? DefaultScopes(code);
+        config.Scopes = NullIfEmpty(NormalizeStoredScopes(code, request.Scopes)) ?? DefaultScopes(code);
         config.GraphApiVersion = version;
         config.WebhookVerifyToken = NullIfEmpty(request.WebhookVerifyToken);
         config.PhoneNumberId = NullIfEmpty(request.PhoneNumberId);
@@ -319,7 +319,7 @@ public class ProcessAppConfigService : IProcessAppConfigService
         config.RedirectUri = NullIfEmpty(ResolveRedirectUri(menuType, code, request.RedirectUri));
         config.AuthUrl = ResolveStoredAuthUrl(code, NullIfEmpty(request.AuthUrl), version);
         config.BaseUrl = ResolveStoredBaseUrl(code, NullIfEmpty(request.BaseUrl));
-        config.Scopes = NullIfEmpty(request.Scopes) ?? DefaultScopes(code);
+        config.Scopes = NullIfEmpty(NormalizeStoredScopes(code, request.Scopes)) ?? DefaultScopes(code);
         config.GraphApiVersion = version;
         config.WebhookVerifyToken = NullIfEmpty(request.WebhookVerifyToken);
         config.PhoneNumberId = NullIfEmpty(request.PhoneNumberId);
@@ -414,6 +414,15 @@ public class ProcessAppConfigService : IProcessAppConfigService
         if (string.IsNullOrWhiteSpace(secret)) return string.Empty;
         if (secret.Length <= 8) return "••••••••";
         return $"{secret[..4]}…{secret[^4..]}";
+    }
+
+    private static string? NormalizeStoredScopes(string platformCode, string? scopes)
+    {
+        if (platformCode != "youtube")
+            return NullIfEmpty(scopes);
+
+        var normalized = PlatformCatalog.NormalizeYouTubeScopes(scopes);
+        return NullIfEmpty(normalized);
     }
 
     private static string DefaultScopes(string platformCode) => platformCode switch
