@@ -20,6 +20,7 @@ import {
 import { IntegrationCategoryGroup } from '../integrations/integrations.component';
 import { defaultOAuthRedirectUri, defaultWebhookRedirectUri } from '../../core/config/oauth-redirect.config';
 import { formatYouTubeOAuthScopes, youtubeDefaultScopeString } from '../../core/config/oauth-scopes.config';
+import { instagramAccountName, instagramDisplayName } from '../../core/utils/connection-details.util';
 
 const CATEGORY_META: Record<string, { accent: string; icon: string }> = {
   social: { accent: '#2563eb', icon: 'share' },
@@ -85,6 +86,8 @@ export class DeveloperAppsComponent implements OnInit {
   private readonly menuType = MENU_TYPES.developerApp;
   readonly moduleRedirectUri = defaultOAuthRedirectUri(MENU_TYPES.developerApp);
   readonly moduleWebhookUri = defaultWebhookRedirectUri(MENU_TYPES.developerApp);
+  readonly instagramAccountName = instagramAccountName;
+  readonly instagramDisplayName = instagramDisplayName;
 
   readonly cards = signal<PlatformCard[]>([]);
   readonly message = signal('');
@@ -239,21 +242,6 @@ export class DeveloperAppsComponent implements OnInit {
 
   isInstagramFbLoginPlatform(code: string | null | undefined): boolean {
     return (code || '').toLowerCase() === 'instagram';
-  }
-
-  instagramAccountName(info: ConnectionDetails): string {
-    if (info.instagramUsername) {
-      return info.instagramUsername.startsWith('@')
-        ? info.instagramUsername
-        : `@${info.instagramUsername}`;
-    }
-    const profile = info.profiles?.[0];
-    if (profile?.username) {
-      return profile.username.startsWith('@') ? profile.username : `@${profile.username}`;
-    }
-    if (profile?.name) return profile.name;
-    if (info.pageName) return info.pageName;
-    return '—';
   }
 
   readonly isInstagramLoginDetails = computed(() =>

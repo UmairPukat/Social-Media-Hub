@@ -400,16 +400,16 @@
               </div>
             } @else if (isInstagramLoginPlatform(info.platformCode)) {
               <div>
-                <dt>Instagram account name</dt>
+                <dt>Username</dt>
                 <dd>{{ instagramAccountName(info) }}</dd>
+              </div>
+              <div>
+                <dt>Display name</dt>
+                <dd>{{ instagramDisplayName(info) }}</dd>
               </div>
               <div>
                 <dt>Instagram account ID</dt>
                 <dd><code>{{ info.instagramId || '—' }}</code></dd>
-              </div>
-              <div>
-                <dt>Instagram login name</dt>
-                <dd>{{ info.accountName || '—' }}</dd>
               </div>
               <div>
                 <dt>Connected</dt>

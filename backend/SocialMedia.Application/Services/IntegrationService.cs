@@ -115,7 +115,7 @@ public class IntegrationService : IIntegrationService
                         SortOrder = def?.SortOrder ?? 9999,
                         CanConnect = def?.CanConnect ?? false,
                         IsConnected = account is not null && AccountHasToken(account),
-                        AccountName = account?.DisplayName,
+                        AccountName = ResolvePlatformCardAccountName(p.Code, account),
                         ConnectedAt = account?.ConnectedAt,
                         SupportsComments = def?.SupportsComments ?? false,
                         SupportsMessages = def?.SupportsMessages ?? false,
@@ -704,18 +704,24 @@ public class IntegrationService : IIntegrationService
         var requiresPageSelection = SupportsPageSelection(platformCode);
         if (!requiresPageSelection)
         {
-            var whatsAppIds = await ResolveWhatsAppRoutingIdsAsync(userId, platformCode, normalizedMenu, cancellationToken);
-            IReadOnlyList<SocialProfileDraft> drafts = platformCode switch
+            if (platformCode == "instagram_login")
             {
-                "instagram_login" => await _instagramService.DiscoverInstagramLoginProfilesAsync(accessToken, cancellationToken),
-                "whatsapp" => await _whatsAppService.DiscoverProfilesAsync(
-                    accessToken, whatsAppIds.PhoneNumberId, whatsAppIds.WabaId, cancellationToken),
-                "youtube" => await _youTubeService.DiscoverChannelsAsync(accessToken, cancellationToken),
-                _ => Array.Empty<SocialProfileDraft>()
-            };
+                await SyncInstagramLoginFromApiAsync(store, account, accessToken, cancellationToken);
+            }
+            else
+            {
+                var whatsAppIds = await ResolveWhatsAppRoutingIdsAsync(userId, platformCode, normalizedMenu, cancellationToken);
+                IReadOnlyList<SocialProfileDraft> drafts = platformCode switch
+                {
+                    "whatsapp" => await _whatsAppService.DiscoverProfilesAsync(
+                        accessToken, whatsAppIds.PhoneNumberId, whatsAppIds.WabaId, cancellationToken),
+                    "youtube" => await _youTubeService.DiscoverChannelsAsync(accessToken, cancellationToken),
+                    _ => Array.Empty<SocialProfileDraft>()
+                };
 
-            foreach (var draft in drafts)
-                await UpsertProfileAsync(store, account, draft, cancellationToken);
+                foreach (var draft in drafts)
+                    await UpsertProfileAsync(store, account, draft, cancellationToken);
+            }
 
             await QueueInitialSyncAsync(store, account, cancellationToken);
             await store.SaveChangesAsync(cancellationToken);
@@ -885,7 +891,24 @@ public class IntegrationService : IIntegrationService
             var effectiveToken = ResolveUserAccessToken(auth);
 
             var profiles = ProcessEntityNav.Profiles(account);
-            var profile = profiles.FirstOrDefault();
+
+            if (code == "instagram_login" && !string.IsNullOrWhiteSpace(effectiveToken))
+            {
+                try
+                {
+                    await SyncInstagramLoginFromApiAsync(store, account, effectiveToken, cancellationToken);
+                    await store.SaveChangesAsync(cancellationToken);
+                    profiles = await store.GetProfilesByAccountAsync(account.Id, cancellationToken);
+                }
+                catch
+                {
+                    // Fall back to stored profile rows if the live Instagram API is temporarily unavailable.
+                }
+            }
+
+            var profile = code == "instagram_login"
+                ? PickInstagramLoginProfile(profiles, account.ExternalAccountId)
+                : profiles.FirstOrDefault();
             var pageId = ResolveSelectedPageId(account, code);
             var isInstagram = code is "instagram" or "instagram_login";
 
@@ -894,7 +917,9 @@ public class IntegrationService : IIntegrationService
                 PlatformCode = platform.Code,
                 MenuType = normalizedMenu,
                 PlatformName = platform.Name,
-                AccountName = account.DisplayName,
+                AccountName = code == "instagram_login"
+                    ? (profile?.Name ?? account.DisplayName)
+                    : account.DisplayName,
                 Status = account.Status,
                 ConnectedAt = account.ConnectedAt,
                 LastSyncAt = account.LastSyncAt,
@@ -903,8 +928,12 @@ public class IntegrationService : IIntegrationService
                     ? (profile?.Name ?? account.DisplayName)
                     : (ReadJsonString(account.MetadataJson, "selectedPageName") ?? profile?.Name),
                 PageImage = profile?.ProfileImage,
-                InstagramId = isInstagram ? profile?.ExternalProfileId : null,
-                InstagramUsername = isInstagram ? profile?.Username : null,
+                InstagramId = isInstagram
+                    ? (profile?.ExternalProfileId ?? account.ExternalAccountId)
+                    : null,
+                InstagramUsername = isInstagram
+                    ? (profile?.Username ?? account.Username)
+                    : null,
                 AccessToken = string.IsNullOrWhiteSpace(effectiveToken) ? null : effectiveToken,
                 Profiles = profiles.Select(p => new SocialProfileDto
                 {
@@ -1110,6 +1139,110 @@ public class IntegrationService : IIntegrationService
     private static bool SupportsPageSelection(string platformCode) =>
         platformCode.Equals("facebook", StringComparison.OrdinalIgnoreCase) ||
         platformCode.Equals("instagram", StringComparison.OrdinalIgnoreCase);
+
+    private async Task SyncInstagramLoginFromApiAsync(
+        IProcessDataStore store,
+        SocialAccountEntityBase account,
+        string accessToken,
+        CancellationToken cancellationToken)
+    {
+        var drafts = await _instagramService.DiscoverInstagramLoginProfilesAsync(accessToken, cancellationToken);
+        var draft = drafts.FirstOrDefault();
+        if (draft is null)
+            return;
+
+        account.ExternalAccountId = draft.ExternalProfileId;
+        account.DisplayName = draft.Name ?? draft.Username ?? account.DisplayName;
+        account.UpdatedAt = DateTime.UtcNow;
+        store.UpdateSocialAccount(account);
+
+        await UpsertProfileAsync(store, account, draft, cancellationToken);
+        await RemoveStaleProfilesForDraftAsync(store, account, draft, cancellationToken);
+    }
+
+    private async Task RemoveStaleProfilesForDraftAsync(
+        IProcessDataStore store,
+        SocialAccountEntityBase account,
+        SocialProfileDraft connected,
+        CancellationToken cancellationToken)
+    {
+        var keepIds = new HashSet<string>(StringComparer.Ordinal) { connected.ExternalProfileId };
+        foreach (var alternateId in connected.AlternateExternalIds)
+        {
+            if (!string.IsNullOrWhiteSpace(alternateId))
+                keepIds.Add(alternateId);
+        }
+
+        var profiles = await store.GetProfilesByAccountAsync(account.Id, cancellationToken);
+        foreach (var profile in profiles)
+        {
+            if (!keepIds.Contains(profile.ExternalProfileId))
+                store.RemoveSocialProfile(profile);
+        }
+    }
+
+    private static SocialProfileEntityBase? PickInstagramLoginProfile(
+        IReadOnlyList<SocialProfileEntityBase> profiles,
+        string? externalAccountId)
+    {
+        if (!string.IsNullOrWhiteSpace(externalAccountId))
+        {
+            foreach (var profile in profiles)
+            {
+                if (profile.ExternalProfileId == externalAccountId || ProfileHasAlternateId(profile, externalAccountId))
+                    return profile;
+            }
+        }
+
+        return profiles.FirstOrDefault(p => p.ProfileType == ProfileType.InstagramLogin)
+               ?? profiles.FirstOrDefault();
+    }
+
+    private static bool ProfileHasAlternateId(SocialProfileEntityBase profile, string externalAccountId)
+    {
+        if (string.IsNullOrWhiteSpace(profile.MetadataJson))
+            return false;
+
+        try
+        {
+            using var doc = JsonDocument.Parse(profile.MetadataJson);
+            if (!doc.RootElement.TryGetProperty("alternateIds", out var alternateIds))
+                return false;
+
+            foreach (var alternateId in alternateIds.EnumerateArray())
+            {
+                if (string.Equals(alternateId.GetString(), externalAccountId, StringComparison.Ordinal))
+                    return true;
+            }
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+
+        return false;
+    }
+
+    private static string? ResolvePlatformCardAccountName(string platformCode, SocialAccountEntityBase? account)
+    {
+        if (account is null)
+            return null;
+
+        if (!platformCode.Equals("instagram_login", StringComparison.OrdinalIgnoreCase))
+            return account.DisplayName;
+
+        var profile = PickInstagramLoginProfile(ProcessEntityNav.Profiles(account), account.ExternalAccountId);
+        if (!string.IsNullOrWhiteSpace(profile?.Username))
+            return FormatInstagramUsername(profile.Username);
+
+        return account.DisplayName;
+    }
+
+    private static string FormatInstagramUsername(string username)
+    {
+        var trimmed = username.Trim();
+        return trimmed.StartsWith('@') ? trimmed : $"@{trimmed}";
+    }
 
     private async Task<SocialProfileEntityBase> UpsertProfileAsync(
         IProcessDataStore store,
@@ -1430,26 +1563,45 @@ public class IntegrationService : IIntegrationService
     private static SocialAccountDto MapAccount(
         SocialAccountEntityBase account,
         PlatformEntityBase platform,
-        string menuType) => new()
+        string menuType)
     {
-        Id = account.Id,
-        PlatformId = account.PlatformId,
-        PlatformCode = platform.Code,
-        MenuType = menuType,
-        PlatformName = platform.Name,
-        ExternalAccountId = account.ExternalAccountId,
-        DisplayName = account.DisplayName,
-        Username = account.Username,
-        Status = account.Status,
-        ConnectedAt = account.ConnectedAt,
-        LastSyncAt = account.LastSyncAt,
-        Profiles = ProcessEntityNav.Profiles(account).Select(p => new SocialProfileDto
+        var profiles = ProcessEntityNav.Profiles(account);
+        var displayName = platform.Code.Equals("instagram_login", StringComparison.OrdinalIgnoreCase)
+            ? ResolveInstagramLoginDisplayName(account, profiles)
+            : account.DisplayName;
+
+        return new SocialAccountDto
         {
-            Id = p.Id,
-            ExternalProfileId = p.ExternalProfileId,
-            ProfileType = p.ProfileType.ToString(),
-            Name = p.Name,
-            Username = p.Username
-        }).ToList()
-    };
+            Id = account.Id,
+            PlatformId = account.PlatformId,
+            PlatformCode = platform.Code,
+            MenuType = menuType,
+            PlatformName = platform.Name,
+            ExternalAccountId = account.ExternalAccountId,
+            DisplayName = displayName,
+            Username = account.Username,
+            Status = account.Status,
+            ConnectedAt = account.ConnectedAt,
+            LastSyncAt = account.LastSyncAt,
+            Profiles = profiles.Select(p => new SocialProfileDto
+            {
+                Id = p.Id,
+                ExternalProfileId = p.ExternalProfileId,
+                ProfileType = p.ProfileType.ToString(),
+                Name = p.Name,
+                Username = p.Username
+            }).ToList()
+        };
+    }
+
+    private static string ResolveInstagramLoginDisplayName(
+        SocialAccountEntityBase account,
+        IReadOnlyList<SocialProfileEntityBase> profiles)
+    {
+        var profile = PickInstagramLoginProfile(profiles, account.ExternalAccountId);
+        if (!string.IsNullOrWhiteSpace(profile?.Username))
+            return FormatInstagramUsername(profile.Username);
+
+        return account.DisplayName;
+    }
 }

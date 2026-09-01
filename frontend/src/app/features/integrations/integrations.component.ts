@@ -20,6 +20,7 @@ import {
 import { PROCESS_MODULES } from '../../core/config/process.config';
 import { defaultOAuthRedirectUri, defaultWebhookRedirectUri } from '../../core/config/oauth-redirect.config';
 import { formatYouTubeOAuthScopes, youtubeDefaultScopeString } from '../../core/config/oauth-scopes.config';
+import { instagramAccountName, instagramDisplayName } from '../../core/utils/connection-details.util';
 
 export interface IntegrationCategoryGroup {
   id: string;
@@ -94,6 +95,8 @@ export class IntegrationsComponent implements OnInit {
   private readonly menuType = MENU_TYPES.integration;
   readonly moduleRedirectUri = defaultOAuthRedirectUri(MENU_TYPES.integration);
   readonly moduleWebhookUri = defaultWebhookRedirectUri(MENU_TYPES.integration);
+  readonly instagramAccountName = instagramAccountName;
+  readonly instagramDisplayName = instagramDisplayName;
 
   readonly cards = signal<PlatformCard[]>([]);
   readonly message = signal('');
@@ -396,21 +399,6 @@ export class IntegrationsComponent implements OnInit {
   /** Instagram connected via Facebook Login (page picker), not Instagram Login API. */
   isInstagramFbLoginPlatform(code: string | null | undefined): boolean {
     return (code || '').toLowerCase() === 'instagram';
-  }
-
-  instagramAccountName(info: ConnectionDetails): string {
-    if (info.instagramUsername) {
-      return info.instagramUsername.startsWith('@')
-        ? info.instagramUsername
-        : `@${info.instagramUsername}`;
-    }
-    const profile = info.profiles?.[0];
-    if (profile?.username) {
-      return profile.username.startsWith('@') ? profile.username : `@${profile.username}`;
-    }
-    if (profile?.name) return profile.name;
-    if (info.pageName) return info.pageName;
-    return '—';
   }
 
   readonly isInstagramLoginDetails = computed(() =>
