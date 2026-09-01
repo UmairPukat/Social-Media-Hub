@@ -10,3 +10,13 @@ export function defaultOAuthRedirectUri(menuType: ProcessMenuType): string {
   const backendOrigin = apiUrl.replace(/\/api\/?$/i, '');
   return `${backendOrigin}${module.callbackPath}`;
 }
+
+/** Meta webhook URL for the active process module. */
+export function defaultWebhookRedirectUri(menuType: ProcessMenuType): string {
+  const module = PROCESS_MODULE_LIST.find((item) => item.id === menuType);
+  if (!module) return '';
+
+  const apiUrl = environment.apiUrl.replace(/\/+$/, '');
+  const backendOrigin = apiUrl.replace(/\/api\/?$/i, '');
+  return `${backendOrigin}${module.webhookPath}`;
+}

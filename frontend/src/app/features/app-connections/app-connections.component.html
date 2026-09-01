@@ -149,7 +149,13 @@
         <div>
           <p class="eyebrow">{{ configTitle() }}</p>
           <h2 id="config-title">App configuration</h2>
-          <p class="picker-lede">Meta app credentials used when connecting from App Connections.</p>
+          <p class="picker-lede">
+            @if (isYouTubePlatform(configPlatformCode())) {
+              Google OAuth credentials for App Connections. Use the App Connections callback URL below in Google Cloud Console.
+            } @else {
+              Meta app credentials used when connecting from App Connections.
+            }
+          </p>
         </div>
         <button type="button" class="picker-close" aria-label="Close" (click)="closeConfig()">
           <mat-icon>close</mat-icon>
@@ -188,10 +194,14 @@
           </mat-form-field>
 
           <mat-form-field appearance="outline">
-            <mat-label>Redirect URI</mat-label>
-            <input matInput [ngModel]="configForm().redirectUri" name="redirectUri" (ngModelChange)="updateConfigField('redirectUri', $event)" />
+            <mat-label>Redirect URI (App Connections)</mat-label>
+            <input matInput [ngModel]="moduleRedirectUri" name="redirectUri" readonly />
             @if (isYouTubePlatform(configPlatformCode())) {
-              <mat-hint>Add this exact URL under Google Cloud Console → APIs & Services → Credentials → OAuth client → Authorized redirect URIs.</mat-hint>
+              <mat-hint>
+                Add this exact URL in Google Cloud Console → Credentials → OAuth client → Authorized redirect URIs.
+              </mat-hint>
+            } @else {
+              <mat-hint>OAuth callback for the App Connections process module.</mat-hint>
             }
           </mat-form-field>
 

@@ -152,6 +152,10 @@
           <p class="picker-lede">
             @if (isYouTubePlatform(configPlatformCode())) {
               Google OAuth credentials for Developer Apps. Use the Developer Apps callback URL below in Google Cloud Console.
+            } @else if (isWhatsAppPlatform(configPlatformCode())) {
+              Meta app credentials and WhatsApp routing for Developer Apps. Save Phone number Id and webhook verify token, then register the callback and webhook URLs in Meta.
+            } @else if (usesMetaWebhooks(configPlatformCode())) {
+              Meta app credentials for Developer Apps. Register the OAuth callback and webhook URLs below in your Meta App Dashboard for comments and messages.
             } @else {
               Meta app credentials used when connecting from Developer Apps.
             }
@@ -230,18 +234,36 @@
             }
           </mat-form-field>
 
+          @if (usesMetaWebhooks(configPlatformCode())) {
+            <mat-form-field appearance="outline">
+              <mat-label>Webhook URL (Developer Apps)</mat-label>
+              <input matInput [ngModel]="moduleWebhookUri" name="webhookUrl" readonly />
+              @if (isWhatsAppPlatform(configPlatformCode())) {
+                <mat-hint>Meta → WhatsApp → Configuration. Subscribe to the messages field.</mat-hint>
+              } @else if (isInstagramLoginPlatform(configPlatformCode())) {
+                <mat-hint>Meta App Dashboard → Webhooks. Required for Instagram Login comments and DMs.</mat-hint>
+              } @else {
+                <mat-hint>Page webhooks are auto-subscribed on connect; use this URL for Instagram Login or manual setup.</mat-hint>
+              }
+            </mat-form-field>
+          }
+
           <mat-form-field appearance="outline">
             <mat-label>Webhook verify token</mat-label>
             <input matInput [ngModel]="configForm().webhookVerifyToken" name="webhookVerifyToken" (ngModelChange)="updateConfigField('webhookVerifyToken', $event)" />
+            @if (isWhatsAppPlatform(configPlatformCode())) {
+              <mat-hint>Must match the verify token configured in Meta for this webhook URL.</mat-hint>
+            }
           </mat-form-field>
 
           @if (isWhatsAppPlatform(configPlatformCode())) {
             <mat-form-field appearance="outline">
               <mat-label>Phone number Id</mat-label>
-              <input matInput [ngModel]="configForm().phoneNumberId" name="phoneNumberId" (ngModelChange)="updateConfigField('phoneNumberId', $event)" />
+              <input matInput required [ngModel]="configForm().phoneNumberId" name="phoneNumberId" (ngModelChange)="updateConfigField('phoneNumberId', $event)" />
+              <mat-hint>From Meta → WhatsApp → API Setup. Required before connecting.</mat-hint>
             </mat-form-field>
             <mat-form-field appearance="outline">
-              <mat-label>WABA Id</mat-label>
+              <mat-label>WABA Id (optional)</mat-label>
               <input matInput [ngModel]="configForm().wabaId" name="wabaId" (ngModelChange)="updateConfigField('wabaId', $event)" />
             </mat-form-field>
           }
@@ -266,17 +288,30 @@
         <div>
           <p class="eyebrow">{{ pickerTitle() }}</p>
           <h2 id="page-picker-title">Select a page</h2>
+          <p class="picker-lede">
+            @if (pickerPlatform() === 'instagram') {
+              Pick the Facebook Page whose Instagram Business account you want to manage.
+              Comments and messages sync for the page you choose.
+            } @else {
+              Pick the Facebook Page you want to manage. Posts, comments, and messages sync for this page.
+            }
+          </p>
         </div>
         <button type="button" class="picker-close" aria-label="Close" (click)="closePagePicker()">
           <mat-icon>close</mat-icon>
         </button>
       </header>
 
-      @if (pagesError()) { <p class="picker-error">{{ pagesError() }}</p> }
+      @if (pagesError()) {
+        <p class="picker-error">{{ pagesError() }}</p>
+      }
+
       @if (pagesLoading()) {
         <p class="picker-empty">Loading your pages…</p>
       } @else if (!pages().length) {
-        <p class="picker-empty">No pages returned. Reconnect and grant page access in Meta.</p>
+        <p class="picker-empty">
+          No Facebook Pages came back for this login. Make sure you granted page access in the Meta dialog, then reconnect.
+        </p>
       } @else {
         <div class="picker-table-wrap">
           <table class="picker-table">
@@ -285,16 +320,49 @@
                 <th scope="col" class="pick-col">Select</th>
                 <th scope="col">Facebook page</th>
                 <th scope="col">Page ID</th>
+                @if (pickerPlatform() === 'instagram') {
+                  <th scope="col">Instagram account</th>
+                }
               </tr>
             </thead>
             <tbody>
               @for (page of pages(); track page.pageId) {
-                <tr [class.picked]="isPageChecked(page)" [class.blocked]="!page.isEligible" (click)="togglePage(page)">
+                <tr
+                  [class.picked]="isPageChecked(page)"
+                  [class.blocked]="!page.isEligible"
+                  (click)="togglePage(page)">
                   <td class="pick-col">
-                    <input type="checkbox" [checked]="isPageChecked(page)" [disabled]="!page.isEligible" (click)="$event.stopPropagation()" (change)="togglePage(page)" />
+                    <input
+                      type="checkbox"
+                      [checked]="isPageChecked(page)"
+                      [disabled]="!page.isEligible"
+                      [attr.aria-label]="'Select ' + page.pageName"
+                      (click)="$event.stopPropagation()"
+                      (change)="togglePage(page)" />
                   </td>
-                  <td><strong>{{ page.pageName }}</strong></td>
+                  <td>
+                    <div class="page-cell">
+                      <strong>{{ page.pageName }}</strong>
+                      @if (page.isSelected) {
+                        <span class="tag">Currently connected</span>
+                      }
+                      @if (!page.isEligible) {
+                        <small>{{ page.ineligibleReason }}</small>
+                      }
+                    </div>
+                  </td>
                   <td><code>{{ page.pageId }}</code></td>
+                  @if (pickerPlatform() === 'instagram') {
+                    <td>
+                      @if (page.instagramUsername) {
+                        <span class="ig-handle">&#64;{{ page.instagramUsername }}</span>
+                      } @else if (page.instagramId) {
+                        <code>{{ page.instagramId }}</code>
+                      } @else {
+                        <span class="muted">Not linked</span>
+                      }
+                    </td>
+                  }
                 </tr>
               }
             </tbody>
@@ -303,6 +371,9 @@
       }
 
       <footer class="picker-foot">
+        <span class="picker-count">
+          {{ eligiblePages().length }} of {{ pages().length }} pages available
+        </span>
         <div class="picker-actions">
           <button mat-stroked-button type="button" (click)="closePagePicker()">Cancel</button>
           <button mat-flat-button color="primary" type="button" [disabled]="!selectedPageId() || savingPage()" (click)="confirmPage()">
@@ -324,8 +395,10 @@
                 Facebook page information
               } @else if (isInstagramFbLoginPlatform(info.platformCode)) {
                 Instagram &amp; Facebook connection
-              } @else if (isYouTubePlatform(info.platformCode)) {
+              }               @else if (isYouTubePlatform(info.platformCode)) {
                 YouTube channel information
+              } @else if (isWhatsAppPlatform(info.platformCode)) {
+                WhatsApp Business information
               } @else {
                 Instagram account information
               }
@@ -341,6 +414,8 @@
                 Instagram Business account linked to the Facebook Page used at connect time.
               } @else if (isYouTubePlatform(info.platformCode)) {
                 YouTube channel connected through Google OAuth.
+              } @else if (isWhatsAppPlatform(info.platformCode)) {
+                WhatsApp Business phone connected through Meta OAuth.
               } @else {
                 Instagram account connected with Instagram Login.
               }
@@ -377,6 +452,14 @@
                 <dd><code>{{ info.pageId || '—' }}</code></dd>
               </div>
               <div>
+                <dt>OAuth callback URL</dt>
+                <dd><code>{{ moduleRedirectUri }}</code></dd>
+              </div>
+              <div>
+                <dt>Webhook URL</dt>
+                <dd><code>{{ moduleWebhookUri }}</code></dd>
+              </div>
+              <div>
                 <dt>Connected</dt>
                 <dd>{{ info.connectedAt ? (info.connectedAt | date: 'medium') : '—' }}</dd>
               </div>
@@ -406,6 +489,14 @@
                 <dd><code>{{ info.pageId || '—' }}</code></dd>
               </div>
               <div>
+                <dt>OAuth callback URL</dt>
+                <dd><code>{{ moduleRedirectUri }}</code></dd>
+              </div>
+              <div>
+                <dt>Webhook URL</dt>
+                <dd><code>{{ moduleWebhookUri }}</code></dd>
+              </div>
+              <div>
                 <dt>Connected</dt>
                 <dd>{{ info.connectedAt ? (info.connectedAt | date: 'medium') : '—' }}</dd>
               </div>
@@ -423,6 +514,20 @@
                 <dd>{{ info.accountName || '—' }}</dd>
               </div>
               <div>
+                <dt>OAuth callback URL</dt>
+                <dd><code>{{ moduleRedirectUri }}</code></dd>
+              </div>
+              <div>
+                <dt>Webhook URL</dt>
+                <dd><code>{{ moduleWebhookUri }}</code></dd>
+              </div>
+              <div>
+                <dt>Webhook setup</dt>
+                <dd class="section-note">
+                  Configure in Meta App Dashboard → Webhooks using the URL above and your saved verify token. Subscribe to comments and messages.
+                </dd>
+              </div>
+              <div>
                 <dt>Connected</dt>
                 <dd>{{ info.connectedAt ? (info.connectedAt | date: 'medium') : '—' }}</dd>
               </div>
@@ -438,6 +543,43 @@
               <div>
                 <dt>Channel ID</dt>
                 <dd><code>{{ youtubeChannelId(info) }}</code></dd>
+              </div>
+              <div>
+                <dt>Connected</dt>
+                <dd>{{ info.connectedAt ? (info.connectedAt | date: 'medium') : '—' }}</dd>
+              </div>
+            } @else if (isWhatsAppPlatform(info.platformCode)) {
+              <div>
+                <dt>Meta account</dt>
+                <dd>{{ info.accountName || '—' }}</dd>
+              </div>
+              <div>
+                <dt>Phone number Id</dt>
+                <dd><code>{{ info.pageId || '—' }}</code></dd>
+              </div>
+              <div>
+                <dt>Display name</dt>
+                <dd>{{ info.pageName || 'WhatsApp Business' }}</dd>
+              </div>
+              @if (info.whatsAppWabaId) {
+                <div>
+                  <dt>WABA Id</dt>
+                  <dd><code>{{ info.whatsAppWabaId }}</code></dd>
+                </div>
+              }
+              <div>
+                <dt>OAuth callback URL</dt>
+                <dd><code>{{ moduleRedirectUri }}</code></dd>
+              </div>
+              <div>
+                <dt>Webhook URL</dt>
+                <dd><code>{{ moduleWebhookUri }}</code></dd>
+              </div>
+              <div>
+                <dt>Webhook setup</dt>
+                <dd class="section-note">
+                  In Meta App Dashboard → WhatsApp → Configuration, set the callback URL above and the verify token from app configuration. Subscribe to the <strong>messages</strong> field.
+                </dd>
               </div>
               <div>
                 <dt>Connected</dt>
@@ -471,7 +613,7 @@
               </div>
             } @else if (info.webhookError) {
               <div class="token-row">
-                <dt>{{ tokenLabel(info.platformCode) }}</dt>
+                <dt>{{ isWhatsAppPlatform(info.platformCode) ? 'Webhook setup' : tokenLabel(info.platformCode) }}</dt>
                 <dd class="section-note">{{ info.webhookError }}</dd>
               </div>
             }

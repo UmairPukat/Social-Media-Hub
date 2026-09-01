@@ -155,6 +155,9 @@ public class ConnectionDetailsDto
     /// <summary>Why the live subscription check failed, when it did.</summary>
     public string? WebhookError { get; set; }
 
+    /// <summary>WhatsApp Business Account ID from saved app configuration.</summary>
+    public string? WhatsAppWabaId { get; set; }
+
     public IReadOnlyList<SocialProfileDto> Profiles { get; set; } = Array.Empty<SocialProfileDto>();
 }
 

@@ -133,6 +133,7 @@ export interface ConnectionDetails {
   webhookSubscribed: boolean;
   subscribedFields: string[];
   webhookError?: string;
+  whatsAppWabaId?: string;
   profiles: SocialProfile[];
   menuType?: string;
 }

@@ -65,6 +65,10 @@ public class ProcessAppConfigService : IProcessAppConfigService
             if (string.IsNullOrWhiteSpace(request.ClientId))
                 return ApiResponse<ProcessAppConfigDto>.Fail("Client Id is required.");
 
+            var whatsAppValidation = ValidateWhatsAppConfig(code, request);
+            if (whatsAppValidation is not null)
+                return whatsAppValidation;
+
             var normalizedMenu = MenuTypes.Normalize(request.MenuType);
             var store = _processData.ForMenu(normalizedMenu);
             var platform = await store.GetPlatformByCodeAsync(code, cancellationToken);
@@ -450,5 +454,21 @@ public class ProcessAppConfigService : IProcessAppConfigService
             return PlatformCatalog.DefaultBaseUrl(platformCode);
 
         return storedBaseUrl ?? PlatformCatalog.DefaultBaseUrl(platformCode);
+    }
+
+    private static ApiResponse<ProcessAppConfigDto>? ValidateWhatsAppConfig(
+        string platformCode,
+        SaveProcessAppConfigRequest request)
+    {
+        if (platformCode != "whatsapp")
+            return null;
+
+        if (string.IsNullOrWhiteSpace(request.PhoneNumberId))
+            return ApiResponse<ProcessAppConfigDto>.Fail("Phone number Id is required for WhatsApp.");
+
+        if (string.IsNullOrWhiteSpace(request.WebhookVerifyToken))
+            return ApiResponse<ProcessAppConfigDto>.Fail("Webhook verify token is required for WhatsApp.");
+
+        return null;
     }
 }

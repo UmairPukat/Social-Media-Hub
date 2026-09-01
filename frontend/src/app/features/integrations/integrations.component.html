@@ -456,7 +456,15 @@
         <div>
           <p class="eyebrow">{{ configTitle() }}</p>
           <h2 id="config-title">Integration configuration</h2>
-          <p class="picker-lede">Meta app credentials for this Integrations process. Save Client ID, Secret, and Webhook Verify Token before connecting.</p>
+          <p class="picker-lede">
+            @if (isYouTubePlatform(configPlatformCode())) {
+              Google OAuth credentials for Integrations. Use the Integrations callback URL below in Google Cloud Console.
+            } @else if (usesMetaWebhooks(configPlatformCode())) {
+              Meta app credentials for Integrations. Register the OAuth callback and webhook URLs below in your Meta App Dashboard for comments and messages.
+            } @else {
+              Meta app credentials for this Integrations process. Save Client ID, Secret, and Webhook Verify Token before connecting.
+            }
+          </p>
         </div>
         <button type="button" class="picker-close" aria-label="Close" (click)="closeConfig()">
           <mat-icon>close</mat-icon>
@@ -495,10 +503,14 @@
           </mat-form-field>
 
           <mat-form-field appearance="outline">
-            <mat-label>Redirect URI</mat-label>
-            <input matInput [ngModel]="configForm().redirectUri" name="redirectUri" (ngModelChange)="updateConfigField('redirectUri', $event)" />
+            <mat-label>Redirect URI (Integrations)</mat-label>
+            <input matInput [ngModel]="moduleRedirectUri" name="redirectUri" readonly />
             @if (isYouTubePlatform(configPlatformCode())) {
-              <mat-hint>Add this exact URL under Google Cloud Console → APIs & Services → Credentials → OAuth client → Authorized redirect URIs.</mat-hint>
+              <mat-hint>
+                Add this exact URL in Google Cloud Console → Credentials → OAuth client → Authorized redirect URIs.
+              </mat-hint>
+            } @else {
+              <mat-hint>OAuth callback for the Integrations process module.</mat-hint>
             }
           </mat-form-field>
 
@@ -526,6 +538,20 @@
               <mat-hint>Comma-separated for Meta platforms.</mat-hint>
             }
           </mat-form-field>
+
+          @if (usesMetaWebhooks(configPlatformCode())) {
+            <mat-form-field appearance="outline">
+              <mat-label>Webhook URL (Integrations)</mat-label>
+              <input matInput [ngModel]="moduleWebhookUri" name="webhookUrl" readonly />
+              @if (isWhatsAppPlatform(configPlatformCode())) {
+                <mat-hint>Meta → WhatsApp → Configuration. Subscribe to the messages field.</mat-hint>
+              } @else if (isInstagramLoginPlatform(configPlatformCode())) {
+                <mat-hint>Meta App Dashboard → Webhooks. Required for Instagram Login comments and DMs.</mat-hint>
+              } @else {
+                <mat-hint>Page webhooks are auto-subscribed on connect; use this URL for Instagram Login or manual setup.</mat-hint>
+              }
+            </mat-form-field>
+          }
 
           <mat-form-field appearance="outline">
             <mat-label>Webhook verify token</mat-label>

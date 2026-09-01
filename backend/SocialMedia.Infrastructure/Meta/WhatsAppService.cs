@@ -1,7 +1,9 @@
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using SocialMedia.Application.DTOs.Inbox;
 using SocialMedia.Application.Interfaces;
+using SocialMedia.Application.Meta;
 using SocialMedia.Application.Settings;
 using SocialMedia.Domain.Enums;
 using SocialMedia.Domain.Modules.Common.Entities;
@@ -16,6 +18,7 @@ public class WhatsAppService : IWhatsAppService
     private readonly MetaGraphClient _graph;
     private readonly WhatsAppSettings _settings;
     private readonly IProcessDataStoreFactory _processData;
+    private readonly IInboxRealtimeNotifier _inboxRealtime;
     private IProcessDataStore? _store;
     private string _menuType = string.Empty;
     private readonly ILogger<WhatsAppService> _logger;
@@ -24,11 +27,13 @@ public class WhatsAppService : IWhatsAppService
         MetaGraphClient graph,
         IOptions<MetaSettings> options,
         IProcessDataStoreFactory processData,
+        IInboxRealtimeNotifier inboxRealtime,
         ILogger<WhatsAppService> logger)
     {
         _graph = graph;
         _settings = options.Value.WhatsApp;
         _processData = processData;
+        _inboxRealtime = inboxRealtime;
         _logger = logger;
     }
 
@@ -198,6 +203,7 @@ public class WhatsAppService : IWhatsAppService
                         if (string.IsNullOrWhiteSpace(id)) continue;
 
                         var conversation = await _store.GetConversationByProfileAndCustomerAsync(profile.Id, from ?? id, cancellationToken);
+                        var isNewConversation = conversation is null;
                         if (conversation is null)
                         {
                             conversation = _store.NewConversation();
@@ -218,6 +224,7 @@ public class WhatsAppService : IWhatsAppService
                             _store.UpdateConversation(conversation);
                         }
 
+                        var receivedAt = DateTime.UtcNow;
                         var row = _store.NewMessage();
                         row.ConversationId = conversation.Id;
                         row.ExternalMessageId = id;
@@ -226,14 +233,36 @@ public class WhatsAppService : IWhatsAppService
                         row.MessageType = MessageContentType.Text;
                         row.Body = text;
                         row.Status = MessageDeliveryStatus.Delivered;
-                        row.PlatformCreatedAt = DateTime.UtcNow;
+                        row.PlatformCreatedAt = receivedAt;
                         await _store.AddMessageAsync(row, cancellationToken);
+
+                        if (!isNewConversation)
+                            _store.UpdateConversation(conversation);
+
+                        await _store.SaveChangesAsync(cancellationToken);
                         result.Handled++;
+
+                        var inboxItem = new InboxItemDto
+                        {
+                            Id = row.Id,
+                            ItemKind = "message",
+                            PlatformCode = "whatsapp",
+                            ExternalId = row.ExternalMessageId,
+                            AuthorName = conversation.CustomerName ?? from ?? "WhatsApp user",
+                            AuthorId = from,
+                            Content = text,
+                            IsHidden = false,
+                            IsRead = false,
+                            IsOutgoing = false,
+                            ConversationId = conversation.Id,
+                            ReceivedAt = receivedAt
+                        };
+                        InboxRoutingHelper.Apply(inboxItem, profile, account, _menuType);
+                        await _inboxRealtime.NotifyInboxItemAsync(account.UserId, inboxItem, cancellationToken);
                     }
                 }
             }
 
-            await _store.SaveChangesAsync(cancellationToken);
             return result;
         }
         catch (Exception ex)

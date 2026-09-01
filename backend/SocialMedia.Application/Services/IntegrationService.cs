@@ -150,6 +150,9 @@ public class IntegrationService : IIntegrationService
         if (config is null)
             return ApiResponse<BeginOAuthResponse>.Fail("Save this platform's app configuration before connecting.");
 
+        if (platformCode == "whatsapp" && string.IsNullOrWhiteSpace(config.PhoneNumberId))
+            return ApiResponse<BeginOAuthResponse>.Fail("Configure Phone number Id in app settings before connecting WhatsApp.");
+
         var appId = config.ClientId.Trim();
         var version = string.IsNullOrWhiteSpace(config.GraphApiVersion) ? "v21.0" : config.GraphApiVersion.Trim();
         var redirectUri = ResolveProcessRedirectUri(platformCode, menuType, config.RedirectUri);
@@ -930,10 +933,25 @@ public class IntegrationService : IIntegrationService
                 }
             }
 
+            if (code == "whatsapp")
+            {
+                var phoneProfile = profiles.FirstOrDefault(p => p.ProfileType == ProfileType.WhatsAppPhone)
+                    ?? profiles.FirstOrDefault();
+                if (phoneProfile is not null)
+                {
+                    details.PageId = phoneProfile.ExternalProfileId;
+                    details.PageName = phoneProfile.Name ?? "WhatsApp Business";
+                }
+
+                var appConfig = await LoadStoredAppConfigAsync(userId, code, normalizedMenu, cancellationToken);
+                details.WhatsAppWabaId = appConfig?.WabaId;
+            }
+
             if (string.IsNullOrWhiteSpace(effectiveToken))
             {
-                details.WebhookError =
-                    "No access token is stored for this connection. Disconnect Instagram Login, then connect again to refresh the token.";
+                details.WebhookError = code == "whatsapp"
+                    ? "No access token is stored for this connection. Disconnect WhatsApp, then connect again to refresh the token."
+                    : "No access token is stored for this connection. Disconnect Instagram Login, then connect again to refresh the token.";
             }
             else
             {

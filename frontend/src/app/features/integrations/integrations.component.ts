@@ -18,7 +18,7 @@ import {
   SaveAppConnectionConfigRequest
 } from '../../core/models/api.models';
 import { PROCESS_MODULES } from '../../core/config/process.config';
-import { defaultOAuthRedirectUri } from '../../core/config/oauth-redirect.config';
+import { defaultOAuthRedirectUri, defaultWebhookRedirectUri } from '../../core/config/oauth-redirect.config';
 import { formatYouTubeOAuthScopes, youtubeDefaultScopeString } from '../../core/config/oauth-scopes.config';
 
 export interface IntegrationCategoryGroup {
@@ -92,6 +92,8 @@ export class IntegrationsComponent implements OnInit {
   private readonly processApi = inject(ProcessApiService);
   private readonly metaAuth = inject(MetaAuthUrlService);
   private readonly menuType = MENU_TYPES.integration;
+  readonly moduleRedirectUri = defaultOAuthRedirectUri(MENU_TYPES.integration);
+  readonly moduleWebhookUri = defaultWebhookRedirectUri(MENU_TYPES.integration);
 
   readonly cards = signal<PlatformCard[]>([]);
   readonly message = signal('');
@@ -196,6 +198,14 @@ export class IntegrationsComponent implements OnInit {
     return (code || '').toLowerCase() === 'whatsapp';
   }
 
+  usesMetaWebhooks(code: string | null | undefined): boolean {
+    const value = (code || '').toLowerCase();
+    return value === 'facebook'
+      || value === 'instagram'
+      || value === 'instagram_login'
+      || value === 'whatsapp';
+  }
+
   isYouTubePlatform(code: string | null | undefined): boolean {
     return (code || '').toLowerCase() === 'youtube';
   }
@@ -272,6 +282,7 @@ export class IntegrationsComponent implements OnInit {
       ...form,
       platformCode: code,
       menuType: this.menuType,
+      redirectUri: this.moduleRedirectUri,
       scopes: this.isYouTubePlatform(code) ? formatYouTubeOAuthScopes(form.scopes) : form.scopes
     }).subscribe({
       next: (res) => {
@@ -600,7 +611,7 @@ export class IntegrationsComponent implements OnInit {
       menuType: this.menuType,
       clientId: '',
       clientSecret: '',
-      redirectUri: defaultOAuthRedirectUri(this.menuType),
+      redirectUri: this.moduleRedirectUri,
       authUrl: DEFAULT_AUTH_URLS[code] || '',
       baseUrl: DEFAULT_BASE_URLS[code] || 'https://graph.facebook.com',
       scopes: DEFAULT_SCOPES[code] || '',
@@ -618,7 +629,7 @@ export class IntegrationsComponent implements OnInit {
       label: config.label,
       clientId: config.clientId,
       clientSecret: config.clientSecret,
-      redirectUri: config.redirectUri || defaultOAuthRedirectUri(this.menuType),
+      redirectUri: this.moduleRedirectUri,
       authUrl: config.authUrl,
       baseUrl: config.baseUrl,
       scopes: config.scopes

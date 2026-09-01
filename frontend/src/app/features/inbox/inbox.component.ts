@@ -358,6 +358,9 @@ export class InboxComponent implements OnInit, OnDestroy {
   }
 
   private upsertItem(item: InboxItem): void {
+    const currentMenu = this.processRoute.currentMenuType();
+    if (item.menuType && item.menuType !== currentMenu) return;
+
     const normalized = this.normalizeInboxItem(item);
     this.items.update((list) => {
       const existing = list.findIndex((row) =>

@@ -18,7 +18,7 @@ import {
   SaveAppConnectionConfigRequest
 } from '../../core/models/api.models';
 import { IntegrationCategoryGroup } from '../integrations/integrations.component';
-import { defaultOAuthRedirectUri } from '../../core/config/oauth-redirect.config';
+import { defaultOAuthRedirectUri, defaultWebhookRedirectUri } from '../../core/config/oauth-redirect.config';
 import { formatYouTubeOAuthScopes, youtubeDefaultScopeString } from '../../core/config/oauth-scopes.config';
 
 const CATEGORY_META: Record<string, { accent: string; icon: string }> = {
@@ -60,6 +60,7 @@ const DEFAULT_BASE_URLS: Record<string, string> = {
 };
 
 const DEFAULT_SCOPES: Record<string, string> = {
+  whatsapp: 'whatsapp_business_management,whatsapp_business_messaging,business_management',
   youtube: youtubeDefaultScopeString()
 };
 
@@ -83,6 +84,7 @@ export class DeveloperAppsComponent implements OnInit {
   private readonly metaAuth = inject(MetaAuthUrlService);
   private readonly menuType = MENU_TYPES.developerApp;
   readonly moduleRedirectUri = defaultOAuthRedirectUri(MENU_TYPES.developerApp);
+  readonly moduleWebhookUri = defaultWebhookRedirectUri(MENU_TYPES.developerApp);
 
   readonly cards = signal<PlatformCard[]>([]);
   readonly message = signal('');
@@ -187,7 +189,9 @@ export class DeveloperAppsComponent implements OnInit {
     this.message.set(
       code === 'youtube'
         ? `Complete Google sign-in in the popup window. This button will update when you are done.`
-        : `Opening Meta login for ${card.displayName}…`
+        : code === 'instagram_login'
+          ? `Opening Instagram Login for ${card.displayName}…`
+          : `Opening Meta login for ${card.displayName}…`
     );
 
     try {
@@ -217,7 +221,7 @@ export class DeveloperAppsComponent implements OnInit {
   }
 
   supportsConnectionDetails(code: string): boolean {
-    return ['facebook', 'instagram', 'instagram_login', 'youtube'].includes(code.toLowerCase());
+    return ['facebook', 'instagram', 'instagram_login', 'youtube', 'whatsapp'].includes(code.toLowerCase());
   }
 
   isInstagramLoginPlatform(code: string | null | undefined): boolean {
@@ -259,6 +263,15 @@ export class DeveloperAppsComponent implements OnInit {
 
   isWhatsAppPlatform(code: string | null | undefined): boolean {
     return (code || '').toLowerCase() === 'whatsapp';
+  }
+
+  /** Facebook, Instagram, Instagram Login, and WhatsApp use Meta webhooks on the module endpoint. */
+  usesMetaWebhooks(code: string | null | undefined): boolean {
+    const value = (code || '').toLowerCase();
+    return value === 'facebook'
+      || value === 'instagram'
+      || value === 'instagram_login'
+      || value === 'whatsapp';
   }
 
   isYouTubePlatform(code: string | null | undefined): boolean {
@@ -328,6 +341,17 @@ export class DeveloperAppsComponent implements OnInit {
     if (!form.clientId?.trim()) {
       this.configError.set('Client Id is required.');
       return;
+    }
+
+    if (this.isWhatsAppPlatform(code)) {
+      if (!form.phoneNumberId?.trim()) {
+        this.configError.set('Phone number Id is required for WhatsApp.');
+        return;
+      }
+      if (!form.webhookVerifyToken?.trim()) {
+        this.configError.set('Webhook verify token is required for WhatsApp.');
+        return;
+      }
     }
 
     this.configSaving.set(true);
@@ -525,6 +549,7 @@ export class DeveloperAppsComponent implements OnInit {
     if (code === 'facebook' || code === 'instagram') return 'Page access token';
     if (code === 'instagram_login') return 'Instagram access token';
     if (code === 'youtube') return 'Google access token';
+    if (code === 'whatsapp') return 'WhatsApp access token';
     return 'Access token';
   }
 
