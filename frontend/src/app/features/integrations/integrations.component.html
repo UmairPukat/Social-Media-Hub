@@ -286,6 +286,8 @@
                 Facebook page information
               } @else if (isInstagramFbLoginPlatform(info.platformCode)) {
                 Instagram &amp; Facebook connection
+              } @else if (isYouTubePlatform(info.platformCode)) {
+                YouTube channel information
               } @else {
                 Instagram account information
               }
@@ -299,6 +301,8 @@
                 Facebook Page connected through Meta login.
               } @else if (isInstagramFbLoginPlatform(info.platformCode)) {
                 Instagram Business account linked to the Facebook Page used at connect time.
+              } @else if (isYouTubePlatform(info.platformCode)) {
+                YouTube channel connected through Google OAuth.
               } @else {
                 Instagram account connected with Instagram Login.
               }
@@ -379,6 +383,23 @@
               <div>
                 <dt>Instagram login name</dt>
                 <dd>{{ info.accountName || '—' }}</dd>
+              </div>
+              <div>
+                <dt>Connected</dt>
+                <dd>{{ info.connectedAt ? (info.connectedAt | date: 'medium') : '—' }}</dd>
+              </div>
+            } @else if (isYouTubePlatform(info.platformCode)) {
+              <div>
+                <dt>Google account</dt>
+                <dd>{{ info.accountName || '—' }}</dd>
+              </div>
+              <div>
+                <dt>Channel name</dt>
+                <dd>{{ youtubeChannelName(info) }}</dd>
+              </div>
+              <div>
+                <dt>Channel ID</dt>
+                <dd><code>{{ youtubeChannelId(info) }}</code></dd>
               </div>
               <div>
                 <dt>Connected</dt>

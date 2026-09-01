@@ -185,7 +185,7 @@ export class DeveloperAppsComponent implements OnInit {
     this.connecting.set(code);
     this.message.set(
       code === 'youtube'
-        ? `Opening Google login for ${card.displayName}…`
+        ? `Complete Google sign-in in the popup window. This button will update when you are done.`
         : `Opening Meta login for ${card.displayName}…`
     );
 
@@ -522,7 +522,16 @@ export class DeveloperAppsComponent implements OnInit {
     const code = (platformCode || '').toLowerCase();
     if (code === 'facebook' || code === 'instagram') return 'Page access token';
     if (code === 'instagram_login') return 'Instagram access token';
+    if (code === 'youtube') return 'Google access token';
     return 'Access token';
+  }
+
+  youtubeChannelName(info: ConnectionDetails): string {
+    return info.pageName || info.profiles?.[0]?.name || info.accountName || '—';
+  }
+
+  youtubeChannelId(info: ConnectionDetails): string {
+    return info.pageId || info.profiles?.[0]?.externalProfileId || '—';
   }
 
   maskedToken(token: string): string {

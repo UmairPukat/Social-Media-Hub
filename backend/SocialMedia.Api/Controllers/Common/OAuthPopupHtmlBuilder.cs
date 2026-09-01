@@ -37,19 +37,17 @@ public static class OAuthPopupHtmlBuilder
                 (function () {
                   var payload = {{payload}};
                   var origins = {{originsJson}};
-                  if (window.opener) {
+                  function notifyOpener() {
+                    if (!window.opener) return;
+                    try { window.opener.postMessage(payload, '*'); } catch (e) {}
                     for (var i = 0; i < origins.length; i++) {
                       try { window.opener.postMessage(payload, origins[i]); } catch (e) {}
                     }
                   }
-                  if (window.BroadcastChannel) {
-                    try {
-                      var channel = new BroadcastChannel('smh-meta-oauth');
-                      channel.postMessage(payload);
-                      channel.close();
-                    } catch (e) {}
-                  }
-                  setTimeout(function () { window.close(); }, 700);
+                  notifyOpener();
+                  setTimeout(notifyOpener, 120);
+                  setTimeout(notifyOpener, 400);
+                  setTimeout(function () { window.close(); }, 900);
                 })();
               </script>
             </body>

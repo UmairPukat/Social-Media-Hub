@@ -70,15 +70,27 @@
               <span class="stat-ico">
                 <mat-icon>{{ entry.icon }}</mat-icon>
               </span>
-              <span class="stat-label">
+              <div class="stat-top-end">
+                <span class="stat-label">
+                  @if (entry.card.isConnected) {
+                    Connected
+                  } @else if (entry.card.hasAppConfig) {
+                    Configured
+                  } @else {
+                    Not connected
+                  }
+                </span>
                 @if (entry.card.isConnected) {
-                  Connected
-                } @else if (entry.card.hasAppConfig) {
-                  Configured
-                } @else {
-                  Not connected
+                  <button
+                    type="button"
+                    class="icon-btn"
+                    matTooltip="View account information"
+                    [attr.aria-label]="'View ' + entry.card.displayName + ' account information'"
+                    (click)="openDetails(entry.card)">
+                    <mat-icon>visibility</mat-icon>
+                  </button>
                 }
-              </span>
+              </div>
             </div>
 
             <strong class="stat-value">{{ entry.card.displayName }}</strong>
@@ -123,6 +135,12 @@
                 <mat-icon>link</mat-icon>
                 Connect {{ entry.card.displayName }} first
               </a>
+            } @else {
+              <div class="stat-action">
+                <button mat-stroked-button type="button" class="danger" (click)="disconnect(entry.card)">
+                  Disconnect
+                </button>
+              </div>
             }
           </article>
         }
@@ -136,3 +154,80 @@
     </div>
   }
 </section>
+
+<dialog #detailsDialog class="picker details" aria-labelledby="sync-details-title" (close)="onDetailsClosed()">
+  @if (detailsOpen()) {
+    <header class="picker-head">
+      <div>
+        <p class="eyebrow">{{ detailsTitle() }}</p>
+        <h2 id="sync-details-title">YouTube channel information</h2>
+        <p class="picker-lede">YouTube channel connected through Google OAuth.</p>
+      </div>
+      <button type="button" class="picker-close" aria-label="Close" (click)="closeDetails()">
+        <mat-icon>close</mat-icon>
+      </button>
+    </header>
+
+    <div class="details-body">
+      @if (detailsLoading()) {
+        <p class="picker-empty">Loading account information…</p>
+      } @else if (detailsError()) {
+        <p class="picker-error">{{ detailsError() }}</p>
+      }
+
+      @if (details(); as info) {
+        <dl class="detail-grid">
+          <div>
+            <dt>Google account</dt>
+            <dd>{{ info.accountName || '—' }}</dd>
+          </div>
+          <div>
+            <dt>Channel name</dt>
+            <dd>{{ youtubeChannelName(info) }}</dd>
+          </div>
+          <div>
+            <dt>Channel ID</dt>
+            <dd><code>{{ youtubeChannelId(info) }}</code></dd>
+          </div>
+          <div>
+            <dt>Connected</dt>
+            <dd>{{ info.connectedAt ? (info.connectedAt | date: 'medium') : '—' }}</dd>
+          </div>
+
+          @if (info.accessToken) {
+            <div class="token-row">
+              <dt>Google access token</dt>
+              <dd>
+                <div class="token-line">
+                  <code [class.revealed]="tokenRevealed()">
+                    {{ tokenRevealed() ? info.accessToken : maskedToken(info.accessToken) }}
+                  </code>
+                  <button
+                    type="button"
+                    class="token-btn"
+                    (click)="toggleTokenReveal()"
+                    [attr.aria-label]="tokenRevealed() ? 'Hide access token' : 'Show access token'">
+                    <mat-icon>{{ tokenRevealed() ? 'visibility_off' : 'visibility' }}</mat-icon>
+                  </button>
+                  <button type="button" class="token-btn" (click)="copyToken(info.accessToken)" aria-label="Copy access token">
+                    <mat-icon>content_copy</mat-icon>
+                  </button>
+                </div>
+                @if (tokenCopied()) {
+                  <span class="token-copied">Copied to clipboard</span>
+                }
+              </dd>
+            </div>
+          }
+        </dl>
+      }
+    </div>
+
+    <footer class="picker-foot">
+      <span class="picker-count">Read-only view</span>
+      <div class="picker-actions">
+        <button mat-flat-button color="primary" type="button" (click)="closeDetails()">Close</button>
+      </div>
+    </footer>
+  }
+</dialog>

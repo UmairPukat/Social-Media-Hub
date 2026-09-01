@@ -875,6 +875,23 @@ public class IntegrationService : IIntegrationService
                 }).ToList()
             };
 
+            if (code == "youtube")
+            {
+                var channelProfile = profiles.FirstOrDefault(p => p.ProfileType == ProfileType.YouTubeChannel)
+                    ?? profiles.FirstOrDefault();
+                if (channelProfile is not null)
+                {
+                    details.PageId = channelProfile.ExternalProfileId;
+                    details.PageName = channelProfile.Name;
+                    details.PageImage = channelProfile.ProfileImage;
+                }
+                else if (!string.IsNullOrWhiteSpace(account.ExternalAccountId))
+                {
+                    details.PageId = account.ExternalAccountId;
+                    details.PageName = account.DisplayName;
+                }
+            }
+
             if (string.IsNullOrWhiteSpace(effectiveToken))
             {
                 details.WebhookError =
@@ -999,7 +1016,8 @@ public class IntegrationService : IIntegrationService
             if (!string.IsNullOrWhiteSpace(pageId))
                 return pageId;
 
-            if (platformCode == "facebook" && !string.IsNullOrWhiteSpace(profile.ExternalProfileId))
+            if ((platformCode == "facebook" || platformCode == "youtube")
+                && !string.IsNullOrWhiteSpace(profile.ExternalProfileId))
                 return profile.ExternalProfileId;
         }
 

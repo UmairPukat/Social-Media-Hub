@@ -1,4 +1,4 @@
-import { Injectable, inject } from '@angular/core';
+import { Injectable, inject, NgZone } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { environment } from '../../../environments/environment';
 import { MENU_TYPES, MenuType } from '../models/api.models';
@@ -20,16 +20,23 @@ interface ApiResponse<T> {
   data?: T;
 }
 
+interface OAuthPopupPayload {
+  type?: string;
+  platform?: string;
+  ok?: boolean;
+  message?: string;
+}
+
 /**
- * Meta Login popup. The backend builds the auth URL and owns the OAuth redirect:
- * Meta redirects to GET /api/Integrations/Callback, which exchanges the code and
- * posts a success/error message back to this window.
+ * OAuth popup helper. The backend owns the redirect and callback HTML, which
+ * posts the result back to this window via postMessage.
  */
 @Injectable({ providedIn: 'root' })
 export class MetaAuthUrlService {
   private readonly http = inject(HttpClient);
+  private readonly zone = inject(NgZone);
 
-  /** Origin of the backend API — the OAuth result message comes from this origin. */
+  /** Origin of the backend API — the OAuth callback page is served from here. */
   private readonly backendOrigin = new URL(environment.apiUrl).origin;
 
   isConfigured(platform: MetaPlatform): boolean {
@@ -38,8 +45,8 @@ export class MetaAuthUrlService {
   }
 
   /**
-   * Opens OAuth in a popup. Resolves when the backend callback posts a result
-   * via postMessage / BroadcastChannel, or rejects on timeout.
+   * Opens OAuth in a popup. Resolves when the backend callback posts a result,
+   * or rejects if the popup is closed early / the flow times out.
    */
   openPopup(platform: MetaPlatform, menuType: MenuType = MENU_TYPES.integration): Promise<{ ok: boolean; message?: string }> {
     const width = 600;
@@ -48,7 +55,6 @@ export class MetaAuthUrlService {
     const top = Math.max(0, (window.screen.height - height) / 2);
     const features = `width=${width},height=${height},left=${left},top=${top},scrollbars=yes,resizable=yes`;
 
-    // Open synchronously on the click so popup blockers allow it, then navigate.
     const popup = window.open('about:blank', `meta_oauth_${platform}`, features);
     if (!popup) {
       return Promise.reject(new Error('Popup was blocked. Allow popups for this site and try again.'));
@@ -56,28 +62,24 @@ export class MetaAuthUrlService {
 
     return new Promise((resolve, reject) => {
       let settled = false;
-      let broadcast: BroadcastChannel | undefined;
+      let oauthStarted = false;
 
       const cleanup = () => {
         window.removeEventListener('message', onMessage);
+        window.removeEventListener('focus', onWindowFocus);
         window.clearTimeout(timeout);
-        try {
-          broadcast?.close();
-        } catch {
-          // ignore
-        }
       };
 
       const settle = (fn: () => void) => {
         if (settled) return;
         settled = true;
         cleanup();
-        fn();
+        this.zone.run(fn);
       };
 
       const handlePayload = (data: unknown) => {
         if (!data || typeof data !== 'object') return;
-        const payload = data as { type?: string; platform?: string; ok?: boolean; message?: string };
+        const payload = data as OAuthPopupPayload;
         if (payload.type !== META_OAUTH_MESSAGE) return;
         if (payload.platform && payload.platform !== platform) return;
         if (payload.ok) settle(() => resolve({ ok: true }));
@@ -89,22 +91,31 @@ export class MetaAuthUrlService {
         handlePayload(event.data);
       };
 
-      if (typeof BroadcastChannel !== 'undefined') {
+      const isPopupClosed = (): boolean => {
         try {
-          broadcast = new BroadcastChannel(META_OAUTH_MESSAGE);
-          broadcast.onmessage = (event: MessageEvent) => handlePayload(event.data);
+          return popup.closed;
         } catch {
-          broadcast = undefined;
+          return false;
         }
-      }
+      };
 
-      // Do not poll popup.closed — Google OAuth sets COOP and blocks cross-origin opener access.
+      const onWindowFocus = () => {
+        if (!oauthStarted || settled) return;
+        window.setTimeout(() => {
+          if (settled) return;
+          if (isPopupClosed()) {
+            settle(() => reject(new Error('Login window was closed before completing.')));
+          }
+        }, 600);
+      };
+
       const timeout = window.setTimeout(() => {
         settle(() =>
           reject(new Error('Login timed out. Close the popup and try connecting again.')));
       }, 10 * 60 * 1000);
 
       window.addEventListener('message', onMessage);
+      window.addEventListener('focus', onWindowFocus);
 
       const apiSegment = menuType === MENU_TYPES.appConnection
         ? PROCESS_MODULES.appConnections.apiBase
@@ -123,18 +134,19 @@ export class MetaAuthUrlService {
               try {
                 popup.close();
               } catch {
-                // ignore COOP-blocked close
+                // ignore
               }
               settle(() => resolve({ ok: false, message: res.message || 'Could not start OAuth login.' }));
               return;
             }
+            oauthStarted = true;
             popup.location.href = res.data.authUrl;
           },
           error: (err: { error?: { message?: string } }) => {
             try {
               popup.close();
             } catch {
-              // ignore COOP-blocked close
+              // ignore
             }
             settle(() =>
               resolve({ ok: false, message: err?.error?.message || 'Could not start OAuth login.' }));
