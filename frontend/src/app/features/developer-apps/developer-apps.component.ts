@@ -18,6 +18,7 @@ import {
   SaveAppConnectionConfigRequest
 } from '../../core/models/api.models';
 import { IntegrationCategoryGroup } from '../integrations/integrations.component';
+import { defaultOAuthRedirectUri } from '../../core/config/oauth-redirect.config';
 
 const CATEGORY_META: Record<string, { accent: string; icon: string }> = {
   social: { accent: '#2563eb', icon: 'share' },
@@ -257,6 +258,10 @@ export class DeveloperAppsComponent implements OnInit {
 
   isWhatsAppPlatform(code: string | null | undefined): boolean {
     return (code || '').toLowerCase() === 'whatsapp';
+  }
+
+  isYouTubePlatform(code: string | null | undefined): boolean {
+    return (code || '').toLowerCase() === 'youtube';
   }
 
   openConfig(card: PlatformCard): void {
@@ -552,7 +557,7 @@ export class DeveloperAppsComponent implements OnInit {
       menuType: this.menuType,
       clientId: '',
       clientSecret: '',
-      redirectUri: '',
+      redirectUri: defaultOAuthRedirectUri(this.menuType),
       authUrl: DEFAULT_AUTH_URLS[code] || '',
       baseUrl: DEFAULT_BASE_URLS[code] || 'https://graph.facebook.com',
       scopes: DEFAULT_SCOPES[code] || '',
@@ -570,7 +575,7 @@ export class DeveloperAppsComponent implements OnInit {
       label: config.label,
       clientId: config.clientId,
       clientSecret: config.clientSecret,
-      redirectUri: config.redirectUri,
+      redirectUri: config.redirectUri || defaultOAuthRedirectUri(this.menuType),
       authUrl: config.authUrl,
       baseUrl: config.baseUrl,
       scopes: config.scopes,

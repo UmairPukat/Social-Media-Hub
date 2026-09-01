@@ -18,6 +18,7 @@ import {
   SaveAppConnectionConfigRequest
 } from '../../core/models/api.models';
 import { PROCESS_MODULES } from '../../core/config/process.config';
+import { defaultOAuthRedirectUri } from '../../core/config/oauth-redirect.config';
 
 export interface IntegrationCategoryGroup {
   id: string;
@@ -193,6 +194,10 @@ export class IntegrationsComponent implements OnInit {
 
   isWhatsAppPlatform(code: string | null | undefined): boolean {
     return (code || '').toLowerCase() === 'whatsapp';
+  }
+
+  isYouTubePlatform(code: string | null | undefined): boolean {
+    return (code || '').toLowerCase() === 'youtube';
   }
 
   openConfig(card: PlatformCard): void {
@@ -581,7 +586,7 @@ export class IntegrationsComponent implements OnInit {
       menuType: this.menuType,
       clientId: '',
       clientSecret: '',
-      redirectUri: '',
+      redirectUri: defaultOAuthRedirectUri(this.menuType),
       authUrl: DEFAULT_AUTH_URLS[code] || '',
       baseUrl: DEFAULT_BASE_URLS[code] || 'https://graph.facebook.com',
       scopes: DEFAULT_SCOPES[code] || '',
@@ -599,7 +604,7 @@ export class IntegrationsComponent implements OnInit {
       label: config.label,
       clientId: config.clientId,
       clientSecret: config.clientSecret,
-      redirectUri: config.redirectUri,
+      redirectUri: config.redirectUri || defaultOAuthRedirectUri(this.menuType),
       authUrl: config.authUrl,
       baseUrl: config.baseUrl,
       scopes: config.scopes,

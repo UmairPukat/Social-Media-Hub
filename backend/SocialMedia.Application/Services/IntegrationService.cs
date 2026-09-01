@@ -402,29 +402,11 @@ public class IntegrationService : IIntegrationService
 
     private string ResolveProcessRedirectUri(string platformCode, string? menuType, string? configRedirectUri)
     {
-        var normalizedMenu = MenuTypes.Normalize(menuType);
         var backendBase = FirstNonEmpty(
             _configuration["BackendBaseUrl"],
             _configuration["backendBaseUrl"]);
 
-        if (!string.IsNullOrWhiteSpace(configRedirectUri))
-        {
-            var trimmed = configRedirectUri.Trim();
-            if (trimmed.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
-                trimmed.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
-                return trimmed;
-
-            if (!string.IsNullOrWhiteSpace(backendBase))
-            {
-                var path = trimmed.StartsWith('/') ? trimmed : $"/{trimmed}";
-                return $"{backendBase.TrimEnd('/')}{path}";
-            }
-        }
-
-        if (!string.IsNullOrWhiteSpace(backendBase))
-            return $"{backendBase.TrimEnd('/')}{ProcessModules.CallbackRouteFor(normalizedMenu)}";
-
-        return string.Empty;
+        return ProcessOAuthRedirect.Resolve(menuType, configRedirectUri, backendBase);
     }
 
     private async Task<(OAuthTokenResult Token, (string Id, string Name) Me)?> TryExchangeWithStoredConfigAsync(

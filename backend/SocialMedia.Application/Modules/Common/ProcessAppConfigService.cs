@@ -7,6 +7,7 @@ using SocialMedia.Domain.Modules.Common.Entities;
 using SocialMedia.Domain.Modules.DeveloperApps.Entities;
 using SocialMedia.Domain.Modules.Integrations.Entities;
 using SocialMedia.Domain.Interfaces;
+using Microsoft.Extensions.Configuration;
 
 namespace SocialMedia.Application.Modules.Common;
 
@@ -17,11 +18,16 @@ public class ProcessAppConfigService : IProcessAppConfigService
 {
     private readonly IUnitOfWork _unitOfWork;
     private readonly IProcessDataStoreFactory _processData;
+    private readonly IConfiguration _configuration;
 
-    public ProcessAppConfigService(IUnitOfWork unitOfWork, IProcessDataStoreFactory processData)
+    public ProcessAppConfigService(
+        IUnitOfWork unitOfWork,
+        IProcessDataStoreFactory processData,
+        IConfiguration configuration)
     {
         _unitOfWork = unitOfWork;
         _processData = processData;
+        _configuration = configuration;
     }
 
     public async Task<ApiResponse<ProcessAppConfigDto>> GetConfigAsync(
@@ -185,7 +191,7 @@ public class ProcessAppConfigService : IProcessAppConfigService
             await _unitOfWork.IntegrationAppConfigs.AddAsync(config, cancellationToken);
         }
 
-        ApplyFields(config, request, code, version, isNew);
+        ApplyFields(config, request, code, menuType, version, isNew);
         if (!isNew)
             _unitOfWork.IntegrationAppConfigs.Update(config);
 
@@ -219,7 +225,7 @@ public class ProcessAppConfigService : IProcessAppConfigService
             await _unitOfWork.AppConnectionConfigs.AddAsync(config, cancellationToken);
         }
 
-        ApplyFields(config, request, code, version, isNew);
+        ApplyFields(config, request, code, menuType, version, isNew);
         if (!isNew)
             _unitOfWork.AppConnectionConfigs.Update(config);
 
@@ -253,7 +259,7 @@ public class ProcessAppConfigService : IProcessAppConfigService
             await _unitOfWork.DeveloperAppConfigs.AddAsync(config, cancellationToken);
         }
 
-        ApplyFields(config, request, code, version, isNew);
+        ApplyFields(config, request, code, menuType, version, isNew);
         if (!isNew)
             _unitOfWork.DeveloperAppConfigs.Update(config);
 
@@ -261,7 +267,7 @@ public class ProcessAppConfigService : IProcessAppConfigService
         return ApiResponse<ProcessAppConfigDto>.Ok(MapDev(config, revealSecret: false), "App configuration saved.");
     }
 
-    private static void ApplyFields(IntegrationAppConfig config, SaveProcessAppConfigRequest request, string code, string version, bool isNew)
+    private void ApplyFields(IntegrationAppConfig config, SaveProcessAppConfigRequest request, string code, string menuType, string version, bool isNew)
     {
         config.Label = NullIfEmpty(request.Label);
         config.ClientId = request.ClientId.Trim();
@@ -270,7 +276,7 @@ public class ProcessAppConfigService : IProcessAppConfigService
         else if (isNew)
             throw new InvalidOperationException("Client Secret is required.");
 
-        config.RedirectUri = NullIfEmpty(request.RedirectUri);
+        config.RedirectUri = NullIfEmpty(ResolveRedirectUri(menuType, code, request.RedirectUri));
         config.AuthUrl = ResolveStoredAuthUrl(code, NullIfEmpty(request.AuthUrl), version);
         config.BaseUrl = ResolveStoredBaseUrl(code, NullIfEmpty(request.BaseUrl));
         config.Scopes = NullIfEmpty(request.Scopes) ?? DefaultScopes(code);
@@ -281,7 +287,7 @@ public class ProcessAppConfigService : IProcessAppConfigService
         config.UpdatedAt = DateTime.UtcNow;
     }
 
-    private static void ApplyFields(AppConnectionConfig config, SaveProcessAppConfigRequest request, string code, string version, bool isNew)
+    private void ApplyFields(AppConnectionConfig config, SaveProcessAppConfigRequest request, string code, string menuType, string version, bool isNew)
     {
         config.Label = NullIfEmpty(request.Label);
         config.ClientId = request.ClientId.Trim();
@@ -290,7 +296,7 @@ public class ProcessAppConfigService : IProcessAppConfigService
         else if (isNew)
             throw new InvalidOperationException("Client Secret is required.");
 
-        config.RedirectUri = NullIfEmpty(request.RedirectUri);
+        config.RedirectUri = NullIfEmpty(ResolveRedirectUri(menuType, code, request.RedirectUri));
         config.AuthUrl = ResolveStoredAuthUrl(code, NullIfEmpty(request.AuthUrl), version);
         config.BaseUrl = ResolveStoredBaseUrl(code, NullIfEmpty(request.BaseUrl));
         config.Scopes = NullIfEmpty(request.Scopes) ?? DefaultScopes(code);
@@ -301,7 +307,7 @@ public class ProcessAppConfigService : IProcessAppConfigService
         config.UpdatedAt = DateTime.UtcNow;
     }
 
-    private static void ApplyFields(DeveloperAppConfig config, SaveProcessAppConfigRequest request, string code, string version, bool isNew)
+    private void ApplyFields(DeveloperAppConfig config, SaveProcessAppConfigRequest request, string code, string menuType, string version, bool isNew)
     {
         config.Label = NullIfEmpty(request.Label);
         config.ClientId = request.ClientId.Trim();
@@ -310,7 +316,7 @@ public class ProcessAppConfigService : IProcessAppConfigService
         else if (isNew)
             throw new InvalidOperationException("Client Secret is required.");
 
-        config.RedirectUri = NullIfEmpty(request.RedirectUri);
+        config.RedirectUri = NullIfEmpty(ResolveRedirectUri(menuType, code, request.RedirectUri));
         config.AuthUrl = ResolveStoredAuthUrl(code, NullIfEmpty(request.AuthUrl), version);
         config.BaseUrl = ResolveStoredBaseUrl(code, NullIfEmpty(request.BaseUrl));
         config.Scopes = NullIfEmpty(request.Scopes) ?? DefaultScopes(code);
@@ -321,7 +327,20 @@ public class ProcessAppConfigService : IProcessAppConfigService
         config.UpdatedAt = DateTime.UtcNow;
     }
 
-    private static ProcessAppConfigDto Map(IntegrationAppConfig config, bool revealSecret) => new()
+    private string? ResolveRedirectUri(string menuType, string platformCode, string? configRedirectUri)
+    {
+        if (!ProcessOAuthRedirect.SupportsAutoRedirect(platformCode))
+            return NullIfEmpty(configRedirectUri);
+
+        var backendBase = _configuration["BackendBaseUrl"] ?? _configuration["backendBaseUrl"];
+        var resolved = ProcessOAuthRedirect.Resolve(menuType, configRedirectUri, backendBase);
+        return NullIfEmpty(resolved);
+    }
+
+    private string? DisplayRedirectUri(string menuType, string platformCode, string? storedRedirectUri) =>
+        ResolveRedirectUri(menuType, platformCode, storedRedirectUri) ?? storedRedirectUri;
+
+    private ProcessAppConfigDto Map(IntegrationAppConfig config, bool revealSecret) => new()
     {
         Id = config.Id,
         PlatformId = config.PlatformId,
@@ -331,7 +350,7 @@ public class ProcessAppConfigService : IProcessAppConfigService
         ClientId = config.ClientId,
         ClientSecret = revealSecret ? config.ClientSecret : MaskSecret(config.ClientSecret),
         HasClientSecret = !string.IsNullOrWhiteSpace(config.ClientSecret),
-        RedirectUri = config.RedirectUri,
+        RedirectUri = DisplayRedirectUri(config.MenuType, config.PlatformCode, config.RedirectUri),
         AuthUrl = config.AuthUrl,
         BaseUrl = config.BaseUrl,
         Scopes = config.Scopes,
@@ -343,7 +362,7 @@ public class ProcessAppConfigService : IProcessAppConfigService
         UpdatedAt = config.UpdatedAt
     };
 
-    private static ProcessAppConfigDto MapApp(AppConnectionConfig config, bool revealSecret) => new()
+    private ProcessAppConfigDto MapApp(AppConnectionConfig config, bool revealSecret) => new()
     {
         Id = config.Id,
         PlatformId = config.PlatformId,
@@ -353,7 +372,7 @@ public class ProcessAppConfigService : IProcessAppConfigService
         ClientId = config.ClientId,
         ClientSecret = revealSecret ? config.ClientSecret : MaskSecret(config.ClientSecret),
         HasClientSecret = !string.IsNullOrWhiteSpace(config.ClientSecret),
-        RedirectUri = config.RedirectUri,
+        RedirectUri = DisplayRedirectUri(config.MenuType, config.PlatformCode, config.RedirectUri),
         AuthUrl = config.AuthUrl,
         BaseUrl = config.BaseUrl,
         Scopes = config.Scopes,
@@ -365,7 +384,7 @@ public class ProcessAppConfigService : IProcessAppConfigService
         UpdatedAt = config.UpdatedAt
     };
 
-    private static ProcessAppConfigDto MapDev(DeveloperAppConfig config, bool revealSecret) => new()
+    private ProcessAppConfigDto MapDev(DeveloperAppConfig config, bool revealSecret) => new()
     {
         Id = config.Id,
         PlatformId = config.PlatformId,
@@ -375,7 +394,7 @@ public class ProcessAppConfigService : IProcessAppConfigService
         ClientId = config.ClientId,
         ClientSecret = revealSecret ? config.ClientSecret : MaskSecret(config.ClientSecret),
         HasClientSecret = !string.IsNullOrWhiteSpace(config.ClientSecret),
-        RedirectUri = config.RedirectUri,
+        RedirectUri = DisplayRedirectUri(config.MenuType, config.PlatformCode, config.RedirectUri),
         AuthUrl = config.AuthUrl,
         BaseUrl = config.BaseUrl,
         Scopes = config.Scopes,
@@ -403,6 +422,7 @@ public class ProcessAppConfigService : IProcessAppConfigService
         "instagram" => "pages_read_user_content,pages_show_list,pages_manage_metadata,pages_messaging,business_management,instagram_basic,instagram_manage_comments,instagram_manage_messages",
         "instagram_login" => "instagram_business_basic,instagram_business_manage_messages,instagram_business_manage_comments",
         "whatsapp" => "whatsapp_business_management,whatsapp_business_messaging,business_management",
+        "youtube" => PlatformCatalog.DefaultScopes("youtube"),
         _ => string.Empty
     };
 
