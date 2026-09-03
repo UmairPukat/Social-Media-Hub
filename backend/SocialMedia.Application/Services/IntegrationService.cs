@@ -420,11 +420,12 @@ public class IntegrationService : IIntegrationService
             if (string.IsNullOrWhiteSpace(redirectUri))
                 return ApiResponse<SocialAccountDto>.Fail("Redirect URI is not configured.");
 
+            var authCode = Uri.UnescapeDataString(request.Code.Trim());
             var token = await _tikTokService.ExchangeAuthorizationCodeAsync(
                 config.ClientId.Trim(),
                 config.ClientSecret.Trim(),
                 redirectUri,
-                request.Code,
+                authCode,
                 cancellationToken);
 
             var profiles = await _tikTokService.DiscoverProfilesAsync(token.AccessToken, cancellationToken);

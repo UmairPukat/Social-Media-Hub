@@ -27,23 +27,27 @@ public class TikTokService : ITikTokService
             clientKey, clientSecret, redirectUri, code, cancellationToken);
         var root = doc.RootElement;
 
-        if (!root.TryGetProperty("data", out var data))
-            throw new InvalidOperationException("TikTok did not return token data.");
+        // Token endpoint returns fields at the root — not under "data".
+        var tokenPayload = root.TryGetProperty("data", out var wrapped) &&
+                           wrapped.ValueKind == JsonValueKind.Object &&
+                           wrapped.TryGetProperty("access_token", out _)
+            ? wrapped
+            : root;
 
-        var token = data.TryGetProperty("access_token", out var accessEl) ? accessEl.GetString() : null;
+        var token = tokenPayload.TryGetProperty("access_token", out var accessEl) ? accessEl.GetString() : null;
         if (string.IsNullOrWhiteSpace(token))
             throw new InvalidOperationException("TikTok did not return an access token.");
 
         DateTime? expiresAt = null;
-        if (data.TryGetProperty("expires_in", out var expires) && expires.TryGetInt64(out var seconds))
+        if (tokenPayload.TryGetProperty("expires_in", out var expires) && expires.TryGetInt64(out var seconds))
             expiresAt = DateTime.UtcNow.AddSeconds(seconds);
 
         return new OAuthTokenResult
         {
             AccessToken = token,
-            RefreshToken = data.TryGetProperty("refresh_token", out var refresh) ? refresh.GetString() : token,
+            RefreshToken = tokenPayload.TryGetProperty("refresh_token", out var refresh) ? refresh.GetString() : token,
             ExpiresAt = expiresAt,
-            TokenType = data.TryGetProperty("token_type", out var type) ? type.GetString() : "Bearer"
+            TokenType = tokenPayload.TryGetProperty("token_type", out var type) ? type.GetString() : "Bearer"
         };
     }
 

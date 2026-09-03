@@ -32,12 +32,62 @@ public sealed class TikTokApiClient
             ["redirect_uri"] = redirectUri
         });
 
-        using var response = await _http.PostAsync("https://open.tiktokapis.com/v2/oauth/token/", content, cancellationToken);
-        var body = await response.Content.ReadAsStringAsync(cancellationToken);
-        if (!response.IsSuccessStatusCode)
-            throw new InvalidOperationException($"TikTok OAuth token exchange failed ({(int)response.StatusCode}): {body}");
+        using var request = new HttpRequestMessage(HttpMethod.Post, "https://open.tiktokapis.com/v2/oauth/token/")
+        {
+            Content = content
+        };
+        request.Headers.TryAddWithoutValidation("Cache-Control", "no-cache");
 
-        return JsonDocument.Parse(body);
+        using var response = await _http.SendAsync(request, cancellationToken);
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        var doc = JsonDocument.Parse(body);
+        var root = doc.RootElement;
+
+        if (TryReadTikTokError(root, out var errorMessage))
+        {
+            doc.Dispose();
+            throw new InvalidOperationException(errorMessage);
+        }
+
+        if (!response.IsSuccessStatusCode)
+        {
+            doc.Dispose();
+            throw new InvalidOperationException($"TikTok OAuth token exchange failed ({(int)response.StatusCode}): {body}");
+        }
+
+        return doc;
+    }
+
+    private static bool TryReadTikTokError(JsonElement root, out string message)
+    {
+        message = string.Empty;
+
+        if (root.TryGetProperty("error", out var errorEl))
+        {
+            if (errorEl.ValueKind == JsonValueKind.String)
+            {
+                var code = errorEl.GetString();
+                var description = root.TryGetProperty("error_description", out var descEl)
+                    ? descEl.GetString()
+                    : null;
+                message = string.IsNullOrWhiteSpace(description)
+                    ? $"TikTok OAuth error: {code}"
+                    : $"TikTok OAuth error: {description}";
+                return true;
+            }
+
+            if (errorEl.ValueKind == JsonValueKind.Object)
+            {
+                var code = errorEl.TryGetProperty("code", out var codeEl) ? codeEl.GetString() : null;
+                var description = errorEl.TryGetProperty("message", out var msgEl) ? msgEl.GetString() : null;
+                message = string.IsNullOrWhiteSpace(description)
+                    ? $"TikTok OAuth error: {code ?? "unknown"}"
+                    : $"TikTok OAuth error: {description}";
+                return true;
+            }
+        }
+
+        return false;
     }
 
     public async Task<JsonDocument> GetUserInfoAsync(
