@@ -250,6 +250,8 @@ export interface YouTubeSyncResult {
   message?: string;
 }
 
+export type PlatformSyncResult = YouTubeSyncResult;
+
 export interface YouTubePostStatistics {
   postId: string;
   externalPostId?: string;

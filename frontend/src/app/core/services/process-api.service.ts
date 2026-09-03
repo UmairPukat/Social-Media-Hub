@@ -167,6 +167,20 @@ export class ProcessApiService {
     );
   }
 
+  syncTikTokPosts(menuType: ProcessMenuType, platformCode = 'tiktok'): Observable<ApiResponse<YouTubeSyncResult>> {
+    return this.http.post<ApiResponse<YouTubeSyncResult>>(
+      `${this.base(menuType)}/sync/tiktok/posts?platformCode=${encodeURIComponent(platformCode)}`,
+      {}
+    );
+  }
+
+  syncTikTokStatistics(menuType: ProcessMenuType, platformCode = 'tiktok'): Observable<ApiResponse<YouTubeSyncResult>> {
+    return this.http.post<ApiResponse<YouTubeSyncResult>>(
+      `${this.base(menuType)}/sync/tiktok/statistics?platformCode=${encodeURIComponent(platformCode)}`,
+      {}
+    );
+  }
+
   getPostStatistics(
     menuType: ProcessMenuType,
     postId: string,

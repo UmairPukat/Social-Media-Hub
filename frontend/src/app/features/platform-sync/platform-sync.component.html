@@ -4,8 +4,8 @@
       <p class="eyebrow">Manual sync</p>
       <h1>Platform sync</h1>
       <p class="lede">
-        Some platforms do not push webhooks. Use manual fetch to pull posts, comments, and statistics
-        into Posts and Inbox for this process module.
+        Pull posts and statistics on demand for platforms that do not push live webhooks into this
+        module.
       </p>
     </div>
     <div class="hero-actions">
@@ -28,7 +28,7 @@
     <div class="result-card">
       <mat-icon>cloud_done</mat-icon>
       <div>
-        <strong>Last sync · YouTube</strong>
+        <strong>Last sync · {{ lastResultPlatform() }}</strong>
         <p>
           Fetched {{ lastResult()!.fetched | number }},
           stored {{ lastResult()!.stored | number }},
@@ -45,9 +45,9 @@
   }
 
   @if (loading()) {
-    <div class="stats">
+    <div class="platform-grid">
       @for (item of [1, 2]; track item) {
-        <article class="stat skeleton">
+        <article class="platform-card skeleton">
           <div class="skeleton-line medium"></div>
           <div class="skeleton-line"></div>
           <div class="skeleton-line short"></div>
@@ -63,15 +63,19 @@
         </div>
       </div>
 
-      <div class="stats">
+      <div class="platform-grid">
         @for (entry of manualPlatforms(); track entry.card.platformId) {
-          <article class="stat" [attr.data-tone]="entry.tone" [class.live]="entry.card.isConnected">
-            <div class="stat-top">
-              <span class="stat-ico">
+          <article
+            class="platform-card"
+            [attr.data-tone]="entry.tone"
+            [class.is-connected]="entry.card.isConnected">
+            <div class="card-banner">
+              <span class="platform-badge">
                 <mat-icon>{{ entry.icon }}</mat-icon>
               </span>
-              <div class="stat-top-end">
-                <span class="stat-label">
+              <div class="banner-copy">
+                <strong>{{ entry.card.displayName }}</strong>
+                <span class="status-pill" [class.on]="entry.card.isConnected">
                   @if (entry.card.isConnected) {
                     Connected
                   } @else if (entry.card.hasAppConfig) {
@@ -80,68 +84,64 @@
                     Not connected
                   }
                 </span>
-                @if (entry.card.isConnected) {
-                  <button
-                    type="button"
-                    class="icon-btn"
-                    matTooltip="View account information"
-                    [attr.aria-label]="'View ' + entry.card.displayName + ' account information'"
-                    (click)="openDetails(entry.card)">
-                    <mat-icon>visibility</mat-icon>
-                  </button>
-                }
               </div>
+              @if (entry.card.isConnected) {
+                <button
+                  type="button"
+                  class="icon-btn"
+                  matTooltip="View account information"
+                  [attr.aria-label]="'View ' + entry.card.displayName + ' account information'"
+                  (click)="openDetails(entry.card)">
+                  <mat-icon>visibility</mat-icon>
+                </button>
+              }
             </div>
 
-            <strong class="stat-value">{{ entry.card.displayName }}</strong>
-            <p class="stat-hint">
+            <p class="card-hint">
               @if (entry.card.accountName) {
                 Linked as {{ entry.card.accountName }}
               } @else {
-                Connect your channel, then fetch posts and comments manually.
+                {{ entry.hint }}
               }
             </p>
 
             <div class="sync-actions">
-              <button
-                mat-stroked-button
-                type="button"
-                [disabled]="!entry.card.isConnected || isRunning(entry.card.code, 'posts')"
-                (click)="runSync(entry.card, 'posts')">
-                <mat-icon>video_library</mat-icon>
-                {{ isRunning(entry.card.code, 'posts') ? 'Fetching posts…' : 'Fetch posts' }}
-              </button>
-              <button
-                mat-stroked-button
-                type="button"
-                [disabled]="!entry.card.isConnected || isRunning(entry.card.code, 'comments')"
-                (click)="runSync(entry.card, 'comments')">
-                <mat-icon>mode_comment</mat-icon>
-                {{ isRunning(entry.card.code, 'comments') ? 'Fetching comments…' : 'Fetch comments' }}
-              </button>
-              <button
-                mat-flat-button
-                color="primary"
-                type="button"
-                [disabled]="!entry.card.isConnected || isRunning(entry.card.code, 'statistics')"
-                (click)="runSync(entry.card, 'statistics')">
-                <mat-icon>insights</mat-icon>
-                {{ isRunning(entry.card.code, 'statistics') ? 'Refreshing stats…' : 'Fetch statistics' }}
-              </button>
+              @for (action of entry.actions; track action) {
+                @if (action === 'statistics') {
+                  <button
+                    mat-flat-button
+                    color="primary"
+                    type="button"
+                    [disabled]="!entry.card.isConnected || isRunning(entry.card.code, action)"
+                    (click)="runSync(entry.card, action)">
+                    <mat-icon>{{ actionIcon(action) }}</mat-icon>
+                    {{ actionLabel(action, entry.card.code) }}
+                  </button>
+                } @else {
+                  <button
+                    mat-stroked-button
+                    type="button"
+                    [disabled]="!entry.card.isConnected || isRunning(entry.card.code, action)"
+                    (click)="runSync(entry.card, action)">
+                    <mat-icon>{{ actionIcon(action) }}</mat-icon>
+                    {{ actionLabel(action, entry.card.code) }}
+                  </button>
+                }
+              }
             </div>
 
-            @if (!entry.card.isConnected) {
-              <a class="connect-link" [routerLink]="connectLink()">
-                <mat-icon>link</mat-icon>
-                Connect {{ entry.card.displayName }} first
-              </a>
-            } @else {
-              <div class="stat-action">
+            <footer class="card-foot">
+              @if (!entry.card.isConnected) {
+                <a class="connect-link" [routerLink]="connectLink()">
+                  <mat-icon>link</mat-icon>
+                  Connect {{ entry.card.displayName }}
+                </a>
+              } @else {
                 <button mat-stroked-button type="button" class="danger" (click)="disconnect(entry.card)">
                   Disconnect
                 </button>
-              </div>
-            }
+              }
+            </footer>
           </article>
         }
       </div>
@@ -150,7 +150,7 @@
     <div class="empty">
       <mat-icon>sync_disabled</mat-icon>
       <h3>No manual sync platforms available</h3>
-      <p>YouTube will appear here once it is enabled in your platform catalog.</p>
+      <p>YouTube and TikTok will appear here once they are enabled in your platform catalog.</p>
     </div>
   }
 </section>
@@ -160,8 +160,20 @@
     <header class="picker-head">
       <div>
         <p class="eyebrow">{{ detailsTitle() }}</p>
-        <h2 id="sync-details-title">YouTube channel information</h2>
-        <p class="picker-lede">YouTube channel connected through Google OAuth.</p>
+        <h2 id="sync-details-title">
+          @if (isTikTokDetails()) {
+            TikTok account information
+          } @else {
+            YouTube channel information
+          }
+        </h2>
+        <p class="picker-lede">
+          @if (isTikTokDetails()) {
+            TikTok account connected through Login Kit OAuth.
+          } @else {
+            YouTube channel connected through Google OAuth.
+          }
+        </p>
       </div>
       <button type="button" class="picker-close" aria-label="Close" (click)="closeDetails()">
         <mat-icon>close</mat-icon>
@@ -178,16 +190,16 @@
       @if (details(); as info) {
         <dl class="detail-grid">
           <div>
-            <dt>Google account</dt>
+            <dt>{{ isTikTokDetails() ? 'Account' : 'Google account' }}</dt>
             <dd>{{ info.accountName || '—' }}</dd>
           </div>
           <div>
-            <dt>Channel name</dt>
-            <dd>{{ youtubeChannelName(info) }}</dd>
+            <dt>{{ isTikTokDetails() ? 'Profile name' : 'Channel name' }}</dt>
+            <dd>{{ profileName(info) }}</dd>
           </div>
           <div>
-            <dt>Channel ID</dt>
-            <dd><code>{{ youtubeChannelId(info) }}</code></dd>
+            <dt>{{ isTikTokDetails() ? 'Open ID' : 'Channel ID' }}</dt>
+            <dd><code>{{ profileId(info) }}</code></dd>
           </div>
           <div>
             <dt>Connected</dt>
@@ -196,7 +208,7 @@
 
           @if (info.accessToken) {
             <div class="token-row">
-              <dt>Google access token</dt>
+              <dt>{{ isTikTokDetails() ? 'TikTok access token' : 'Google access token' }}</dt>
               <dd>
                 <div class="token-line">
                   <code [class.revealed]="tokenRevealed()">

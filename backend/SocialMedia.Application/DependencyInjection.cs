@@ -26,6 +26,7 @@ public static class DependencyInjection
         services.AddScoped<IDashboardService, DashboardService>();
         services.AddScoped<IWebhookService, WebhookService>();
         services.AddScoped<IYouTubeSyncService, YouTubeSyncService>();
+        services.AddScoped<ITikTokSyncService, TikTokSyncService>();
         return services;
     }
 }

@@ -7,6 +7,8 @@ namespace SocialMedia.Infrastructure.TikTok;
 public sealed class TikTokApiClient
 {
     public const string BasicUserInfoFields = "open_id,union_id,avatar_url,avatar_large_url,display_name";
+    public const string VideoListFields =
+        "id,title,video_description,cover_image_url,share_url,create_time,view_count,like_count,comment_count,share_count";
 
     private readonly HttpClient _http;
     private readonly ILogger<TikTokApiClient> _logger;
@@ -85,6 +87,96 @@ public sealed class TikTokApiClient
             doc.Dispose();
             _logger.LogWarning("TikTok user info failed ({Status}): {Body}", (int)response.StatusCode, body);
             throw new InvalidOperationException($"TikTok user info request failed ({(int)response.StatusCode}): {body}");
+        }
+
+        return doc;
+    }
+
+    public async Task<JsonDocument> ListVideosAsync(
+        string accessToken,
+        long? cursor = null,
+        int maxCount = 20,
+        CancellationToken cancellationToken = default)
+    {
+        var url =
+            $"https://open.tiktokapis.com/v2/video/list/?fields={Uri.EscapeDataString(VideoListFields)}";
+
+        var payload = new Dictionary<string, object?>
+        {
+            ["max_count"] = Math.Clamp(maxCount, 1, 20)
+        };
+        if (cursor.HasValue)
+            payload["cursor"] = cursor.Value;
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, url)
+        {
+            Content = new StringContent(
+                JsonSerializer.Serialize(payload),
+                System.Text.Encoding.UTF8,
+                "application/json")
+        };
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+
+        using var response = await _http.SendAsync(request, cancellationToken);
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        var doc = JsonDocument.Parse(body);
+        var root = doc.RootElement;
+
+        if (TryReadApiError(root, out var errorMessage))
+        {
+            doc.Dispose();
+            throw new InvalidOperationException(errorMessage);
+        }
+
+        if (!response.IsSuccessStatusCode)
+        {
+            doc.Dispose();
+            throw new InvalidOperationException($"TikTok video list request failed ({(int)response.StatusCode}): {body}");
+        }
+
+        return doc;
+    }
+
+    public async Task<JsonDocument> QueryVideosAsync(
+        string accessToken,
+        IReadOnlyList<string> videoIds,
+        CancellationToken cancellationToken = default)
+    {
+        var url =
+            $"https://open.tiktokapis.com/v2/video/query/?fields={Uri.EscapeDataString(VideoListFields)}";
+
+        var payload = new Dictionary<string, object?>
+        {
+            ["filters"] = new Dictionary<string, object?>
+            {
+                ["video_ids"] = videoIds
+            }
+        };
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, url)
+        {
+            Content = new StringContent(
+                JsonSerializer.Serialize(payload),
+                System.Text.Encoding.UTF8,
+                "application/json")
+        };
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+
+        using var response = await _http.SendAsync(request, cancellationToken);
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        var doc = JsonDocument.Parse(body);
+        var root = doc.RootElement;
+
+        if (TryReadApiError(root, out var errorMessage))
+        {
+            doc.Dispose();
+            throw new InvalidOperationException(errorMessage);
+        }
+
+        if (!response.IsSuccessStatusCode)
+        {
+            doc.Dispose();
+            throw new InvalidOperationException($"TikTok video query request failed ({(int)response.StatusCode}): {body}");
         }
 
         return doc;

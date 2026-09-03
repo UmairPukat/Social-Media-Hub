@@ -30,6 +30,7 @@ export function youtubeDefaultScopeString(): string {
 /** TikTok Login Kit / Content Posting scopes — comma-separated in authorize URLs. */
 export const TIKTOK_OAUTH_SCOPES = [
   'user.info.basic',
+  'video.list',
   'video.upload',
   'video.publish'
 ] as const;

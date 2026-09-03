@@ -19,4 +19,28 @@ public interface ITikTokService
         string accessToken,
         string? openIdFallback = null,
         CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<TikTokVideoSnapshot>> ListVideosAsync(
+        string accessToken,
+        int maxResults = 50,
+        CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<TikTokVideoSnapshot>> QueryVideosAsync(
+        string accessToken,
+        IReadOnlyList<string> videoIds,
+        CancellationToken cancellationToken = default);
+}
+
+public sealed class TikTokVideoSnapshot
+{
+    public string VideoId { get; set; } = string.Empty;
+    public string Title { get; set; } = string.Empty;
+    public string? Description { get; set; }
+    public string? CoverImageUrl { get; set; }
+    public string? ShareUrl { get; set; }
+    public DateTime? CreateTime { get; set; }
+    public long ViewCount { get; set; }
+    public long LikeCount { get; set; }
+    public long CommentCount { get; set; }
+    public long ShareCount { get; set; }
 }

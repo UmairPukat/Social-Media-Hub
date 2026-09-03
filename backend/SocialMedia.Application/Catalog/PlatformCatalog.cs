@@ -95,7 +95,7 @@ public static class PlatformCatalog
         Add("social", "Social", LinkedInId, "linkedin", "LinkedIn", "linkedin",
             "Coming soon — professional company and personal posts.");
         Add("social", "Social", TikTokId, "tiktok", "TikTok", "tiktok",
-            "Connect a TikTok account and publish short-form videos.", false, false, true, true);
+            "Fetch published videos and statistics via manual sync.", false, false, true, true);
         Add("social", "Social", YouTubeId, "youtube", "YouTube", "youtube",
             "Fetch channel videos, comments, and statistics via manual sync.", true, false, true, true);
         Add("social", "Social", NewId(9), "pinterest", "Pinterest", "pinterest",
@@ -249,6 +249,7 @@ public static class PlatformCatalog
     public static readonly string[] TikTokOAuthScopes =
     [
         "user.info.basic",
+        "video.list",
         "video.upload",
         "video.publish"
     ];

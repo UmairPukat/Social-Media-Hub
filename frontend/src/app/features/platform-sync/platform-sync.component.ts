@@ -7,20 +7,38 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { finalize } from 'rxjs/operators';
 import { ProcessApiService } from '../../core/services/process-api.service';
 import { ProcessRouteService } from '../../core/services/process-route.service';
+import { ProcessMenuType } from '../../core/config/process.config';
 import {
   ApiResponse,
   ConnectionDetails,
   PlatformCard,
-  YouTubeSyncResult
+  PlatformSyncResult
 } from '../../core/models/api.models';
 
 type SyncAction = 'posts' | 'comments' | 'statistics';
 
 interface ManualSyncPlatform {
   card: PlatformCard;
-  tone: string;
+  tone: 'youtube' | 'tiktok';
   icon: string;
+  actions: SyncAction[];
+  hint: string;
 }
+
+const MANUAL_SYNC_CONFIG: Record<string, Omit<ManualSyncPlatform, 'card'>> = {
+  youtube: {
+    tone: 'youtube',
+    icon: 'smart_display',
+    actions: ['posts', 'comments', 'statistics'],
+    hint: 'Fetch channel videos, comments, and engagement stats on demand.'
+  },
+  tiktok: {
+    tone: 'tiktok',
+    icon: 'music_video',
+    actions: ['posts', 'statistics'],
+    hint: 'Fetch published TikTok videos and refresh view, like, and share counts.'
+  }
+};
 
 @Component({
   selector: 'app-platform-sync',
@@ -38,28 +56,28 @@ export class PlatformSyncComponent implements OnInit {
   readonly cards = signal<PlatformCard[]>([]);
   readonly loading = signal(true);
   readonly message = signal('');
-  readonly lastResult = signal<YouTubeSyncResult | null>(null);
+  readonly lastResult = signal<PlatformSyncResult | null>(null);
+  readonly lastResultPlatform = signal('');
   readonly running = signal<{ platform: string; action: SyncAction } | null>(null);
 
   readonly detailsOpen = signal(false);
   readonly detailsLoading = signal(false);
   readonly detailsError = signal('');
   readonly detailsTitle = signal('');
+  readonly detailsPlatform = signal('');
   readonly details = signal<ConnectionDetails | null>(null);
   readonly tokenRevealed = signal(false);
   readonly tokenCopied = signal(false);
 
   readonly connectLink = computed(() => `${this.processRoute.currentRouteBase()}/connect`);
 
-  /** Platforms without webhooks that expose manual fetch actions. */
   readonly manualPlatforms = computed<ManualSyncPlatform[]>(() =>
     this.cards()
-      .filter((card) => card.code.toLowerCase() === 'youtube')
-      .map((card) => ({
-        card,
-        tone: 'rose',
-        icon: 'smart_display'
-      }))
+      .filter((card) => card.code.toLowerCase() in MANUAL_SYNC_CONFIG)
+      .map((card) => {
+        const config = MANUAL_SYNC_CONFIG[card.code.toLowerCase()];
+        return { card, ...config };
+      })
   );
 
   ngOnInit(): void {
@@ -82,6 +100,26 @@ export class PlatformSyncComponent implements OnInit {
     return !!run && run.platform === code.toLowerCase() && run.action === action;
   }
 
+  actionLabel(action: SyncAction, code: string): string {
+    if (this.isRunning(code, action)) {
+      return action === 'posts'
+        ? 'Fetching posts…'
+        : action === 'comments'
+          ? 'Fetching comments…'
+          : 'Refreshing stats…';
+    }
+
+    return action === 'posts'
+      ? 'Fetch posts'
+      : action === 'comments'
+        ? 'Fetch comments'
+        : 'Fetch statistics';
+  }
+
+  actionIcon(action: SyncAction): string {
+    return action === 'posts' ? 'video_library' : action === 'comments' ? 'mode_comment' : 'insights';
+  }
+
   runSync(card: PlatformCard, action: SyncAction): void {
     const code = card.code.toLowerCase();
     if (!card.isConnected) {
@@ -92,14 +130,10 @@ export class PlatformSyncComponent implements OnInit {
     this.running.set({ platform: code, action });
     this.message.set('');
     this.lastResult.set(null);
+    this.lastResultPlatform.set('');
 
     const menuType = this.processRoute.currentMenuType();
-    const request =
-      action === 'posts'
-        ? this.processApi.syncYouTubePosts(menuType, code)
-        : action === 'comments'
-          ? this.processApi.syncYouTubeComments(menuType, code)
-          : this.processApi.syncYouTubeStatistics(menuType, code);
+    const request = this.resolveSyncRequest(menuType, code, action);
 
     request.pipe(finalize(() => this.running.set(null))).subscribe({
       next: (res) => {
@@ -108,6 +142,7 @@ export class PlatformSyncComponent implements OnInit {
           return;
         }
         this.lastResult.set(res.data);
+        this.lastResultPlatform.set(card.displayName);
         this.message.set(res.message || this.describeResult(res.data, action));
       },
       error: (err: { error?: { message?: string } }) =>
@@ -117,6 +152,7 @@ export class PlatformSyncComponent implements OnInit {
 
   openDetails(card: PlatformCard): void {
     this.detailsTitle.set(card.displayName);
+    this.detailsPlatform.set(card.code.toLowerCase());
     this.details.set(null);
     this.detailsError.set('');
     this.tokenRevealed.set(false);
@@ -167,12 +203,16 @@ export class PlatformSyncComponent implements OnInit {
     });
   }
 
-  youtubeChannelName(info: ConnectionDetails): string {
+  profileName(info: ConnectionDetails): string {
     return info.pageName || info.profiles?.[0]?.name || info.accountName || '—';
   }
 
-  youtubeChannelId(info: ConnectionDetails): string {
+  profileId(info: ConnectionDetails): string {
     return info.pageId || info.profiles?.[0]?.externalProfileId || '—';
+  }
+
+  isTikTokDetails(): boolean {
+    return this.detailsPlatform() === 'tiktok';
   }
 
   maskedToken(token: string): string {
@@ -194,15 +234,30 @@ export class PlatformSyncComponent implements OnInit {
     }
   }
 
+  private resolveSyncRequest(menuType: ProcessMenuType, code: string, action: SyncAction) {
+    if (code === 'tiktok') {
+      return action === 'posts'
+        ? this.processApi.syncTikTokPosts(menuType, code)
+        : this.processApi.syncTikTokStatistics(menuType, code);
+    }
+
+    return action === 'posts'
+      ? this.processApi.syncYouTubePosts(menuType, code)
+      : action === 'comments'
+        ? this.processApi.syncYouTubeComments(menuType, code)
+        : this.processApi.syncYouTubeStatistics(menuType, code);
+  }
+
   private resetDetails(): void {
     this.detailsOpen.set(false);
     this.details.set(null);
     this.detailsError.set('');
+    this.detailsPlatform.set('');
     this.tokenRevealed.set(false);
     this.tokenCopied.set(false);
   }
 
-  private describeResult(result: YouTubeSyncResult, action: SyncAction): string {
+  private describeResult(result: PlatformSyncResult, action: SyncAction): string {
     const label =
       action === 'posts' ? 'videos' : action === 'comments' ? 'comments' : 'statistics';
     return `Fetched ${result.fetched} ${label}, stored ${result.stored}, updated ${result.updated}.`;

@@ -41,6 +41,16 @@ public class YouTubeSyncController : ProcessYouTubeSyncControllerBase
 [Authorize]
 [Route(ProcessModules.AppConnections.ApiRoute)]
 [ApiController]
+public class TikTokSyncController : ProcessTikTokSyncControllerBase
+{
+    public TikTokSyncController(ITikTokSyncService tikTokSync) : base(tikTokSync) { }
+
+    protected override string MenuType => ProcessModules.AppConnections.MenuType;
+}
+
+[Authorize]
+[Route(ProcessModules.AppConnections.ApiRoute)]
+[ApiController]
 public class InboxController : ProcessInboxControllerBase
 {
     public InboxController(IInboxService inboxService) : base(inboxService) { }
