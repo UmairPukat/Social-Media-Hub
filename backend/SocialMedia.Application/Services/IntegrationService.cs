@@ -428,12 +428,12 @@ public class IntegrationService : IIntegrationService
                 authCode,
                 cancellationToken);
 
-            var profiles = await _tikTokService.DiscoverProfilesAsync(token.AccessToken, cancellationToken);
-            var profile = profiles.FirstOrDefault();
+            var profile = await _tikTokService.ResolveProfileAsync(token, cancellationToken);
             if (profile is null)
             {
                 return ApiResponse<SocialAccountDto>.Fail(
-                    "No TikTok profile was found for this account. Approve the requested scopes and try connecting again.");
+                    "No TikTok profile was found for this account. Confirm Login Kit is enabled, " +
+                    "approve user.info.basic (and video scopes if publishing), and verify the redirect URI matches your TikTok app settings.");
             }
 
             var response = await PersistConnectedAccountAsync(
@@ -465,8 +465,7 @@ public class IntegrationService : IIntegrationService
                     await store.SaveChangesAsync(cancellationToken);
                 }
 
-                foreach (var draft in profiles)
-                    await UpsertProfileAsync(store, account, draft, cancellationToken);
+                await UpsertProfileAsync(store, account, profile, cancellationToken);
                 await store.SaveChangesAsync(cancellationToken);
             }
 
@@ -818,7 +817,7 @@ public class IntegrationService : IIntegrationService
                     "whatsapp" => await _whatsAppService.DiscoverProfilesAsync(
                         accessToken, whatsAppIds.PhoneNumberId, whatsAppIds.WabaId, cancellationToken),
                     "youtube" => await _youTubeService.DiscoverChannelsAsync(accessToken, cancellationToken),
-                    "tiktok" => await _tikTokService.DiscoverProfilesAsync(accessToken, cancellationToken),
+                    "tiktok" => await _tikTokService.DiscoverProfilesAsync(accessToken, externalAccountId, cancellationToken),
                     _ => Array.Empty<SocialProfileDraft>()
                 };
 

@@ -11,7 +11,12 @@ public interface ITikTokService
         string code,
         CancellationToken cancellationToken = default);
 
+    Task<SocialProfileDraft?> ResolveProfileAsync(
+        OAuthTokenResult token,
+        CancellationToken cancellationToken = default);
+
     Task<IReadOnlyList<SocialProfileDraft>> DiscoverProfilesAsync(
         string accessToken,
+        string? openIdFallback = null,
         CancellationToken cancellationToken = default);
 }

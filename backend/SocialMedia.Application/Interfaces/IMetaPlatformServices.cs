@@ -179,6 +179,9 @@ public class OAuthTokenResult
     public string? RefreshToken { get; set; }
     public DateTime? ExpiresAt { get; set; }
     public string? TokenType { get; set; }
+    /// <summary>TikTok open_id returned by the token endpoint.</summary>
+    public string? OpenId { get; set; }
+    public string? Scope { get; set; }
 }
 
 /// <summary>

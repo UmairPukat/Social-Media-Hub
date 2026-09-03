@@ -42,54 +42,97 @@ public class TikTokService : ITikTokService
         if (tokenPayload.TryGetProperty("expires_in", out var expires) && expires.TryGetInt64(out var seconds))
             expiresAt = DateTime.UtcNow.AddSeconds(seconds);
 
+        var openId = tokenPayload.TryGetProperty("open_id", out var openEl) ? openEl.GetString() : null;
+        var scope = tokenPayload.TryGetProperty("scope", out var scopeEl) ? scopeEl.GetString() : null;
+
         return new OAuthTokenResult
         {
             AccessToken = token,
             RefreshToken = tokenPayload.TryGetProperty("refresh_token", out var refresh) ? refresh.GetString() : token,
             ExpiresAt = expiresAt,
-            TokenType = tokenPayload.TryGetProperty("token_type", out var type) ? type.GetString() : "Bearer"
+            TokenType = tokenPayload.TryGetProperty("token_type", out var type) ? type.GetString() : "Bearer",
+            OpenId = openId,
+            Scope = scope
         };
+    }
+
+    public async Task<SocialProfileDraft?> ResolveProfileAsync(
+        OAuthTokenResult token,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(token.AccessToken))
+            return null;
+
+        try
+        {
+            using var doc = await _api.GetUserInfoAsync(token.AccessToken, cancellationToken);
+            var profile = ParseUserInfoProfile(doc.RootElement);
+            if (profile is not null)
+                return profile;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "TikTok user info lookup failed; falling back to token open_id if available.");
+        }
+
+        return BuildFallbackProfile(token.OpenId, token.Scope);
     }
 
     public async Task<IReadOnlyList<SocialProfileDraft>> DiscoverProfilesAsync(
         string accessToken,
+        string? openIdFallback = null,
         CancellationToken cancellationToken = default)
     {
-        try
+        var token = new OAuthTokenResult
         {
-            using var doc = await _api.GetUserInfoAsync(accessToken, cancellationToken);
-            var root = doc.RootElement;
-            if (!root.TryGetProperty("data", out var data) ||
-                !data.TryGetProperty("user", out var user) ||
-                user.ValueKind != JsonValueKind.Object)
-            {
-                return Array.Empty<SocialProfileDraft>();
-            }
+            AccessToken = accessToken,
+            OpenId = openIdFallback
+        };
+        var profile = await ResolveProfileAsync(token, cancellationToken);
+        return profile is null ? Array.Empty<SocialProfileDraft>() : [profile];
+    }
 
-            var openId = user.TryGetProperty("open_id", out var openEl) ? openEl.GetString() : null;
-            if (string.IsNullOrWhiteSpace(openId))
-                return Array.Empty<SocialProfileDraft>();
-
-            var displayName = user.TryGetProperty("display_name", out var nameEl) ? nameEl.GetString() : null;
-            var username = user.TryGetProperty("username", out var usernameEl) ? usernameEl.GetString() : null;
-            var avatar = user.TryGetProperty("avatar_url", out var avatarEl) ? avatarEl.GetString() : null;
-
-            return
-            [
-                new SocialProfileDraft
-                {
-                    ExternalProfileId = openId,
-                    Name = displayName ?? username ?? "TikTok Account",
-                    Username = username,
-                    ProfileImage = avatar,
-                    ProfileType = "TikTokAccount"
-                }
-            ];
-        }
-        catch (Exception ex)
+    private static SocialProfileDraft? ParseUserInfoProfile(JsonElement root)
+    {
+        if (!root.TryGetProperty("data", out var data) ||
+            !data.TryGetProperty("user", out var user) ||
+            user.ValueKind != JsonValueKind.Object)
         {
-            _logger.LogWarning(ex, "Could not load TikTok profile after OAuth.");
-            return Array.Empty<SocialProfileDraft>();
+            return null;
         }
+
+        var openId = user.TryGetProperty("open_id", out var openEl) ? openEl.GetString() : null;
+        if (string.IsNullOrWhiteSpace(openId))
+            return null;
+
+        var displayName = user.TryGetProperty("display_name", out var nameEl) ? nameEl.GetString() : null;
+        var avatar = user.TryGetProperty("avatar_url", out var avatarEl) ? avatarEl.GetString() : null;
+        if (string.IsNullOrWhiteSpace(avatar) &&
+            user.TryGetProperty("avatar_large_url", out var largeAvatarEl))
+        {
+            avatar = largeAvatarEl.GetString();
+        }
+
+        return new SocialProfileDraft
+        {
+            ExternalProfileId = openId,
+            Name = string.IsNullOrWhiteSpace(displayName) ? "TikTok Account" : displayName,
+            ProfileImage = avatar,
+            ProfileType = "TikTokAccount"
+        };
+    }
+
+    private static SocialProfileDraft? BuildFallbackProfile(string? openId, string? scope)
+    {
+        if (string.IsNullOrWhiteSpace(openId))
+            return null;
+
+        return new SocialProfileDraft
+        {
+            ExternalProfileId = openId,
+            Name = "TikTok Account",
+            ProfileType = "TikTokAccount",
+            Username = null
+        };
     }
 }
