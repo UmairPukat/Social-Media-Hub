@@ -29,10 +29,12 @@ public class IntegrationService : IIntegrationService
         ["instagram"] = "pages_read_user_content,pages_show_list,pages_manage_metadata,pages_messaging,business_management,read_insights,pages_read_engagement,public_profile,instagram_manage_insights,instagram_basic,email,instagram_manage_comments,instagram_manage_messages",
         ["instagram_login"] = "instagram_business_basic,instagram_business_content_publish,instagram_business_manage_messages,instagram_business_manage_comments",
         ["whatsapp"] = "whatsapp_business_management,whatsapp_business_messaging,business_management",
-        ["youtube"] = PlatformCatalog.DefaultScopes("youtube")
+        ["youtube"] = PlatformCatalog.DefaultScopes("youtube"),
+        ["tiktok"] = PlatformCatalog.DefaultScopes("tiktok")
     };
 
     private readonly IYouTubeService _youTubeService;
+    private readonly ITikTokService _tikTokService;
 
     private readonly IUnitOfWork _unitOfWork;
     private readonly IProcessDataStoreFactory _processData;
@@ -50,6 +52,7 @@ public class IntegrationService : IIntegrationService
         IInstagramService instagramService,
         IWhatsAppService whatsAppService,
         IYouTubeService youTubeService,
+        ITikTokService tikTokService,
         IMetaOAuthExchange metaOAuthExchange,
         IOptions<JwtSettings> jwtOptions,
         IConfiguration configuration)
@@ -60,6 +63,7 @@ public class IntegrationService : IIntegrationService
         _instagramService = instagramService;
         _whatsAppService = whatsAppService;
         _youTubeService = youTubeService;
+        _tikTokService = tikTokService;
         _metaOAuthExchange = metaOAuthExchange;
         _jwt = jwtOptions.Value;
         _configuration = configuration;
@@ -143,7 +147,7 @@ public class IntegrationService : IIntegrationService
     {
         var platformCode = (request.PlatformCode ?? string.Empty).Trim().ToLowerInvariant();
         var menuType = MenuTypes.Normalize(request.MenuType);
-        if (platformCode is not ("facebook" or "instagram" or "instagram_login" or "whatsapp" or "youtube"))
+        if (platformCode is not ("facebook" or "instagram" or "instagram_login" or "whatsapp" or "youtube" or "tiktok"))
             return ApiResponse<BeginOAuthResponse>.Fail($"Unsupported platform '{request.PlatformCode}'.");
 
         var config = await LoadStoredAppConfigAsync(userId, platformCode, menuType, cancellationToken);
@@ -159,10 +163,12 @@ public class IntegrationService : IIntegrationService
         var scopes = string.IsNullOrWhiteSpace(config.Scopes) ? PlatformScopes[platformCode] : config.Scopes!;
         if (platformCode == "youtube")
             scopes = PlatformCatalog.NormalizeYouTubeScopes(scopes);
+        if (platformCode == "tiktok")
+            scopes = PlatformCatalog.NormalizeTikTokScopes(scopes);
         var authBase = ResolveAuthBase(platformCode, config.AuthUrl, version);
 
         if (string.IsNullOrWhiteSpace(appId) || appId.StartsWith("YOUR_", StringComparison.OrdinalIgnoreCase))
-            return ApiResponse<BeginOAuthResponse>.Fail($"Meta App Id is not configured for {platformCode}.");
+            return ApiResponse<BeginOAuthResponse>.Fail($"App credentials are not configured for {platformCode}.");
 
         if (string.IsNullOrWhiteSpace(redirectUri))
             return ApiResponse<BeginOAuthResponse>.Fail("Redirect URI is not configured. Save a callback URL in platform configuration or set backendBaseUrl.");
@@ -178,6 +184,7 @@ public class IntegrationService : IIntegrationService
                                  + $"&scope={Uri.EscapeDataString(scopes)}"
                                  + "&response_type=code",
             "youtube" => BuildYouTubeAuthorizationUrl(authBase, appId, redirectUri, state, scopes),
+            "tiktok" => BuildTikTokAuthorizationUrl(authBase, appId, redirectUri, state, scopes),
             _ => authBase
                  + $"?client_id={Uri.EscapeDataString(appId)}"
                  + $"&redirect_uri={Uri.EscapeDataString(redirectUri)}"
@@ -261,7 +268,9 @@ public class IntegrationService : IIntegrationService
             ? HandleMetaAuthCodeAsync(userId, code, request, cancellationToken)
             : code == "youtube"
                 ? HandleYouTubeAuthCodeAsync(userId, request, cancellationToken)
-                : Task.FromResult(ApiResponse<SocialAccountDto>.Fail($"Unsupported platform '{request.PlatformCode}'."));
+                : code == "tiktok"
+                    ? HandleTikTokAuthCodeAsync(userId, request, cancellationToken)
+                    : Task.FromResult(ApiResponse<SocialAccountDto>.Fail($"Unsupported platform '{request.PlatformCode}'."));
     }
 
     private IReadOnlyList<string> ResolveFrontendOrigins()
@@ -392,6 +401,82 @@ public class IntegrationService : IIntegrationService
         }
     }
 
+    private async Task<ApiResponse<SocialAccountDto>> HandleTikTokAuthCodeAsync(
+        Guid userId,
+        OAuthCallbackRequest request,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(request.Code))
+                return ApiResponse<SocialAccountDto>.Fail("Authorization code is required.");
+
+            var normalizedMenu = MenuTypes.Normalize(request.MenuType);
+            var config = await LoadStoredAppConfigAsync(userId, "tiktok", normalizedMenu, cancellationToken);
+            if (config is null)
+                return ApiResponse<SocialAccountDto>.Fail("Save TikTok OAuth credentials before connecting.");
+
+            var redirectUri = ResolveProcessRedirectUri("tiktok", normalizedMenu, config.RedirectUri);
+            if (string.IsNullOrWhiteSpace(redirectUri))
+                return ApiResponse<SocialAccountDto>.Fail("Redirect URI is not configured.");
+
+            var token = await _tikTokService.ExchangeAuthorizationCodeAsync(
+                config.ClientId.Trim(),
+                config.ClientSecret.Trim(),
+                redirectUri,
+                request.Code,
+                cancellationToken);
+
+            var profiles = await _tikTokService.DiscoverProfilesAsync(token.AccessToken, cancellationToken);
+            var profile = profiles.FirstOrDefault();
+            if (profile is null)
+            {
+                return ApiResponse<SocialAccountDto>.Fail(
+                    "No TikTok profile was found for this account. Approve the requested scopes and try connecting again.");
+            }
+
+            var response = await PersistConnectedAccountAsync(
+                userId,
+                "tiktok",
+                normalizedMenu,
+                token.AccessToken,
+                token.ExpiresAt,
+                profile.ExternalProfileId,
+                profile.Name ?? "TikTok Account",
+                cancellationToken);
+
+            if (!response.Success)
+                return response;
+
+            var store = _processData.ForMenu(normalizedMenu);
+            var platform = await store.GetPlatformByCodeAsync("tiktok", cancellationToken);
+            var account = platform is null
+                ? null
+                : await store.GetSocialAccountByUserAndPlatformAsync(userId, platform.Id, cancellationToken);
+            if (account is not null)
+            {
+                var auth = await store.GetSocialAuthByAccountIdAsync(account.Id, cancellationToken);
+                if (auth is not null && !string.IsNullOrWhiteSpace(token.RefreshToken))
+                {
+                    auth.RefreshToken = token.RefreshToken;
+                    auth.UpdatedAt = DateTime.UtcNow;
+                    store.UpdateSocialAuth(auth);
+                    await store.SaveChangesAsync(cancellationToken);
+                }
+
+                foreach (var draft in profiles)
+                    await UpsertProfileAsync(store, account, draft, cancellationToken);
+                await store.SaveChangesAsync(cancellationToken);
+            }
+
+            return response;
+        }
+        catch (Exception ex)
+        {
+            return ApiResponse<SocialAccountDto>.Fail(ex.Message);
+        }
+    }
+
     private async Task<ApiResponse<SocialAccountDto>> HandleMetaAuthCodeAsync(
         Guid userId,
         string platformCode,
@@ -503,6 +588,22 @@ public class IntegrationService : IIntegrationService
                + "&response_type=code"
                + "&access_type=offline"
                + "&prompt=consent";
+    }
+
+    private static string BuildTikTokAuthorizationUrl(
+        string authBase,
+        string clientKey,
+        string redirectUri,
+        string state,
+        string scopes)
+    {
+        var scopeParam = PlatformCatalog.NormalizeTikTokScopes(scopes);
+        return authBase
+               + $"?client_key={Uri.EscapeDataString(clientKey)}"
+               + $"&redirect_uri={Uri.EscapeDataString(redirectUri)}"
+               + $"&state={Uri.EscapeDataString(state)}"
+               + $"&scope={Uri.EscapeDataString(scopeParam)}"
+               + "&response_type=code";
     }
 
     private static string FirstNonEmpty(params string?[] values)
@@ -716,6 +817,7 @@ public class IntegrationService : IIntegrationService
                     "whatsapp" => await _whatsAppService.DiscoverProfilesAsync(
                         accessToken, whatsAppIds.PhoneNumberId, whatsAppIds.WabaId, cancellationToken),
                     "youtube" => await _youTubeService.DiscoverChannelsAsync(accessToken, cancellationToken),
+                    "tiktok" => await _tikTokService.DiscoverProfilesAsync(accessToken, cancellationToken),
                     _ => Array.Empty<SocialProfileDraft>()
                 };
 
@@ -959,6 +1061,25 @@ public class IntegrationService : IIntegrationService
                 {
                     details.PageId = account.ExternalAccountId;
                     details.PageName = account.DisplayName;
+                }
+            }
+
+            if (code == "tiktok")
+            {
+                var tikTokProfile = profiles.FirstOrDefault(p => p.ProfileType == ProfileType.TikTokAccount)
+                    ?? profiles.FirstOrDefault();
+                if (tikTokProfile is not null)
+                {
+                    details.PageId = tikTokProfile.ExternalProfileId;
+                    details.PageName = tikTokProfile.Name;
+                    details.PageImage = tikTokProfile.ProfileImage;
+                    details.InstagramUsername = tikTokProfile.Username;
+                }
+                else if (!string.IsNullOrWhiteSpace(account.ExternalAccountId))
+                {
+                    details.PageId = account.ExternalAccountId;
+                    details.PageName = account.DisplayName;
+                    details.InstagramUsername = account.Username;
                 }
             }
 
@@ -1556,6 +1677,7 @@ public class IntegrationService : IIntegrationService
         "instagrambusiness" or "instagram" => ProfileType.InstagramBusiness,
         "instagramlogin" => ProfileType.InstagramLogin,
         "youtubechannel" or "youtube" => ProfileType.YouTubeChannel,
+        "tiktokaccount" or "tiktok" => ProfileType.TikTokAccount,
         "whatsappphone" or "whatsapp" => ProfileType.WhatsAppPhone,
         _ => ProfileType.Other
     };

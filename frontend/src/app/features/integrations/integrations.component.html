@@ -288,6 +288,8 @@
                 Instagram &amp; Facebook connection
               } @else if (isYouTubePlatform(info.platformCode)) {
                 YouTube channel information
+              } @else if (isTikTokPlatform(info.platformCode)) {
+                TikTok account information
               } @else {
                 Instagram account information
               }
@@ -303,6 +305,8 @@
                 Instagram Business account linked to the Facebook Page used at connect time.
               } @else if (isYouTubePlatform(info.platformCode)) {
                 YouTube channel connected through Google OAuth.
+              } @else if (isTikTokPlatform(info.platformCode)) {
+                TikTok account connected through Login Kit OAuth.
               } @else {
                 Instagram account connected with Instagram Login.
               }
@@ -405,6 +409,23 @@
                 <dt>Connected</dt>
                 <dd>{{ info.connectedAt ? (info.connectedAt | date: 'medium') : '—' }}</dd>
               </div>
+            } @else if (isTikTokPlatform(info.platformCode)) {
+              <div>
+                <dt>Display name</dt>
+                <dd>{{ tikTokAccountName(info) }}</dd>
+              </div>
+              <div>
+                <dt>Username</dt>
+                <dd>{{ tikTokUsername(info) }}</dd>
+              </div>
+              <div>
+                <dt>Account ID</dt>
+                <dd><code>{{ tikTokAccountId(info) }}</code></dd>
+              </div>
+              <div>
+                <dt>Connected</dt>
+                <dd>{{ info.connectedAt ? (info.connectedAt | date: 'medium') : '—' }}</dd>
+              </div>
             }
 
             @if (info.accessToken) {
@@ -459,6 +480,8 @@
           <p class="picker-lede">
             @if (isYouTubePlatform(configPlatformCode())) {
               Google OAuth credentials for Integrations.
+            } @else if (isTikTokPlatform(configPlatformCode())) {
+              TikTok Login Kit credentials for Integrations. Use your TikTok app Client Key and Client Secret.
             } @else {
               Meta app credentials for this Integrations process. Save Client ID, Secret, and Webhook Verify Token before connecting.
             }
@@ -532,7 +555,7 @@
             </mat-form-field>
           }
 
-          @if (!isYouTubePlatform(configPlatformCode())) {
+          @if (!usesStandaloneOAuthConfig(configPlatformCode())) {
             <mat-form-field appearance="outline">
               <mat-label>Webhook verify token</mat-label>
               <input matInput [ngModel]="configForm().webhookVerifyToken" name="webhookVerifyToken" (ngModelChange)="updateConfigField('webhookVerifyToken', $event)" />

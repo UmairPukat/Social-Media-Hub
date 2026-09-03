@@ -26,3 +26,33 @@ export function formatYouTubeOAuthScopes(scopes?: string | null): string {
 export function youtubeDefaultScopeString(): string {
   return YOUTUBE_OAUTH_SCOPES.join(' ');
 }
+
+/** TikTok Login Kit / Content Posting scopes — comma-separated in authorize URLs. */
+export const TIKTOK_OAUTH_SCOPES = [
+  'user.info.basic',
+  'video.upload',
+  'video.publish'
+] as const;
+
+export function formatTikTokOAuthScopes(scopes?: string | null): string {
+  if (!scopes?.trim()) {
+    return TIKTOK_OAUTH_SCOPES.join(',');
+  }
+
+  return scopes
+    .split(/[,\s]+/)
+    .map((scope) => scope.trim())
+    .filter(Boolean)
+    .join(',');
+}
+
+export function tiktokDefaultScopeString(): string {
+  return TIKTOK_OAUTH_SCOPES.join(',');
+}
+
+export function formatPlatformOAuthScopes(platformCode: string, scopes?: string | null): string {
+  const code = (platformCode || '').toLowerCase();
+  if (code === 'youtube') return formatYouTubeOAuthScopes(scopes);
+  if (code === 'tiktok') return formatTikTokOAuthScopes(scopes);
+  return scopes?.trim() || '';
+}

@@ -45,6 +45,16 @@ export class CreatePostComponent implements OnInit, OnDestroy {
   readonly waAudience = signal<'Status' | 'Broadcast'>('Status');
   readonly ytVisibility = signal<'Public' | 'Unlisted' | 'Private'>('Public');
   readonly liAudience = signal<'Anyone' | 'Connections'>('Anyone');
+  readonly ttPrivacy = signal<'Public' | 'Friends' | 'Followers' | 'Only you'>('Public');
+  readonly ttAllowComment = signal(true);
+  readonly ttAllowDuet = signal(true);
+  readonly ttAllowStitch = signal(true);
+  readonly ttDiscloseContent = signal(false);
+  readonly ttYourBrand = signal(false);
+  readonly ttBrandedContent = signal(false);
+  readonly ttAccountOpen = signal(false);
+  readonly selectedFileSize = signal<number | null>(null);
+  readonly videoDimensions = signal<{ width: number; height: number } | null>(null);
 
   readonly form = this.fb.nonNullable.group({
     profileId: ['', Validators.required],
@@ -164,6 +174,7 @@ export class CreatePostComponent implements OnInit, OnDestroy {
   private applyPlatform(code: CreatePlatform): void {
     this.platform.set(code);
     this.clearAttachment(false);
+    this.resetTikTokSettings();
     const list = this.profiles().filter((p) => p.platformCode === code);
     const preferLive = list.find((p) => !p.isDemo) || list[0];
     const id = preferLive?.id || '';
@@ -184,6 +195,65 @@ export class CreatePostComponent implements OnInit, OnDestroy {
   selectProfile(id: string): void {
     this.selectedProfileId.set(id);
     this.form.controls.profileId.setValue(id);
+    this.ttAccountOpen.set(false);
+  }
+
+  toggleTtAccountMenu(): void {
+    this.ttAccountOpen.update((open) => !open);
+  }
+
+  closeTtAccountMenu(): void {
+    this.ttAccountOpen.set(false);
+  }
+
+  toggleTtDisclose(): void {
+    const next = !this.ttDiscloseContent();
+    this.ttDiscloseContent.set(next);
+    if (!next) {
+      this.ttYourBrand.set(false);
+      this.ttBrandedContent.set(false);
+    }
+  }
+
+  private resetTikTokSettings(): void {
+    this.ttPrivacy.set('Public');
+    this.ttAllowComment.set(true);
+    this.ttAllowDuet.set(true);
+    this.ttAllowStitch.set(true);
+    this.ttDiscloseContent.set(false);
+    this.ttYourBrand.set(false);
+    this.ttBrandedContent.set(false);
+    this.ttAccountOpen.set(false);
+  }
+
+  tikTokCaptionCount(): number {
+    return this.form.controls.content.value.length;
+  }
+
+  fileFormatLabel(): string {
+    const name = this.selectedFileName();
+    if (!name) return '—';
+    const ext = name.split('.').pop()?.toUpperCase();
+    return ext || '—';
+  }
+
+  fileSizeLabel(): string {
+    const bytes = this.selectedFileSize();
+    if (bytes == null) return '—';
+    if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(2)}MB`;
+    if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)}KB`;
+    return `${bytes}B`;
+  }
+
+  videoResolutionLabel(): string {
+    const dims = this.videoDimensions();
+    if (!dims) return '—';
+    const height = dims.height;
+    if (height >= 2160) return '4K';
+    if (height >= 1440) return '1440P';
+    if (height >= 1080) return '1080P';
+    if (height >= 720) return '720P';
+    return `${dims.width}×${dims.height}`;
   }
 
   setAudience(value: 'Public' | 'Friends' | 'Only me'): void {
@@ -232,9 +302,28 @@ export class CreatePostComponent implements OnInit, OnDestroy {
     this.selectedFileName.set(file.name);
     this.selectedFileKind.set(kind);
     this.selectedFile = file;
+    this.selectedFileSize.set(file.size);
+    this.videoDimensions.set(null);
     this.form.controls.mediaUrl.setValue(url);
     this.formTick.update((n) => n + 1);
+    if (kind === 'video') {
+      this.loadVideoDimensions(url);
+    }
     input.value = '';
+  }
+
+  private loadVideoDimensions(url: string): void {
+    const video = document.createElement('video');
+    video.preload = 'metadata';
+    video.onloadedmetadata = () => {
+      this.videoDimensions.set({
+        width: video.videoWidth,
+        height: video.videoHeight
+      });
+      video.removeAttribute('src');
+      video.load();
+    };
+    video.src = url;
   }
 
   clearAttachment(emit = true): void {
@@ -242,6 +331,8 @@ export class CreatePostComponent implements OnInit, OnDestroy {
     this.selectedFile = null;
     this.selectedFileName.set(null);
     this.selectedFileKind.set(null);
+    this.selectedFileSize.set(null);
+    this.videoDimensions.set(null);
     if (emit) {
       this.form.controls.mediaUrl.setValue('');
       this.formTick.update((n) => n + 1);
@@ -294,6 +385,15 @@ export class CreatePostComponent implements OnInit, OnDestroy {
     if (this.platform() === 'youtube') {
       formData.append('visibility', this.ytVisibility().toLowerCase());
     }
+    if (this.platform() === 'tiktok') {
+      formData.append('privacy', this.ttPrivacy().toLowerCase().replace(' ', '_'));
+      formData.append('allowComment', String(this.ttAllowComment()));
+      formData.append('allowDuet', String(this.ttAllowDuet()));
+      formData.append('allowStitch', String(this.ttAllowStitch()));
+      formData.append('discloseContent', String(this.ttDiscloseContent()));
+      formData.append('yourBrand', String(this.ttYourBrand()));
+      formData.append('brandedContent', String(this.ttBrandedContent()));
+    }
     if (file) {
       formData.append('mediaFile', file, file.name);
     } else if (mediaUrl && !mediaUrl.startsWith('blob:')) {
@@ -323,6 +423,7 @@ export class CreatePostComponent implements OnInit, OnDestroy {
   private resetComposerKeepProfile(): void {
     const profileId = this.selectedProfileId();
     this.clearAttachment(false);
+    this.resetTikTokSettings();
     this.form.patchValue(
       {
         profileId,
@@ -345,6 +446,8 @@ export class CreatePostComponent implements OnInit, OnDestroy {
         return 'Uploading to YouTube';
       case 'facebook':
         return 'Posting to Facebook';
+      case 'tiktok':
+        return 'Uploading to TikTok';
       default:
         return 'Publishing';
     }
@@ -359,6 +462,8 @@ export class CreatePostComponent implements OnInit, OnDestroy {
         return 'Uploading your video. This can take a minute or two.';
       case 'facebook':
         return 'Sending your post to Facebook…';
+      case 'tiktok':
+        return 'Preparing your video and upload settings…';
       default:
         return 'Please wait while we publish your content.';
     }
@@ -375,7 +480,7 @@ export class CreatePostComponent implements OnInit, OnDestroy {
       case 'youtube':
         return 'Upload';
       case 'tiktok':
-        return 'Post';
+        return 'Upload';
       case 'linkedin':
         return 'Post';
       case 'twitter':

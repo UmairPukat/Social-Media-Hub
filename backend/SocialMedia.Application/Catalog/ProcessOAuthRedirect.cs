@@ -30,5 +30,5 @@ public static class ProcessOAuthRedirect
     }
 
     public static bool SupportsAutoRedirect(string platformCode) =>
-        platformCode is "facebook" or "instagram" or "instagram_login" or "whatsapp" or "youtube";
+        platformCode is "facebook" or "instagram" or "instagram_login" or "whatsapp" or "youtube" or "tiktok";
 }

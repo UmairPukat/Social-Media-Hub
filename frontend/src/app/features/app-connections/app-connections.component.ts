@@ -19,7 +19,7 @@ import {
 } from '../../core/models/api.models';
 import { IntegrationCategoryGroup } from '../integrations/integrations.component';
 import { defaultOAuthRedirectUri } from '../../core/config/oauth-redirect.config';
-import { formatYouTubeOAuthScopes, youtubeDefaultScopeString } from '../../core/config/oauth-scopes.config';
+import { formatPlatformOAuthScopes, youtubeDefaultScopeString, tiktokDefaultScopeString } from '../../core/config/oauth-scopes.config';
 import { instagramAccountName, instagramDisplayName } from '../../core/utils/connection-details.util';
 
 const CATEGORY_META: Record<string, { accent: string; icon: string }> = {
@@ -49,7 +49,8 @@ const DEFAULT_AUTH_URLS: Record<string, string> = {
   facebook: 'https://www.facebook.com/v21.0/dialog/oauth',
   instagram: 'https://www.facebook.com/v21.0/dialog/oauth',
   whatsapp: 'https://www.facebook.com/v21.0/dialog/oauth',
-  youtube: 'https://accounts.google.com/o/oauth2/v2/auth'
+  youtube: 'https://accounts.google.com/o/oauth2/v2/auth',
+  tiktok: 'https://www.tiktok.com/v2/auth/authorize/'
 };
 
 const DEFAULT_BASE_URLS: Record<string, string> = {
@@ -57,11 +58,13 @@ const DEFAULT_BASE_URLS: Record<string, string> = {
   facebook: 'https://graph.facebook.com',
   instagram: 'https://graph.facebook.com',
   whatsapp: 'https://graph.facebook.com',
-  youtube: 'https://www.googleapis.com/youtube/v3'
+  youtube: 'https://www.googleapis.com/youtube/v3',
+  tiktok: 'https://open.tiktokapis.com'
 };
 
 const DEFAULT_SCOPES: Record<string, string> = {
-  youtube: youtubeDefaultScopeString()
+  youtube: youtubeDefaultScopeString(),
+  tiktok: tiktokDefaultScopeString()
 };
 
 @Component({
@@ -181,7 +184,7 @@ export class AppConnectionsComponent implements OnInit {
       return;
     }
 
-    if (!['facebook', 'instagram', 'instagram_login', 'whatsapp', 'youtube'].includes(code)) {
+    if (!['facebook', 'instagram', 'instagram_login', 'whatsapp', 'youtube', 'tiktok'].includes(code)) {
       this.message.set(`${card.displayName} is coming soon.`);
       return;
     }
@@ -190,7 +193,9 @@ export class AppConnectionsComponent implements OnInit {
     this.message.set(
       code === 'youtube'
         ? `Complete Google sign-in in the popup window. This button will update when you are done.`
-        : `Opening Meta login for ${card.displayName}…`
+        : code === 'tiktok'
+          ? `Complete TikTok sign-in in the popup window. This button will update when you are done.`
+          : `Opening Meta login for ${card.displayName}…`
     );
 
     try {
@@ -220,7 +225,7 @@ export class AppConnectionsComponent implements OnInit {
   }
 
   supportsConnectionDetails(code: string): boolean {
-    return ['facebook', 'instagram', 'instagram_login', 'youtube'].includes(code.toLowerCase());
+    return ['facebook', 'instagram', 'instagram_login', 'youtube', 'tiktok'].includes(code.toLowerCase());
   }
 
   isInstagramLoginPlatform(code: string | null | undefined): boolean {
@@ -251,6 +256,14 @@ export class AppConnectionsComponent implements OnInit {
 
   isYouTubePlatform(code: string | null | undefined): boolean {
     return (code || '').toLowerCase() === 'youtube';
+  }
+
+  isTikTokPlatform(code: string | null | undefined): boolean {
+    return (code || '').toLowerCase() === 'tiktok';
+  }
+
+  usesStandaloneOAuthConfig(code: string | null | undefined): boolean {
+    return this.isYouTubePlatform(code) || this.isTikTokPlatform(code);
   }
 
   openConfig(card: PlatformCard): void {
@@ -326,7 +339,7 @@ export class AppConnectionsComponent implements OnInit {
       platformCode: code,
       menuType: this.menuType,
       redirectUri: this.moduleRedirectUri,
-      scopes: this.isYouTubePlatform(code) ? formatYouTubeOAuthScopes(form.scopes) : form.scopes
+      scopes: formatPlatformOAuthScopes(code, form.scopes)
     }).subscribe({
       next: (res) => {
         this.configSaving.set(false);
@@ -513,6 +526,7 @@ export class AppConnectionsComponent implements OnInit {
     if (code === 'facebook' || code === 'instagram') return 'Page access token';
     if (code === 'instagram_login') return 'Instagram access token';
     if (code === 'youtube') return 'Google access token';
+    if (code === 'tiktok') return 'TikTok access token';
     return 'Access token';
   }
 
@@ -521,6 +535,19 @@ export class AppConnectionsComponent implements OnInit {
   }
 
   youtubeChannelId(info: ConnectionDetails): string {
+    return info.pageId || info.profiles?.[0]?.externalProfileId || '—';
+  }
+
+  tikTokAccountName(info: ConnectionDetails): string {
+    return info.pageName || info.profiles?.[0]?.name || info.accountName || '—';
+  }
+
+  tikTokUsername(info: ConnectionDetails): string {
+    const username = info.instagramUsername || info.profiles?.[0]?.username;
+    return username ? `@${username.replace(/^@/, '')}` : '—';
+  }
+
+  tikTokAccountId(info: ConnectionDetails): string {
     return info.pageId || info.profiles?.[0]?.externalProfileId || '—';
   }
 
@@ -583,9 +610,7 @@ export class AppConnectionsComponent implements OnInit {
       authUrl: config.authUrl,
       baseUrl: config.baseUrl,
       scopes: config.scopes
-        ? this.isYouTubePlatform(config.platformCode)
-          ? formatYouTubeOAuthScopes(config.scopes)
-          : config.scopes
+        ? formatPlatformOAuthScopes(config.platformCode, config.scopes)
         : DEFAULT_SCOPES[config.platformCode.toLowerCase()] || '',
       graphApiVersion: config.graphApiVersion,
       webhookVerifyToken: config.webhookVerifyToken,

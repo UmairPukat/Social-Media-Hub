@@ -7,6 +7,7 @@ export const environment = {
     instagram: { appId: "1106538287780623" },
     instagram_login: { appId: "YOUR_INSTAGRAM_LOGIN_APP_ID" },
     whatsapp: { appId: "YOUR_WHATSAPP_APP_ID" },
-    youtube: { appId: "YOUR_YOUTUBE_CLIENT_ID" }
+    youtube: { appId: "YOUR_YOUTUBE_CLIENT_ID" },
+    tiktok: { appId: "YOUR_TIKTOK_CLIENT_KEY" }
   }
 };

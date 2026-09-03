@@ -152,6 +152,8 @@
           <p class="picker-lede">
             @if (isYouTubePlatform(configPlatformCode())) {
               Google OAuth credentials for Developer Apps.
+            } @else if (isTikTokPlatform(configPlatformCode())) {
+              TikTok Login Kit credentials for Developer Apps. Use your TikTok app Client Key and Client Secret.
             } @else if (isWhatsAppPlatform(configPlatformCode())) {
               Meta app credentials and WhatsApp routing for Developer Apps.
             } @else {
@@ -227,7 +229,7 @@
             </mat-form-field>
           }
 
-          @if (!isYouTubePlatform(configPlatformCode())) {
+          @if (!usesStandaloneOAuthConfig(configPlatformCode())) {
             <mat-form-field appearance="outline">
               <mat-label>Webhook verify token</mat-label>
               <input matInput [ngModel]="configForm().webhookVerifyToken" name="webhookVerifyToken" (ngModelChange)="updateConfigField('webhookVerifyToken', $event)" />
@@ -375,8 +377,10 @@
                 Facebook page information
               } @else if (isInstagramFbLoginPlatform(info.platformCode)) {
                 Instagram &amp; Facebook connection
-              }               @else if (isYouTubePlatform(info.platformCode)) {
+              } @else if (isYouTubePlatform(info.platformCode)) {
                 YouTube channel information
+              } @else if (isTikTokPlatform(info.platformCode)) {
+                TikTok account information
               } @else if (isWhatsAppPlatform(info.platformCode)) {
                 WhatsApp Business information
               } @else {
@@ -394,6 +398,8 @@
                 Instagram Business account linked to the Facebook Page used at connect time.
               } @else if (isYouTubePlatform(info.platformCode)) {
                 YouTube channel connected through Google OAuth.
+              } @else if (isTikTokPlatform(info.platformCode)) {
+                TikTok account connected through Login Kit OAuth.
               } @else if (isWhatsAppPlatform(info.platformCode)) {
                 WhatsApp Business phone connected through Meta OAuth.
               } @else {
@@ -493,6 +499,23 @@
               <div>
                 <dt>Channel ID</dt>
                 <dd><code>{{ youtubeChannelId(info) }}</code></dd>
+              </div>
+              <div>
+                <dt>Connected</dt>
+                <dd>{{ info.connectedAt ? (info.connectedAt | date: 'medium') : '—' }}</dd>
+              </div>
+            } @else if (isTikTokPlatform(info.platformCode)) {
+              <div>
+                <dt>Display name</dt>
+                <dd>{{ tikTokAccountName(info) }}</dd>
+              </div>
+              <div>
+                <dt>Username</dt>
+                <dd>{{ tikTokUsername(info) }}</dd>
+              </div>
+              <div>
+                <dt>Account ID</dt>
+                <dd><code>{{ tikTokAccountId(info) }}</code></dd>
               </div>
               <div>
                 <dt>Connected</dt>

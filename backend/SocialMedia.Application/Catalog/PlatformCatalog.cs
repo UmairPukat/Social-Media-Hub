@@ -95,7 +95,7 @@ public static class PlatformCatalog
         Add("social", "Social", LinkedInId, "linkedin", "LinkedIn", "linkedin",
             "Coming soon — professional company and personal posts.");
         Add("social", "Social", TikTokId, "tiktok", "TikTok", "tiktok",
-            "Coming soon — short-form video publishing.");
+            "Connect a TikTok account and publish short-form videos.", false, false, true, true);
         Add("social", "Social", YouTubeId, "youtube", "YouTube", "youtube",
             "Fetch channel videos, comments, and statistics via manual sync.", true, false, true, true);
         Add("social", "Social", NewId(9), "pinterest", "Pinterest", "pinterest",
@@ -216,6 +216,9 @@ public static class PlatformCatalog
         if (code == "youtube")
             return "https://accounts.google.com/o/oauth2/v2/auth";
 
+        if (code == "tiktok")
+            return "https://www.tiktok.com/v2/auth/authorize/";
+
         return code == "instagram_login"
             ? "https://www.instagram.com/oauth/authorize"
             : $"https://www.facebook.com/{graphVersion}/dialog/oauth";
@@ -227,6 +230,9 @@ public static class PlatformCatalog
         if (code == "youtube")
             return "https://www.googleapis.com/youtube/v3";
 
+        if (code == "tiktok")
+            return "https://open.tiktokapis.com";
+
         return code == "instagram_login"
             ? "https://graph.instagram.com"
             : "https://graph.facebook.com";
@@ -236,8 +242,30 @@ public static class PlatformCatalog
         => platformCode.ToLowerInvariant() switch
         {
             "youtube" => NormalizeYouTubeScopes(null),
+            "tiktok" => NormalizeTikTokScopes(null),
             _ => string.Empty
         };
+
+    public static readonly string[] TikTokOAuthScopes =
+    [
+        "user.info.basic",
+        "video.upload",
+        "video.publish"
+    ];
+
+    /// <summary>
+    /// TikTok OAuth scopes are comma-separated in authorize URLs.
+    /// </summary>
+    public static string NormalizeTikTokScopes(string? scopes)
+    {
+        if (string.IsNullOrWhiteSpace(scopes))
+            return string.Join(',', TikTokOAuthScopes);
+
+        var tokens = scopes.Split([',', ' ', '\n', '\r', '\t'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        return tokens.Length == 0
+            ? string.Join(',', TikTokOAuthScopes)
+            : string.Join(',', tokens);
+    }
 
     public static readonly string[] YouTubeOAuthScopes =
     [

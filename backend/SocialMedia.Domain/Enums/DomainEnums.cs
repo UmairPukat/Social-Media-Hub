@@ -15,6 +15,7 @@ public enum ProfileType
     WhatsAppPhone = 3,
     InstagramLogin = 4,
     YouTubeChannel = 5,
+    TikTokAccount = 6,
     Other = 99
 }
 

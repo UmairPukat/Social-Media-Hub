@@ -423,11 +423,19 @@ public class ProcessAppConfigService : IProcessAppConfigService
 
     private static string? NormalizeStoredScopes(string platformCode, string? scopes)
     {
-        if (platformCode != "youtube")
-            return NullIfEmpty(scopes);
+        if (platformCode == "youtube")
+        {
+            var normalized = PlatformCatalog.NormalizeYouTubeScopes(scopes);
+            return NullIfEmpty(normalized);
+        }
 
-        var normalized = PlatformCatalog.NormalizeYouTubeScopes(scopes);
-        return NullIfEmpty(normalized);
+        if (platformCode == "tiktok")
+        {
+            var normalized = PlatformCatalog.NormalizeTikTokScopes(scopes);
+            return NullIfEmpty(normalized);
+        }
+
+        return NullIfEmpty(scopes);
     }
 
     private static string DefaultScopes(string platformCode) => platformCode switch
@@ -437,6 +445,7 @@ public class ProcessAppConfigService : IProcessAppConfigService
         "instagram_login" => "instagram_business_basic,instagram_business_content_publish,instagram_business_manage_messages,instagram_business_manage_comments",
         "whatsapp" => "whatsapp_business_management,whatsapp_business_messaging,business_management",
         "youtube" => PlatformCatalog.DefaultScopes("youtube"),
+        "tiktok" => PlatformCatalog.DefaultScopes("tiktok"),
         _ => string.Empty
     };
 

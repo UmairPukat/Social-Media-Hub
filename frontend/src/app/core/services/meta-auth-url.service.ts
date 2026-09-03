@@ -6,7 +6,7 @@ import { MENU_TYPES, MenuType } from '../models/api.models';
 import { PROCESS_MODULES } from '../config/process.config';
 import { META_OAUTH_MESSAGE, OAUTH_RESULT_STORAGE_KEY } from '../config/oauth.constants';
 
-export type MetaPlatform = 'facebook' | 'instagram' | 'instagram_login' | 'whatsapp' | 'youtube';
+export type MetaPlatform = 'facebook' | 'instagram' | 'instagram_login' | 'whatsapp' | 'youtube' | 'tiktok';
 
 export { META_OAUTH_MESSAGE };
 

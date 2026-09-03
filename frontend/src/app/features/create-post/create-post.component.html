@@ -361,60 +361,226 @@
           @case ('tiktok') {
             <div class="sheet tt">
               <div class="tt-stage">
-                <div class="tt-phone">
+                <div class="tt-preview-col">
                   @if (form.controls.mediaUrl.value) {
-                    @if (isVideoPreview()) {
-                      <video [src]="form.controls.mediaUrl.value" controls></video>
-                    } @else {
-                      <img [src]="form.controls.mediaUrl.value" alt="Clip" />
-                    }
-                  } @else {
-                    <div class="tt-empty">
-                      <mat-icon>videocam</mat-icon>
-                      <p>Attach a vertical video / image</p>
+                    <div class="tt-ready">
+                      <mat-icon>check_circle</mat-icon>
+                      <span>Your video is ready!</span>
                     </div>
                   }
-                  <div class="tt-overlay">
-                    <div class="tt-user">{{ '@' }}{{ selectedProfile()?.username || 'you' }}</div>
-                    <p>{{ form.controls.content.value || 'Write a caption…' }}</p>
-                  </div>
-                  <div class="tt-rail">
-                    <span><mat-icon>favorite</mat-icon></span>
-                    <span><mat-icon>mode_comment</mat-icon></span>
-                    <span><mat-icon>bookmark</mat-icon></span>
-                    <span><mat-icon>share</mat-icon></span>
-                  </div>
-                </div>
-                <div class="tt-form">
-                  <h3>Upload to TikTok</h3>
-                  <label>Caption</label>
-                  <textarea
-                    rows="5"
-                    formControlName="content"
-                    [attr.maxlength]="charLimit()"
-                    placeholder="Describe your video with hashtags"
-                  ></textarea>
-                  <div class="attach-row compact">
-                    <label class="file-btn">
-                      <mat-icon>attach_file</mat-icon>
-                      Attach clip
-                      <input type="file" hidden [attr.accept]="activeMeta().accept" (change)="onFilePicked($event)" />
-                    </label>
-                    @if (selectedFileName()) {
-                      <span class="file-chip">
-                        {{ selectedFileName() }}
-                        <button type="button" (click)="clearAttachment()" aria-label="Remove file"><mat-icon>close</mat-icon></button>
-                      </span>
+                  <div class="tt-phone">
+                    @if (form.controls.mediaUrl.value) {
+                      @if (isVideoPreview()) {
+                        <video [src]="form.controls.mediaUrl.value" controls></video>
+                      } @else {
+                        <img [src]="form.controls.mediaUrl.value" alt="Clip" />
+                      }
+                    } @else {
+                      <div class="tt-empty">
+                        <mat-icon>videocam</mat-icon>
+                        <p>Attach a vertical video</p>
+                        <label class="file-btn light">
+                          <mat-icon>upload</mat-icon>
+                          Choose file
+                          <input type="file" hidden [attr.accept]="activeMeta().accept" (change)="onFilePicked($event)" />
+                        </label>
+                      </div>
                     }
                   </div>
-                  <label>Or media URL</label>
-                  <input formControlName="mediaUrl" placeholder="https://…" />
+                  @if (form.controls.mediaUrl.value) {
+                    <div class="tt-file-meta">
+                      <div>
+                        <small>Filename</small>
+                        <strong>{{ selectedFileName() || 'Media' }}</strong>
+                      </div>
+                      <div>
+                        <small>Format</small>
+                        <strong>{{ fileFormatLabel() }}</strong>
+                      </div>
+                      <div>
+                        <small>Resolution</small>
+                        <strong>{{ videoResolutionLabel() }}</strong>
+                      </div>
+                      <div>
+                        <small>Size</small>
+                        <strong>{{ fileSizeLabel() }}</strong>
+                      </div>
+                    </div>
+                  }
+                </div>
+
+                <div class="tt-upload-panel">
+                  <header class="tt-upload-head">
+                    <button type="button" class="tt-back" aria-label="Back">
+                      <mat-icon>arrow_back</mat-icon>
+                    </button>
+                    <h3>Upload to TikTok</h3>
+                  </header>
+
+                  <div class="tt-field">
+                    <div class="tt-account-picker">
+                      <button
+                        type="button"
+                        class="tt-account-trigger"
+                        [class.open]="ttAccountOpen()"
+                        (click)="toggleTtAccountMenu()">
+                        <span class="av sm" [style.background]="activeMeta().color">
+                          {{ initials(selectedProfile()?.name) }}
+                        </span>
+                        <span class="tt-account-copy">
+                          <strong>{{ selectedProfile()?.name || 'Select account' }}</strong>
+                          <small>{{ selectedProfile()?.username ? '@' + selectedProfile()?.username : 'TikTok account' }}</small>
+                        </span>
+                        <mat-icon class="tt-brand">music_note</mat-icon>
+                        <mat-icon class="tt-chevron">expand_more</mat-icon>
+                      </button>
+                      @if (ttAccountOpen()) {
+                        <div class="tt-account-menu" (click)="$event.stopPropagation()">
+                          @for (prof of platformProfiles(); track prof.id) {
+                            <button
+                              type="button"
+                              class="tt-account-option"
+                              [class.active]="selectedProfileId() === prof.id"
+                              (click)="selectProfile(prof.id)">
+                              <span class="av sm" [style.background]="activeMeta().color">{{ initials(prof.name) }}</span>
+                              <span>
+                                <strong>{{ prof.name }}</strong>
+                                <small>{{ prof.username ? '@' + prof.username : prof.profileType }}</small>
+                              </span>
+                              @if (selectedProfileId() === prof.id) {
+                                <mat-icon>check</mat-icon>
+                              }
+                            </button>
+                          } @empty {
+                            <p class="tt-account-empty">No TikTok account connected.</p>
+                          }
+                        </div>
+                      }
+                    </div>
+                  </div>
+
+                  <div class="tt-field">
+                    <label class="tt-label" for="tt-caption">Caption</label>
+                    <div class="tt-caption-wrap">
+                      <textarea
+                        id="tt-caption"
+                        rows="4"
+                        formControlName="content"
+                        [attr.maxlength]="charLimit()"
+                        placeholder="Add a title that describes your video"
+                      ></textarea>
+                      <span class="tt-caption-count">{{ tikTokCaptionCount() }}/{{ charLimit() }}</span>
+                    </div>
+                  </div>
+
+                  <div class="tt-field">
+                    <label class="tt-label" for="tt-privacy">Who can view this video</label>
+                    <div class="tt-select-wrap">
+                      <select id="tt-privacy" [value]="ttPrivacy()" (change)="ttPrivacy.set($any($event.target).value)">
+                        <option value="Public">Public</option>
+                        <option value="Friends">Friends</option>
+                        <option value="Followers">Followers</option>
+                        <option value="Only you">Only you</option>
+                      </select>
+                      <mat-icon>expand_more</mat-icon>
+                    </div>
+                  </div>
+
+                  <div class="tt-field">
+                    <span class="tt-label">Allow users to</span>
+                    <div class="tt-check-row">
+                      <label class="tt-check">
+                        <input type="checkbox" [checked]="ttAllowComment()" (change)="ttAllowComment.set($any($event.target).checked)" />
+                        <span>Comment</span>
+                      </label>
+                      <label class="tt-check">
+                        <input type="checkbox" [checked]="ttAllowDuet()" (change)="ttAllowDuet.set($any($event.target).checked)" />
+                        <span>Duet</span>
+                      </label>
+                      <label class="tt-check">
+                        <input type="checkbox" [checked]="ttAllowStitch()" (change)="ttAllowStitch.set($any($event.target).checked)" />
+                        <span>Stitch</span>
+                      </label>
+                    </div>
+                  </div>
+
+                  <div class="tt-field tt-disclose">
+                    <div class="tt-disclose-head">
+                      <div>
+                        <span class="tt-label">Disclose video content</span>
+                        <p class="tt-disclose-hint">
+                          Turn on to disclose that this video promotes goods or services in exchange for something of value.
+                          Your video could promote yourself, a third party, or both.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        class="tt-switch"
+                        role="switch"
+                        [attr.aria-checked]="ttDiscloseContent()"
+                        [class.on]="ttDiscloseContent()"
+                        (click)="toggleTtDisclose()">
+                        <span class="tt-switch-thumb"></span>
+                      </button>
+                    </div>
+
+                    @if (ttDiscloseContent()) {
+                      <div class="tt-info">
+                        <mat-icon>info</mat-icon>
+                        <p>Your video will be labeled “Promotional content”. This cannot be changed once your video is posted.</p>
+                      </div>
+                      <div class="tt-disclose-options">
+                        <label class="tt-disclose-option">
+                          <input
+                            type="checkbox"
+                            [checked]="ttYourBrand()"
+                            (change)="ttYourBrand.set($any($event.target).checked)" />
+                          <span>
+                            <strong>Your brand</strong>
+                            <small>You are promoting yourself or your own business. This video will be classified as Brand Organic.</small>
+                          </span>
+                        </label>
+                        <label class="tt-disclose-option">
+                          <input
+                            type="checkbox"
+                            [checked]="ttBrandedContent()"
+                            (change)="ttBrandedContent.set($any($event.target).checked)" />
+                          <span>
+                            <strong>Branded content</strong>
+                            <small>You are promoting another brand or a third party. This video will be classified as Branded Content.</small>
+                          </span>
+                        </label>
+                      </div>
+                      <p class="tt-legal">
+                        By posting, you agree to our
+                        <a href="https://www.tiktok.com/legal/page/global/music-usage-confirmation/en" target="_blank" rel="noopener noreferrer">Music Usage Confirmation</a>.
+                      </p>
+                    }
+                  </div>
+
+                  @if (!form.controls.mediaUrl.value) {
+                    <div class="tt-field">
+                      <label class="file-btn tt-file">
+                        <mat-icon>attach_file</mat-icon>
+                        Attach video
+                        <input type="file" hidden [attr.accept]="activeMeta().accept" (change)="onFilePicked($event)" />
+                      </label>
+                    </div>
+                  } @else if (selectedFileName()) {
+                    <div class="tt-attached">
+                      <span>{{ selectedFileName() }}</span>
+                      <button type="button" (click)="clearAttachment()" aria-label="Remove file">
+                        <mat-icon>close</mat-icon>
+                      </button>
+                    </div>
+                  }
+
                   <button
                     type="button"
-                    class="cta tt"
+                    class="cta tt-upload"
                     [disabled]="!canPublish() || publishing()"
                     (click)="publish()">
-                    {{ publishing() ? 'Posting…' : ctaLabel() }}
+                    {{ publishing() ? 'Uploading…' : ctaLabel() }}
                   </button>
                 </div>
               </div>
