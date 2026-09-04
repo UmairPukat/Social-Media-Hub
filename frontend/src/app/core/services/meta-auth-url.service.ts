@@ -83,8 +83,10 @@ export class MetaAuthUrlService {
 
       const width = 600;
       const height = 720;
-      const left = Math.max(0, (window.screen.width - width) / 2);
-      const top = Math.max(0, (window.screen.height - height) / 2);
+      const screenLeft = window.screenLeft ?? window.screenX ?? 0;
+      const screenTop = window.screenTop ?? window.screenY ?? 0;
+      const left = Math.round(screenLeft + Math.max(0, (window.outerWidth - width) / 2));
+      const top = Math.round(screenTop + Math.max(0, (window.outerHeight - height) / 2));
       const features = `width=${width},height=${height},left=${left},top=${top},scrollbars=yes,resizable=yes`;
 
       const popup = window.open(beginResponse.data.authUrl, `meta_oauth_${platform}`, features);
