@@ -796,6 +796,7 @@ public class IntegrationService : IIntegrationService
             return ApiResponse<SocialAccountDto>.Fail($"Unknown platform '{platformCode}'.");
 
         var account = await store.GetSocialAccountByUserAndPlatformAsync(userId, platform.Id, cancellationToken);
+        var previousExternalAccountId = account?.ExternalAccountId;
         var isNewAccount = account is null;
         if (account is null)
         {
@@ -804,6 +805,13 @@ public class IntegrationService : IIntegrationService
             account.PlatformId = platform.Id;
             await store.AddSocialAccountAsync(account, cancellationToken);
         }
+
+        var accountSwitched = !isNewAccount
+                              && !string.IsNullOrWhiteSpace(previousExternalAccountId)
+                              && !string.Equals(previousExternalAccountId, externalAccountId, StringComparison.Ordinal)
+                              && platformCode is "tiktok" or "youtube";
+        if (accountSwitched)
+            await AccountProfileMaintenance.DeleteAllPostsForAccountAsync(store, account, cancellationToken);
 
         account.ExternalAccountId = externalAccountId;
         account.DisplayName = displayName;
@@ -1333,31 +1341,8 @@ public class IntegrationService : IIntegrationService
         SocialAccountEntityBase account,
         IEnumerable<string> keepExternalProfileIds,
         CancellationToken cancellationToken)
-    {
-        var keepIds = keepExternalProfileIds
-            .Where(id => !string.IsNullOrWhiteSpace(id))
-            .ToHashSet(StringComparer.Ordinal);
-        if (keepIds.Count == 0)
-            return;
-
-        var profiles = await store.GetProfilesByAccountAsync(account.Id, cancellationToken);
-        var canonical = ProcessProfileResolver.PickConnectedProfile(
-            profiles,
-            keepIds.FirstOrDefault(),
-            preferredType: null);
-        if (canonical is null)
-            return;
-
-        foreach (var profile in profiles)
-        {
-            if (keepIds.Contains(profile.ExternalProfileId))
-                continue;
-
-            await AccountProfileMaintenance.MovePostsToProfileAsync(store, account, profile.Id, canonical.Id, cancellationToken);
-            await AccountProfileMaintenance.MoveConversationsToProfileAsync(store, profile.Id, canonical.Id, cancellationToken);
-            store.RemoveSocialProfile(profile);
-        }
-    }
+        => await AccountProfileMaintenance.PurgeStaleProfilesAsync(
+            store, account, keepExternalProfileIds, cancellationToken);
 
     private static SocialProfileEntityBase? PickInstagramLoginProfile(
         IReadOnlyList<SocialProfileEntityBase> profiles,

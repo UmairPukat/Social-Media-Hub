@@ -167,7 +167,7 @@ public class YouTubeSyncService : IYouTubeSyncService
 
         foreach (var video in videos)
         {
-            var existing = await store.GetPostByExternalIdAsync(profile.Id, video.VideoId, cancellationToken);
+            var existing = await FindExistingPostAsync(store, account, profile, video.VideoId, cancellationToken);
             if (existing is null)
             {
                 var post = store.NewPost();
@@ -190,6 +190,8 @@ public class YouTubeSyncService : IYouTubeSyncService
             existing.Text = video.Title;
             existing.Caption = video.Description ?? video.Title;
             existing.PublishedAt ??= video.PublishedAt;
+            if (existing.SocialProfileId != profile.Id)
+                existing.SocialProfileId = profile.Id;
             ApplyStatistics(existing, video);
             existing.MetadataJson = BuildPostMetadata(video);
             existing.UpdatedAt = DateTime.UtcNow;
@@ -398,7 +400,29 @@ public class YouTubeSyncService : IYouTubeSyncService
         if (profile is null || string.IsNullOrWhiteSpace(profile.ExternalProfileId))
             return null;
 
+        await AccountProfileMaintenance.PurgeStaleProfilesAsync(
+            store,
+            account,
+            [profile.ExternalProfileId, account.ExternalAccountId ?? string.Empty],
+            cancellationToken);
+
         return (account, profile, token);
+    }
+
+    private static async Task<PostEntityBase?> FindExistingPostAsync(
+        IProcessDataStore store,
+        SocialAccountEntityBase account,
+        SocialProfileEntityBase profile,
+        string externalPostId,
+        CancellationToken cancellationToken)
+    {
+        var onProfile = await store.GetPostByExternalIdAsync(profile.Id, externalPostId, cancellationToken);
+        if (onProfile is not null)
+            return onProfile;
+
+        var posts = await store.GetPostsByUserProfilesAsync(account.UserId, account.PlatformId, cancellationToken);
+        return posts.FirstOrDefault(p =>
+            string.Equals(p.ExternalPostId, externalPostId, StringComparison.Ordinal));
     }
 
     private static async Task<string?> ResolveAccessTokenAsync(
