@@ -17,4 +17,9 @@ public interface IPostService
         string? menuType = null,
         CancellationToken cancellationToken = default);
     Task<ApiResponse<object>> DeletePostAsync(Guid userId, Guid postId, CancellationToken cancellationToken = default);
+    Task<ApiResponse<string>> GetPostPlatformCodeAsync(
+        Guid userId,
+        Guid postId,
+        string menuType,
+        CancellationToken cancellationToken = default);
 }

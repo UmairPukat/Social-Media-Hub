@@ -210,6 +210,39 @@ public class PostService : IPostService
         }
     }
 
+    public async Task<ApiResponse<string>> GetPostPlatformCodeAsync(
+        Guid userId,
+        Guid postId,
+        string menuType,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var located = await ProcessStoreLocator.FindInMenuAsync(
+                _processData,
+                menuType,
+                store => store.GetPostByIdAsync(postId, cancellationToken),
+                cancellationToken);
+            if (located is null)
+                return ApiResponse<string>.Fail("Post not found.");
+
+            var (store, post) = located.Value;
+            var profile = await store.GetProfileByIdAsync(post.SocialProfileId, cancellationToken);
+            var account = profile is null
+                ? null
+                : await store.GetSocialAccountByIdAsync(profile.SocialAccountId, cancellationToken);
+            if (account is null || account.UserId != userId)
+                return ApiResponse<string>.Fail("Post not found.");
+
+            var platform = await store.GetPlatformByIdAsync(post.PlatformId, cancellationToken);
+            return ApiResponse<string>.Ok(platform?.Code ?? string.Empty);
+        }
+        catch (Exception ex)
+        {
+            return ApiResponse<string>.Fail(ex.Message);
+        }
+    }
+
     private static MetaCallContext BuildMetaContext(
         SocialProfileEntityBase profile,
         string accessToken,

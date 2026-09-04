@@ -277,7 +277,7 @@
   <dialog #statsDialog class="stats-dialog" aria-labelledby="stats-title" (close)="onStatsClosed()">
     <header class="stats-head">
       <div>
-        <p class="eyebrow">YouTube statistics</p>
+        <p class="eyebrow">{{ statsPlatformLabel() }}</p>
         <h2 id="stats-title">{{ statsPostTitle() }}</h2>
       </div>
       <button type="button" class="close-btn" (click)="closeStatistics()" aria-label="Close">
@@ -322,7 +322,7 @@
           @if (stats.permalink) {
             <a class="stats-link" [href]="stats.permalink" target="_blank" rel="noopener noreferrer">
               <mat-icon>open_in_new</mat-icon>
-              Open on YouTube
+              {{ statsPermalinkLabel() }}
             </a>
           }
         </div>

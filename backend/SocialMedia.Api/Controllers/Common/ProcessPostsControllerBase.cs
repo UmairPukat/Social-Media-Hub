@@ -1,6 +1,8 @@
 using Microsoft.AspNetCore.Mvc;
 using SocialMedia.Api.Extensions;
+using SocialMedia.Application.DTOs.Common;
 using SocialMedia.Application.DTOs.Posts;
+using SocialMedia.Application.DTOs.YouTube;
 using SocialMedia.Application.Interfaces;
 
 namespace SocialMedia.Api.Controllers.Common;
@@ -9,11 +11,16 @@ public abstract class ProcessPostsControllerBase : ControllerBase
 {
     private readonly IPostService _postService;
     private readonly IYouTubeSyncService _youTubeSync;
+    private readonly ITikTokSyncService _tikTokSync;
 
-    protected ProcessPostsControllerBase(IPostService postService, IYouTubeSyncService youTubeSync)
+    protected ProcessPostsControllerBase(
+        IPostService postService,
+        IYouTubeSyncService youTubeSync,
+        ITikTokSyncService tikTokSync)
     {
         _postService = postService;
         _youTubeSync = youTubeSync;
+        _tikTokSync = tikTokSync;
     }
 
     protected abstract string MenuType { get; }
@@ -64,7 +71,18 @@ public abstract class ProcessPostsControllerBase : ControllerBase
     [HttpGet("posts/{id:guid}/statistics")]
     public async Task<IActionResult> GetPostStatistics(Guid id, [FromQuery] bool refresh = false)
     {
-        var response = await _youTubeSync.GetPostStatisticsAsync(User.GetUserId(), id, MenuType, refresh);
+        var platformResponse = await _postService.GetPostPlatformCodeAsync(User.GetUserId(), id, MenuType);
+        if (!platformResponse.Success || string.IsNullOrWhiteSpace(platformResponse.Data))
+            return Ok(ApiResponse<YouTubePostStatisticsDto>.Fail(platformResponse.Message ?? "Post not found."));
+
+        var platformCode = platformResponse.Data.Trim().ToLowerInvariant();
+        var response = platformCode switch
+        {
+            "tiktok" => await _tikTokSync.GetPostStatisticsAsync(User.GetUserId(), id, MenuType, refresh),
+            "youtube" => await _youTubeSync.GetPostStatisticsAsync(User.GetUserId(), id, MenuType, refresh),
+            _ => ApiResponse<YouTubePostStatisticsDto>.Fail("Statistics are not available for this platform.")
+        };
+
         return Ok(response);
     }
 }

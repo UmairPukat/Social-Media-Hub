@@ -74,6 +74,7 @@ export class PostsComponent implements OnInit {
   readonly pendingDelete = signal<string | null>(null);
   readonly deleting = signal<string | null>(null);
   readonly statsPostId = signal<string | null>(null);
+  readonly statsPlatformCode = signal('');
   readonly statsLoading = signal(false);
   readonly statsError = signal('');
   readonly statsData = signal<YouTubePostStatistics | null>(null);
@@ -220,13 +221,28 @@ export class PostsComponent implements OnInit {
   }
 
   supportsStatistics(post: SocialPost): boolean {
-    return this.platformCode(post) === 'youtube' && post.status === 1 && !this.isDemo(post);
+    const code = this.platformCode(post);
+    return (
+      (code === 'youtube' || code === 'tiktok') &&
+      post.status === 1 &&
+      !this.isDemo(post) &&
+      !!post.externalPostId
+    );
+  }
+
+  statsPlatformLabel(): string {
+    return this.statsPlatformCode() === 'tiktok' ? 'TikTok statistics' : 'YouTube statistics';
+  }
+
+  statsPermalinkLabel(): string {
+    return this.statsPlatformCode() === 'tiktok' ? 'Open on TikTok' : 'Open on YouTube';
   }
 
   openStatistics(post: SocialPost): void {
     if (!this.supportsStatistics(post)) return;
 
     this.statsPostId.set(post.id);
+    this.statsPlatformCode.set(this.platformCode(post));
     this.statsLoading.set(true);
     this.statsError.set('');
     this.statsData.set(null);
@@ -278,6 +294,7 @@ export class PostsComponent implements OnInit {
 
   private resetStatistics(): void {
     this.statsPostId.set(null);
+    this.statsPlatformCode.set('');
     this.statsLoading.set(false);
     this.statsError.set('');
     this.statsData.set(null);

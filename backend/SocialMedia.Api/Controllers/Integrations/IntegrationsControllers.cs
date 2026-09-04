@@ -22,8 +22,8 @@ public class ConnectionController : ProcessConnectionControllerBase
 [ApiController]
 public class PostsController : ProcessPostsControllerBase
 {
-    public PostsController(IPostService postService, IYouTubeSyncService youTubeSync)
-        : base(postService, youTubeSync) { }
+    public PostsController(IPostService postService, IYouTubeSyncService youTubeSync, ITikTokSyncService tikTokSync)
+        : base(postService, youTubeSync, tikTokSync) { }
 
     protected override string MenuType => ProcessModules.Integrations.MenuType;
 }

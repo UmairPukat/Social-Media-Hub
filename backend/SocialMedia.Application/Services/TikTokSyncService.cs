@@ -2,6 +2,7 @@ using System.Text.Json;
 using SocialMedia.Application.Catalog;
 using SocialMedia.Application.DTOs.Common;
 using SocialMedia.Application.DTOs.TikTok;
+using SocialMedia.Application.DTOs.YouTube;
 using SocialMedia.Application.Interfaces;
 using SocialMedia.Application.Meta;
 using SocialMedia.Domain.Enums;
@@ -33,6 +34,61 @@ public class TikTokSyncService : ITikTokSyncService
         string? platformCode = null,
         CancellationToken cancellationToken = default)
         => SyncInternalAsync(userId, menuType, platformCode, SyncKind.Statistics, cancellationToken);
+
+    public async Task<ApiResponse<YouTubePostStatisticsDto>> GetPostStatisticsAsync(
+        Guid userId,
+        Guid postId,
+        string menuType,
+        bool refresh = false,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var normalizedMenu = MenuTypes.Normalize(menuType);
+            var store = _processData.ForMenu(normalizedMenu);
+            var post = await store.GetPostByIdAsync(postId, cancellationToken)
+                ?? throw new InvalidOperationException("Post not found.");
+
+            var profile = await store.GetProfileByIdAsync(post.SocialProfileId, cancellationToken)
+                ?? throw new InvalidOperationException("Profile not found.");
+            var account = await store.GetSocialAccountByIdAsync(profile.SocialAccountId, cancellationToken);
+            if (account is null || account.UserId != userId)
+                throw new InvalidOperationException("Post not found.");
+
+            var platform = await store.GetPlatformByIdAsync(post.PlatformId, cancellationToken);
+            if (platform is null || !string.Equals(platform.Code, "tiktok", StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("Post statistics are only available for TikTok videos.");
+
+            if (refresh && !string.IsNullOrWhiteSpace(post.ExternalPostId))
+            {
+                var token = await ResolveAccessTokenAsync(store, account.Id, cancellationToken);
+                if (!string.IsNullOrWhiteSpace(token))
+                {
+                    var snapshots = await _tikTok.QueryVideosAsync(
+                        token, [post.ExternalPostId!], cancellationToken);
+                    var snapshot = snapshots.FirstOrDefault();
+                    if (snapshot is not null)
+                    {
+                        ApplyStatistics(post, snapshot);
+                        post.Text = snapshot.Title;
+                        post.Caption = snapshot.Description ?? snapshot.Title;
+                        post.MetadataJson = BuildPostMetadata(snapshot);
+                        post.UpdatedAt = DateTime.UtcNow;
+                        store.UpdatePost(post);
+                        account.LastSyncAt = DateTime.UtcNow;
+                        store.UpdateSocialAccount(account);
+                        await store.SaveChangesAsync(cancellationToken);
+                    }
+                }
+            }
+
+            return ApiResponse<YouTubePostStatisticsDto>.Ok(MapStatistics(post));
+        }
+        catch (Exception ex)
+        {
+            return ApiResponse<YouTubePostStatisticsDto>.Fail(ex.Message);
+        }
+    }
 
     private async Task<ApiResponse<TikTokSyncResultDto>> SyncInternalAsync(
         Guid userId,
@@ -190,8 +246,49 @@ public class TikTokSyncService : ITikTokSyncService
         => JsonSerializer.Serialize(new Dictionary<string, object?>
         {
             ["permalink"] = video.ShareUrl,
+            ["thumbnailUrl"] = video.CoverImageUrl,
             ["source"] = "tiktok"
         });
+
+    private static YouTubePostStatisticsDto MapStatistics(PostEntityBase post)
+    {
+        string? permalink = null;
+        string? thumbnail = null;
+        if (!string.IsNullOrWhiteSpace(post.MetadataJson))
+        {
+            try
+            {
+                using var doc = JsonDocument.Parse(post.MetadataJson);
+                if (doc.RootElement.TryGetProperty("permalink", out var link))
+                    permalink = link.GetString();
+                if (doc.RootElement.TryGetProperty("thumbnailUrl", out var thumb))
+                    thumbnail = thumb.GetString();
+            }
+            catch (JsonException)
+            {
+                // ignore malformed metadata
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(thumbnail))
+            thumbnail = ProcessEntityNav.FirstMediaUrl(post);
+
+        return new YouTubePostStatisticsDto
+        {
+            PostId = post.Id,
+            ExternalPostId = post.ExternalPostId,
+            Title = post.Text ?? post.Caption ?? "TikTok video",
+            Description = post.Caption,
+            ThumbnailUrl = thumbnail,
+            Permalink = permalink,
+            ViewCount = post.ViewCount,
+            LikeCount = post.LikeCount,
+            CommentCount = post.CommentCount,
+            ShareCount = post.ShareCount,
+            PublishedAt = post.PublishedAt,
+            RefreshedAt = post.UpdatedAt ?? post.CreatedAt
+        };
+    }
 
     private async Task<(SocialAccountEntityBase Account, SocialProfileEntityBase Profile, string Token)?> ResolveTikTokContextAsync(
         IProcessDataStore store,
