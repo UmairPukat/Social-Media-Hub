@@ -391,8 +391,10 @@ public class YouTubeSyncService : IYouTubeSyncService
             return null;
 
         var profiles = await store.GetProfilesByAccountAsync(account.Id, cancellationToken);
-        var profile = profiles.FirstOrDefault(p => p.ProfileType == ProfileType.YouTubeChannel)
-            ?? profiles.FirstOrDefault();
+        var profile = ProcessProfileResolver.PickConnectedProfile(
+            profiles,
+            account.ExternalAccountId,
+            ProfileType.YouTubeChannel);
         if (profile is null || string.IsNullOrWhiteSpace(profile.ExternalProfileId))
             return null;
 

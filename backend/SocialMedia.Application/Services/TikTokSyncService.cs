@@ -309,12 +309,45 @@ public class TikTokSyncService : ITikTokSyncService
             return null;
 
         var profiles = await store.GetProfilesByAccountAsync(account.Id, cancellationToken);
-        var profile = profiles.FirstOrDefault(p => p.ProfileType == ProfileType.TikTokAccount)
-            ?? profiles.FirstOrDefault();
+        var profile = ProcessProfileResolver.PickConnectedProfile(
+            profiles,
+            account.ExternalAccountId,
+            ProfileType.TikTokAccount);
         if (profile is null || string.IsNullOrWhiteSpace(profile.ExternalProfileId))
             return null;
 
+        await RefreshTikTokProfileAsync(store, account, profile, token, cancellationToken);
+        await AccountProfileMaintenance.ConsolidateToCanonicalProfileAsync(store, account, profile, cancellationToken);
+
         return (account, profile, token);
+    }
+
+    private async Task RefreshTikTokProfileAsync(
+        IProcessDataStore store,
+        SocialAccountEntityBase account,
+        SocialProfileEntityBase profile,
+        string accessToken,
+        CancellationToken cancellationToken)
+    {
+        var drafts = await _tikTok.DiscoverProfilesAsync(accessToken, account.ExternalAccountId, cancellationToken);
+        var draft = drafts.FirstOrDefault();
+        if (draft is null)
+            return;
+
+        profile.Name = draft.Name ?? profile.Name;
+        profile.Username = draft.Username ?? profile.Username;
+        profile.ProfileImage = draft.ProfileImage ?? profile.ProfileImage;
+        profile.ExternalProfileId = draft.ExternalProfileId;
+        profile.UpdatedAt = DateTime.UtcNow;
+        store.UpdateSocialProfile(profile);
+
+        if (!string.Equals(account.DisplayName, draft.Name, StringComparison.Ordinal))
+        {
+            account.DisplayName = draft.Name ?? account.DisplayName;
+            account.ExternalAccountId = draft.ExternalProfileId;
+            account.UpdatedAt = DateTime.UtcNow;
+            store.UpdateSocialAccount(account);
+        }
     }
 
     private static async Task<string?> ResolveAccessTokenAsync(

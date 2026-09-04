@@ -402,6 +402,12 @@ public class IntegrationService : IIntegrationService
 
                 foreach (var draft in channels)
                     await UpsertProfileAsync(store, account, draft, cancellationToken);
+
+                await RemoveStaleProfilesExceptAsync(
+                    store,
+                    account,
+                    channels.Select(c => c.ExternalProfileId),
+                    cancellationToken);
                 await store.SaveChangesAsync(cancellationToken);
             }
 
@@ -485,6 +491,7 @@ public class IntegrationService : IIntegrationService
                 }
 
                 await UpsertProfileAsync(store, account, profile, cancellationToken);
+                await RemoveStaleProfilesForDraftAsync(store, account, profile, cancellationToken);
                 await store.SaveChangesAsync(cancellationToken);
             }
 
@@ -1316,18 +1323,39 @@ public class IntegrationService : IIntegrationService
         SocialProfileDraft connected,
         CancellationToken cancellationToken)
     {
-        var keepIds = new HashSet<string>(StringComparer.Ordinal) { connected.ExternalProfileId };
-        foreach (var alternateId in connected.AlternateExternalIds)
-        {
-            if (!string.IsNullOrWhiteSpace(alternateId))
-                keepIds.Add(alternateId);
-        }
+        var keepIds = new List<string> { connected.ExternalProfileId };
+        keepIds.AddRange(connected.AlternateExternalIds.Where(id => !string.IsNullOrWhiteSpace(id)));
+        await RemoveStaleProfilesExceptAsync(store, account, keepIds, cancellationToken);
+    }
+
+    private async Task RemoveStaleProfilesExceptAsync(
+        IProcessDataStore store,
+        SocialAccountEntityBase account,
+        IEnumerable<string> keepExternalProfileIds,
+        CancellationToken cancellationToken)
+    {
+        var keepIds = keepExternalProfileIds
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .ToHashSet(StringComparer.Ordinal);
+        if (keepIds.Count == 0)
+            return;
 
         var profiles = await store.GetProfilesByAccountAsync(account.Id, cancellationToken);
+        var canonical = ProcessProfileResolver.PickConnectedProfile(
+            profiles,
+            keepIds.FirstOrDefault(),
+            preferredType: null);
+        if (canonical is null)
+            return;
+
         foreach (var profile in profiles)
         {
-            if (!keepIds.Contains(profile.ExternalProfileId))
-                store.RemoveSocialProfile(profile);
+            if (keepIds.Contains(profile.ExternalProfileId))
+                continue;
+
+            await AccountProfileMaintenance.MovePostsToProfileAsync(store, account, profile.Id, canonical.Id, cancellationToken);
+            await AccountProfileMaintenance.MoveConversationsToProfileAsync(store, profile.Id, canonical.Id, cancellationToken);
+            store.RemoveSocialProfile(profile);
         }
     }
 
@@ -1476,23 +1504,8 @@ public class IntegrationService : IIntegrationService
             if (orphan is null)
                 continue;
 
-            await MoveConversationsToProfileAsync(store, orphan.Id, canonicalProfile.Id, cancellationToken);
+            await AccountProfileMaintenance.MoveConversationsToProfileAsync(store, orphan.Id, canonicalProfile.Id, cancellationToken);
             store.RemoveSocialProfile(orphan);
-        }
-    }
-
-    private async Task MoveConversationsToProfileAsync(
-        IProcessDataStore store,
-        Guid fromProfileId,
-        Guid toProfileId,
-        CancellationToken cancellationToken)
-    {
-        var conversations = await store.GetConversationsByProfileIdAsync(fromProfileId, cancellationToken);
-        foreach (var conversation in conversations)
-        {
-            conversation.SocialProfileId = toProfileId;
-            conversation.UpdatedAt = DateTime.UtcNow;
-            store.UpdateConversation(conversation);
         }
     }
 
