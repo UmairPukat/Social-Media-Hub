@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using SocialMedia.Application.DTOs.Meta;
+using SocialMedia.Application.DTOs.TikTok;
 using SocialMedia.Application.Interfaces;
 
 namespace SocialMedia.Infrastructure.TikTok;
@@ -165,6 +166,132 @@ public class TikTokService : ITikTokService
         }
 
         return result;
+    }
+
+    public async Task<TikTokPublishResult> PublishVideoAsync(
+        string accessToken,
+        Stream videoStream,
+        long videoSize,
+        string contentType,
+        TikTokPublishOptions options,
+        CancellationToken cancellationToken = default)
+    {
+        if (videoSize <= 0)
+            throw new InvalidOperationException("TikTok requires a non-empty video file.");
+
+        if (!IsVideoContentType(contentType))
+            throw new InvalidOperationException("TikTok direct publish requires a video file (MP4, MOV, or WebM). Images are not supported.");
+
+        const long maxChunkSize = 10 * 1024 * 1024;
+        var chunkSize = videoSize <= maxChunkSize ? videoSize : maxChunkSize;
+        var totalChunkCount = (int)Math.Ceiling((double)videoSize / chunkSize);
+
+        var caption = string.IsNullOrWhiteSpace(options.Caption) ? string.Empty : options.Caption.Trim();
+        if (caption.Length > 2200)
+            caption = caption[..2200];
+
+        var (publishId, uploadUrl) = await _api.InitDirectVideoPublishAsync(
+            accessToken,
+            caption,
+            options.PrivacyLevel,
+            options.DisableComment,
+            options.DisableDuet,
+            options.DisableStitch,
+            videoSize,
+            chunkSize,
+            totalChunkCount,
+            cancellationToken);
+
+        await UploadVideoInChunksAsync(videoStream, uploadUrl, videoSize, (int)chunkSize, cancellationToken);
+
+        var videoId = await PollPublishStatusAsync(accessToken, publishId, cancellationToken);
+        return new TikTokPublishResult
+        {
+            PublishId = publishId,
+            VideoId = videoId
+        };
+    }
+
+    private async Task UploadVideoInChunksAsync(
+        Stream videoStream,
+        string uploadUrl,
+        long videoSize,
+        int chunkSize,
+        CancellationToken cancellationToken)
+    {
+        var buffer = new byte[chunkSize];
+        long uploaded = 0;
+
+        while (uploaded < videoSize)
+        {
+            var toRead = (int)Math.Min(chunkSize, videoSize - uploaded);
+            var read = 0;
+            while (read < toRead)
+            {
+                var n = await videoStream.ReadAsync(buffer.AsMemory(read, toRead - read), cancellationToken);
+                if (n == 0)
+                    throw new InvalidOperationException("Video stream ended before upload completed.");
+                read += n;
+            }
+
+            await _api.UploadVideoChunkAsync(uploadUrl, buffer, (int)uploaded, read, videoSize, cancellationToken);
+            uploaded += read;
+        }
+    }
+
+    private async Task<string?> PollPublishStatusAsync(
+        string accessToken,
+        string publishId,
+        CancellationToken cancellationToken)
+    {
+        const int maxAttempts = 100;
+        for (var attempt = 0; attempt < maxAttempts; attempt++)
+        {
+            using var doc = await _api.FetchPublishStatusAsync(accessToken, publishId, cancellationToken);
+            var root = doc.RootElement;
+            if (!root.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Object)
+                throw new InvalidOperationException("TikTok did not return publish status data.");
+
+            var status = data.TryGetProperty("status", out var statusEl) ? statusEl.GetString() : null;
+            if (string.Equals(status, "FAILED", StringComparison.OrdinalIgnoreCase))
+            {
+                var reason = data.TryGetProperty("fail_reason", out var reasonEl) ? reasonEl.GetString() : null;
+                throw new InvalidOperationException(
+                    string.IsNullOrWhiteSpace(reason)
+                        ? "TikTok publish failed."
+                        : $"TikTok publish failed: {reason}");
+            }
+
+            if (string.Equals(status, "PUBLISH_COMPLETE", StringComparison.OrdinalIgnoreCase))
+            {
+                if (data.TryGetProperty("publicaly_available_post_id", out var postIdsEl) &&
+                    postIdsEl.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var item in postIdsEl.EnumerateArray())
+                    {
+                        var id = item.GetString();
+                        if (!string.IsNullOrWhiteSpace(id))
+                            return id;
+                    }
+                }
+
+                return publishId;
+            }
+
+            await Task.Delay(TimeSpan.FromSeconds(3), cancellationToken);
+        }
+
+        throw new InvalidOperationException("TikTok publish timed out while waiting for completion.");
+    }
+
+    private static bool IsVideoContentType(string contentType)
+    {
+        if (string.IsNullOrWhiteSpace(contentType))
+            return false;
+
+        var lower = contentType.Trim().ToLowerInvariant();
+        return lower.StartsWith("video/", StringComparison.Ordinal) ||
+               lower is "application/octet-stream" or "binary/octet-stream";
     }
 
     private static TikTokVideoSnapshot? ParseVideoSnapshot(JsonElement video)

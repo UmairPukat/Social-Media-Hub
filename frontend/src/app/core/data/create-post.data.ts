@@ -72,11 +72,11 @@ export const CREATE_PLATFORMS: CreatePlatformMeta[] = [
     label: 'TikTok',
     icon: 'music_note',
     color: PLATFORM_COLORS['tiktok'],
-    supportsPublish: false,
+    supportsPublish: true,
     supportsFiles: true,
     requiresMedia: true,
-    accept: 'video/*,image/*',
-    hint: 'Vertical clip + caption'
+    accept: 'video/*',
+    hint: 'Video clip + caption (MP4, MOV, or WebM)'
   },
   {
     code: 'youtube',

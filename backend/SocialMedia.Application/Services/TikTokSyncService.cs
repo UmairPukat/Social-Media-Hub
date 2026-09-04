@@ -102,31 +102,42 @@ public class TikTokSyncService : ITikTokSyncService
             var normalizedMenu = MenuTypes.Normalize(menuType);
             var code = string.IsNullOrWhiteSpace(platformCode) ? "tiktok" : platformCode.Trim().ToLowerInvariant();
             var store = _processData.ForMenu(normalizedMenu);
-            var context = await ResolveTikTokContextAsync(store, userId, code, cancellationToken);
-            if (context is null)
+            var contexts = await ResolveAllTikTokContextsAsync(store, userId, code, cancellationToken);
+            if (contexts.Count == 0)
                 return ApiResponse<TikTokSyncResultDto>.Fail("Connect TikTok and save OAuth credentials before syncing.");
 
-            var (account, profile, token) = context.Value;
             var result = new TikTokSyncResultDto
             {
                 MenuType = normalizedMenu,
                 PlatformCode = code
             };
 
+            foreach (var (account, profile, token) in contexts)
+            {
+                switch (kind)
+                {
+                    case SyncKind.Posts:
+                        await SyncPostsForProfileAsync(store, account, profile, token, result, cancellationToken);
+                        break;
+                    case SyncKind.Statistics:
+                        await SyncStatisticsForProfileAsync(store, account, profile, token, result, cancellationToken);
+                        break;
+                }
+
+                account.LastSyncAt = DateTime.UtcNow;
+                store.UpdateSocialAccount(account);
+            }
+
             switch (kind)
             {
                 case SyncKind.Posts:
-                    await SyncPostsForProfileAsync(store, account, profile, token, result, cancellationToken);
                     result.Message = $"Fetched {result.Fetched} videos; stored {result.Stored}, updated {result.Updated}.";
                     break;
                 case SyncKind.Statistics:
-                    await SyncStatisticsForProfileAsync(store, account, profile, token, result, cancellationToken);
                     result.Message = $"Refreshed statistics for {result.Updated} videos.";
                     break;
             }
 
-            account.LastSyncAt = DateTime.UtcNow;
-            store.UpdateSocialAccount(account);
             await store.SaveChangesAsync(cancellationToken);
             return ApiResponse<TikTokSyncResultDto>.Ok(result, result.Message ?? "Success");
         }
@@ -174,7 +185,9 @@ public class TikTokSyncService : ITikTokSyncService
             existing.PublishedAt ??= video.CreateTime;
             if (existing.SocialProfileId != profile.Id)
             {
-                existing.SocialProfileId = profile.Id;
+                var existingProfile = await store.GetProfileByIdAsync(existing.SocialProfileId, cancellationToken);
+                if (existingProfile?.SocialAccountId == account.Id)
+                    existing.SocialProfileId = profile.Id;
             }
             ApplyStatistics(existing, video);
             existing.MetadataJson = BuildPostMetadata(video);
@@ -294,7 +307,7 @@ public class TikTokSyncService : ITikTokSyncService
         };
     }
 
-    private async Task<(SocialAccountEntityBase Account, SocialProfileEntityBase Profile, string Token)?> ResolveTikTokContextAsync(
+    private async Task<List<(SocialAccountEntityBase Account, SocialProfileEntityBase Profile, string Token)>> ResolveAllTikTokContextsAsync(
         IProcessDataStore store,
         Guid userId,
         string platformCode,
@@ -302,32 +315,38 @@ public class TikTokSyncService : ITikTokSyncService
     {
         var platform = await store.GetPlatformByCodeAsync(platformCode, cancellationToken);
         if (platform is null)
-            return null;
+            return [];
 
-        var account = await store.GetSocialAccountByUserAndPlatformAsync(userId, platform.Id, cancellationToken);
-        if (account is null || account.Status != SocialAccountStatus.Connected)
-            return null;
+        var accounts = (await store.GetSocialAccountsByUserAsync(userId, cancellationToken))
+            .Where(a => a.PlatformId == platform.Id && a.Status == SocialAccountStatus.Connected)
+            .ToList();
 
-        var token = await ResolveAccessTokenAsync(store, account.Id, cancellationToken);
-        if (string.IsNullOrWhiteSpace(token))
-            return null;
+        var contexts = new List<(SocialAccountEntityBase Account, SocialProfileEntityBase Profile, string Token)>();
+        foreach (var account in accounts)
+        {
+            var token = await ResolveAccessTokenAsync(store, account.Id, cancellationToken);
+            if (string.IsNullOrWhiteSpace(token))
+                continue;
 
-        var profiles = await store.GetProfilesByAccountAsync(account.Id, cancellationToken);
-        var profile = ProcessProfileResolver.PickConnectedProfile(
-            profiles,
-            account.ExternalAccountId,
-            ProfileType.TikTokAccount);
-        if (profile is null || string.IsNullOrWhiteSpace(profile.ExternalProfileId))
-            return null;
+            var profiles = await store.GetProfilesByAccountAsync(account.Id, cancellationToken);
+            var profile = ProcessProfileResolver.PickConnectedProfile(
+                profiles,
+                account.ExternalAccountId,
+                ProfileType.TikTokAccount);
+            if (profile is null || string.IsNullOrWhiteSpace(profile.ExternalProfileId))
+                continue;
 
-        await RefreshTikTokProfileAsync(store, account, profile, token, cancellationToken);
-        await AccountProfileMaintenance.PurgeStaleProfilesAsync(
-            store,
-            account,
-            [profile.ExternalProfileId, account.ExternalAccountId ?? string.Empty],
-            cancellationToken);
+            await RefreshTikTokProfileAsync(store, account, profile, token, cancellationToken);
+            await AccountProfileMaintenance.PurgeStaleProfilesAsync(
+                store,
+                account,
+                [profile.ExternalProfileId, account.ExternalAccountId ?? string.Empty],
+                cancellationToken);
 
-        return (account, profile, token);
+            contexts.Add((account, profile, token));
+        }
+
+        return contexts;
     }
 
     private async Task RefreshTikTokProfileAsync(

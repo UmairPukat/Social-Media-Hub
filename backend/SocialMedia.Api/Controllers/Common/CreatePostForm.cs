@@ -7,5 +7,10 @@ public sealed class CreatePostForm
     public string? MediaUrl { get; set; }
     public string? Title { get; set; }
     public string? Visibility { get; set; }
+    /// <summary>TikTok privacy: public, friends, followers, or only_you.</summary>
+    public string? Privacy { get; set; }
+    public bool? AllowComment { get; set; }
+    public bool? AllowDuet { get; set; }
+    public bool? AllowStitch { get; set; }
     public IFormFile? MediaFile { get; set; }
 }

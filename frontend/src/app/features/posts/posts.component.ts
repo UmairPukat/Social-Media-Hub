@@ -130,7 +130,6 @@ export class PostsComponent implements OnInit {
   readonly publishedCount = computed(() => this.posts().filter((post) => post.status === 1).length);
   readonly scheduledCount = computed(() => this.posts().filter((post) => post.status === 3).length);
   readonly attentionCount = computed(() => this.posts().filter((post) => post.status === 2).length);
-  readonly demoMode = computed(() => this.posts().some((post) => post.id.startsWith('demo-')));
   readonly createPostLink = computed(() => `${this.processRoute.currentRouteBase()}/create-post`);
 
   ngOnInit(): void {
@@ -153,7 +152,7 @@ export class PostsComponent implements OnInit {
           const platforms = result.platforms.data || [];
           const posts = result.posts.data || [];
           this.platforms.set(platforms);
-          this.posts.set(posts.length ? posts : this.buildDemoPosts(platforms));
+          this.posts.set(posts);
         },
         error: () => this.loadError.set('We could not load your content library. Check the API connection and try again.')
       });
@@ -216,8 +215,8 @@ export class PostsComponent implements OnInit {
     return (post.text || post.caption || '').trim();
   }
 
-  isDemo(post: SocialPost): boolean {
-    return post.id.startsWith('demo-');
+  isDemo(_post: SocialPost): boolean {
+    return false;
   }
 
   supportsStatistics(post: SocialPost): boolean {
@@ -328,12 +327,6 @@ export class PostsComponent implements OnInit {
 
   remove(id: string): void {
     if (this.deleting()) return;
-    if (id.startsWith('demo-')) {
-      this.posts.update((items) => items.filter((post) => post.id !== id));
-      this.pendingDelete.set(null);
-      this.notice.set('Preview post removed from this session.');
-      return;
-    }
 
     this.deleting.set(id);
     this.processApi
@@ -347,129 +340,5 @@ export class PostsComponent implements OnInit {
         },
         error: () => this.notice.set('The post could not be deleted. Please try again.')
       });
-  }
-
-  private buildDemoPosts(platforms: PlatformCard[]): SocialPost[] {
-    const now = Date.now();
-    const platformId = (code: string) =>
-      platforms.find((item) => item.code.toLowerCase() === code)?.platformId || `demo-${code}`;
-    const ago = (hours: number) => new Date(now - hours * 60 * 60 * 1000).toISOString();
-    const ahead = (hours: number) => new Date(now + hours * 60 * 60 * 1000).toISOString();
-
-    return [
-      {
-        id: 'demo-facebook-launch',
-        socialProfileId: 'demo-profile-facebook',
-        platformId: platformId('facebook'),
-        platformCode: 'facebook',
-        profileName: 'SocialHub',
-        profileUsername: 'socialhub',
-        externalPostId: 'preview-fb-001',
-        text: 'One workspace. Every conversation. Every channel. 🚀\n\nSocialHub brings publishing, engagement, and customer conversations together so your team can move faster.',
-        status: 1,
-        likeCount: 1284,
-        commentCount: 96,
-        shareCount: 214,
-        viewCount: 18420,
-        publishedAt: ago(3),
-        createdAt: ago(4)
-      },
-      {
-        id: 'demo-instagram-story',
-        socialProfileId: 'demo-profile-instagram',
-        platformId: platformId('instagram'),
-        platformCode: 'instagram',
-        profileName: 'SocialHub Studio',
-        profileUsername: 'socialhub.official',
-        externalPostId: 'preview-ig-001',
-        caption: 'Behind every great campaign is a clear workflow. Plan, publish, and learn from one beautifully organized content calendar. ✨\n\n#SocialMedia #ContentStrategy #SocialHub',
-        status: 1,
-        likeCount: 3421,
-        commentCount: 187,
-        shareCount: 403,
-        viewCount: 42180,
-        publishedAt: ago(19),
-        createdAt: ago(20)
-      },
-      {
-        id: 'demo-linkedin-scheduled',
-        socialProfileId: 'demo-profile-linkedin',
-        platformId: platformId('linkedin'),
-        platformCode: 'linkedin',
-        profileName: 'SocialHub Company',
-        profileUsername: 'socialhub',
-        text: 'Social teams do their best work when publishing and customer care share the same source of truth. Next week, we’re sharing our framework for building a connected social operation.',
-        status: 3,
-        likeCount: 0,
-        commentCount: 0,
-        shareCount: 0,
-        viewCount: 0,
-        publishedAt: ahead(25),
-        createdAt: ago(2)
-      },
-      {
-        id: 'demo-twitter-draft',
-        socialProfileId: 'demo-profile-twitter',
-        platformId: platformId('twitter'),
-        platformCode: 'twitter',
-        profileName: 'SocialHub',
-        profileUsername: 'socialhub',
-        text: 'Your social workflow should feel this simple:\n\nPlan → Create → Approve → Publish → Learn\n\nWhat would you add?',
-        status: 0,
-        likeCount: 0,
-        commentCount: 0,
-        shareCount: 0,
-        viewCount: 0,
-        createdAt: ago(1)
-      },
-      {
-        id: 'demo-tiktok-performance',
-        socialProfileId: 'demo-profile-tiktok',
-        platformId: platformId('tiktok'),
-        platformCode: 'tiktok',
-        profileName: 'SocialHub Creators',
-        profileUsername: 'socialhub',
-        caption: 'Three reporting shortcuts every social media manager should know 👀 Save this for your next campaign review.',
-        status: 1,
-        likeCount: 12680,
-        commentCount: 534,
-        shareCount: 2187,
-        viewCount: 186500,
-        publishedAt: ago(31),
-        createdAt: ago(32)
-      },
-      {
-        id: 'demo-youtube-failed',
-        socialProfileId: 'demo-profile-youtube',
-        platformId: platformId('youtube'),
-        platformCode: 'youtube',
-        profileName: 'SocialHub Academy',
-        profileUsername: 'SocialHubAcademy',
-        text: 'How to build a cross-platform content calendar that your whole team will actually use.',
-        status: 2,
-        likeCount: 0,
-        commentCount: 0,
-        shareCount: 0,
-        viewCount: 0,
-        errorMessage: 'Video processing timed out. Check the source file and retry publishing.',
-        createdAt: ago(7)
-      },
-      {
-        id: 'demo-whatsapp-scheduled',
-        socialProfileId: 'demo-profile-whatsapp',
-        platformId: platformId('whatsapp'),
-        platformCode: 'whatsapp',
-        profileName: 'SocialHub Updates',
-        profileUsername: 'Business account',
-        text: 'New this week: faster approvals, improved post previews, and a refreshed content library. Tap below to see what changed.',
-        status: 3,
-        likeCount: 0,
-        commentCount: 0,
-        shareCount: 0,
-        viewCount: 0,
-        publishedAt: ahead(48),
-        createdAt: ago(5)
-      }
-    ];
   }
 }

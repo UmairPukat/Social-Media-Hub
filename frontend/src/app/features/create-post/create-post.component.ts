@@ -111,8 +111,13 @@ export class CreatePostComponent implements OnInit, OnDestroy {
 
     switch (this.platform()) {
       case 'instagram':
-      case 'tiktok':
         return hasMedia && !!content;
+      case 'tiktok': {
+        const hasVideo =
+          this.selectedFileKind() === 'video' ||
+          (!!media && /\.(mp4|mov|webm)(\?|$)/i.test(media));
+        return hasVideo && !!content;
+      }
       case 'youtube':
         return !!title && hasMedia;
       case 'whatsapp':

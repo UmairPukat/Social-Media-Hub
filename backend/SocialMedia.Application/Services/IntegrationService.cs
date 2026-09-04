@@ -80,15 +80,17 @@ public class IntegrationService : IIntegrationService
             var store = _processData.ForMenu(normalizedMenu);
             var platforms = (await store.GetActivePlatformsAsync(cancellationToken)).ToList();
             var accounts = await store.GetSocialAccountsByUserAsync(userId, cancellationToken);
-            var byPlatform = accounts
-                .Where(a => a.Status == SocialAccountStatus.Connected)
+            var connectedAccounts = accounts
+                .Where(a => a.Status == SocialAccountStatus.Connected && AccountHasToken(a))
+                .ToList();
+            var byPlatform = connectedAccounts
                 .GroupBy(a => a.PlatformId)
                 .ToDictionary(
                     g => g.Key,
                     g => g
                         .OrderByDescending(AccountHasToken)
                         .ThenByDescending(a => a.ConnectedAt ?? a.UpdatedAt ?? a.CreatedAt)
-                        .First());
+                        .ToList());
 
             var configByPlatform = normalizedMenu switch
             {
@@ -104,8 +106,15 @@ public class IntegrationService : IIntegrationService
                 .Select(p =>
                 {
                     var def = PlatformCatalog.Find(p.Code);
-                    byPlatform.TryGetValue(p.Id, out var account);
+                    byPlatform.TryGetValue(p.Id, out var platformAccounts);
+                    platformAccounts ??= [];
+                    var account = platformAccounts.FirstOrDefault();
                     var hasAppConfig = configByPlatform.TryGetValue(p.Id, out var appConfigId);
+                    var accountName = account is null
+                        ? null
+                        : platformAccounts.Count > 1
+                            ? $"{ResolvePlatformCardAccountName(p.Code, account)} (+{platformAccounts.Count - 1} more)"
+                            : ResolvePlatformCardAccountName(p.Code, account);
                     return new PlatformCardDto
                     {
                         PlatformId = p.Id,
@@ -118,8 +127,8 @@ public class IntegrationService : IIntegrationService
                         CategoryLabel = def?.CategoryLabel ?? "Other",
                         SortOrder = def?.SortOrder ?? 9999,
                         CanConnect = def?.CanConnect ?? false,
-                        IsConnected = account is not null && AccountHasToken(account),
-                        AccountName = ResolvePlatformCardAccountName(p.Code, account),
+                        IsConnected = platformAccounts.Count > 0,
+                        AccountName = accountName,
                         ConnectedAt = account?.ConnectedAt,
                         SupportsComments = def?.SupportsComments ?? false,
                         SupportsMessages = def?.SupportsMessages ?? false,
@@ -781,23 +790,13 @@ public class IntegrationService : IIntegrationService
         if (platform is null)
             return ApiResponse<SocialAccountDto>.Fail($"Unknown platform '{platformCode}'.");
 
-        var account = await store.GetSocialAccountByUserAndPlatformAsync(userId, platform.Id, cancellationToken);
-        var previousExternalAccountId = account?.ExternalAccountId;
-        var isNewAccount = account is null;
-        if (account is null)
-        {
-            account = store.NewSocialAccount();
-            account.UserId = userId;
-            account.PlatformId = platform.Id;
-            await store.AddSocialAccountAsync(account, cancellationToken);
-        }
-
-        var accountSwitched = !isNewAccount
-                              && !string.IsNullOrWhiteSpace(previousExternalAccountId)
-                              && !string.Equals(previousExternalAccountId, externalAccountId, StringComparison.Ordinal)
-                              && platformCode is "tiktok" or "youtube";
-        if (accountSwitched)
-            await AccountProfileMaintenance.DeleteAllPostsForAccountAsync(store, account, cancellationToken);
+        var (account, isNewAccount) = await ResolveOrCreateConnectedAccountAsync(
+            store,
+            userId,
+            platform,
+            platformCode,
+            externalAccountId,
+            cancellationToken);
 
         account.ExternalAccountId = externalAccountId;
         account.DisplayName = displayName;
@@ -1523,8 +1522,42 @@ public class IntegrationService : IIntegrationService
         return !string.IsNullOrWhiteSpace(auth.RefreshToken) ? auth.RefreshToken : null;
     }
 
+    private static async Task<(SocialAccountEntityBase Account, bool IsNew)> ResolveOrCreateConnectedAccountAsync(
+        IProcessDataStore store,
+        Guid userId,
+        PlatformEntityBase platform,
+        string platformCode,
+        string externalAccountId,
+        CancellationToken cancellationToken)
+    {
+        SocialAccountEntityBase? account = null;
+
+        if (!string.IsNullOrWhiteSpace(externalAccountId))
+        {
+            account = await store.GetSocialAccountByUserPlatformAndExternalIdAsync(
+                userId,
+                platform.Id,
+                externalAccountId,
+                cancellationToken);
+        }
+
+        if (account is null && platformCode is not ("tiktok" or "youtube"))
+        {
+            account = await store.GetSocialAccountByUserAndPlatformAsync(userId, platform.Id, cancellationToken);
+        }
+
+        if (account is not null)
+            return (account, false);
+
+        account = store.NewSocialAccount();
+        account.UserId = userId;
+        account.PlatformId = platform.Id;
+        await store.AddSocialAccountAsync(account, cancellationToken);
+        return (account, true);
+    }
+
     /// <summary>
-    /// Merges legacy duplicate <see cref="SocialAccount"/> rows (same user + platform) into one.
+    /// Merges legacy duplicate <see cref="SocialAccount"/> rows (same user + platform + external id) into one.
     /// Profiles/conversations move to the primary row; extra account rows are deleted.
     /// </summary>
     private async Task ConsolidateLegacyDuplicateAccountsAsync(
@@ -1534,8 +1567,14 @@ public class IntegrationService : IIntegrationService
         Guid primaryAccountId,
         CancellationToken cancellationToken)
     {
+        var primary = await store.GetSocialAccountByIdAsync(primaryAccountId, cancellationToken);
+        if (primary is null)
+            return;
+
         var duplicateAccounts = (await store.GetSocialAccountsByUserAsync(userId, cancellationToken))
-            .Where(a => a.PlatformId == platformId && a.Id != primaryAccountId)
+            .Where(a => a.PlatformId == platformId
+                        && a.Id != primaryAccountId
+                        && string.Equals(a.ExternalAccountId, primary.ExternalAccountId, StringComparison.Ordinal))
             .ToList();
         if (duplicateAccounts.Count == 0)
             return;

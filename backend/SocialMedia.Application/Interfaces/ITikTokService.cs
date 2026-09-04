@@ -1,4 +1,5 @@
 using SocialMedia.Application.DTOs.Meta;
+using SocialMedia.Application.DTOs.TikTok;
 
 namespace SocialMedia.Application.Interfaces;
 
@@ -29,6 +30,14 @@ public interface ITikTokService
     Task<IReadOnlyList<TikTokVideoSnapshot>> QueryVideosAsync(
         string accessToken,
         IReadOnlyList<string> videoIds,
+        CancellationToken cancellationToken = default);
+
+    Task<TikTokPublishResult> PublishVideoAsync(
+        string accessToken,
+        Stream videoStream,
+        long videoSize,
+        string contentType,
+        TikTokPublishOptions options,
         CancellationToken cancellationToken = default);
 }
 

@@ -22,6 +22,11 @@ public interface IProcessDataStore
     Task<IReadOnlyList<SocialAccountEntityBase>> GetSocialAccountsByUserAsync(Guid userId, CancellationToken cancellationToken = default);
     Task<SocialAccountEntityBase?> GetSocialAccountByIdAsync(Guid id, CancellationToken cancellationToken = default);
     Task<SocialAccountEntityBase?> GetSocialAccountByUserAndPlatformAsync(Guid userId, Guid platformId, CancellationToken cancellationToken = default);
+    Task<SocialAccountEntityBase?> GetSocialAccountByUserPlatformAndExternalIdAsync(
+        Guid userId,
+        Guid platformId,
+        string externalAccountId,
+        CancellationToken cancellationToken = default);
     Task<SocialAccountEntityBase?> GetSocialAccountByExternalIdAsync(string externalAccountId, CancellationToken cancellationToken = default);
     Task<SocialAccountEntityBase?> GetSocialAccountWithAuthAndProfilesAsync(Guid id, CancellationToken cancellationToken = default);
     Task AddSocialAccountAsync(SocialAccountEntityBase account, CancellationToken cancellationToken = default);

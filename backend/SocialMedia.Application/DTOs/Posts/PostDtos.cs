@@ -10,6 +10,11 @@ public class CreatePostRequest
     public string? Title { get; set; }
     /// <summary>YouTube privacy: public, unlisted, or private.</summary>
     public string? Visibility { get; set; }
+    /// <summary>TikTok privacy: public, friends, followers, or only_you.</summary>
+    public string? Privacy { get; set; }
+    public bool? AllowComment { get; set; }
+    public bool? AllowDuet { get; set; }
+    public bool? AllowStitch { get; set; }
 }
 
 public sealed class PublishMediaInput

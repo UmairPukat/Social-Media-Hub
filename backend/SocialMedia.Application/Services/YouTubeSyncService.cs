@@ -102,25 +102,41 @@ public class YouTubeSyncService : IYouTubeSyncService
             var normalizedMenu = MenuTypes.Normalize(menuType);
             var code = string.IsNullOrWhiteSpace(platformCode) ? "youtube" : platformCode.Trim().ToLowerInvariant();
             var store = _processData.ForMenu(normalizedMenu);
-            var context = await ResolveYouTubeContextAsync(store, userId, code, cancellationToken);
-            if (context is null)
+            var contexts = await ResolveAllYouTubeContextsAsync(store, userId, code, cancellationToken);
+            if (contexts.Count == 0)
                 return ApiResponse<YouTubeSyncResultDto>.Fail("Connect YouTube and save Google OAuth credentials before syncing.");
 
-            var (account, profile, token) = context.Value;
             var result = new YouTubeSyncResultDto
             {
                 MenuType = normalizedMenu,
                 PlatformCode = code
             };
 
+            foreach (var (account, profile, token) in contexts)
+            {
+                switch (kind)
+                {
+                    case SyncKind.Posts:
+                        await SyncPostsForProfileAsync(store, account, profile, token, result, cancellationToken);
+                        break;
+                    case SyncKind.Comments:
+                        await SyncCommentsForProfileAsync(store, account, profile, token, result, cancellationToken);
+                        break;
+                    case SyncKind.Statistics:
+                        await SyncStatisticsForProfileAsync(store, account, profile, token, result, cancellationToken);
+                        break;
+                }
+
+                account.LastSyncAt = DateTime.UtcNow;
+                store.UpdateSocialAccount(account);
+            }
+
             switch (kind)
             {
                 case SyncKind.Posts:
-                    await SyncPostsForProfileAsync(store, account, profile, token, result, cancellationToken);
                     result.Message = $"Fetched {result.Fetched} videos; stored {result.Stored}, updated {result.Updated}.";
                     break;
                 case SyncKind.Comments:
-                    await SyncCommentsForProfileAsync(store, account, profile, token, result, cancellationToken);
                     if (result.Skipped > 0 && result.Fetched == 0 && result.Stored == 0 && result.Updated == 0)
                     {
                         result.Message =
@@ -137,13 +153,10 @@ public class YouTubeSyncService : IYouTubeSyncService
                     }
                     break;
                 case SyncKind.Statistics:
-                    await SyncStatisticsForProfileAsync(store, account, profile, token, result, cancellationToken);
                     result.Message = $"Refreshed statistics for {result.Updated} videos.";
                     break;
             }
 
-            account.LastSyncAt = DateTime.UtcNow;
-            store.UpdateSocialAccount(account);
             await store.SaveChangesAsync(cancellationToken);
             return ApiResponse<YouTubeSyncResultDto>.Ok(result, result.Message ?? "Success");
         }
@@ -191,7 +204,11 @@ public class YouTubeSyncService : IYouTubeSyncService
             existing.Caption = video.Description ?? video.Title;
             existing.PublishedAt ??= video.PublishedAt;
             if (existing.SocialProfileId != profile.Id)
-                existing.SocialProfileId = profile.Id;
+            {
+                var existingProfile = await store.GetProfileByIdAsync(existing.SocialProfileId, cancellationToken);
+                if (existingProfile?.SocialAccountId == account.Id)
+                    existing.SocialProfileId = profile.Id;
+            }
             ApplyStatistics(existing, video);
             existing.MetadataJson = BuildPostMetadata(video);
             existing.UpdatedAt = DateTime.UtcNow;
@@ -374,7 +391,7 @@ public class YouTubeSyncService : IYouTubeSyncService
         };
     }
 
-    private async Task<(SocialAccountEntityBase Account, SocialProfileEntityBase Profile, string Token)?> ResolveYouTubeContextAsync(
+    private async Task<List<(SocialAccountEntityBase Account, SocialProfileEntityBase Profile, string Token)>> ResolveAllYouTubeContextsAsync(
         IProcessDataStore store,
         Guid userId,
         string platformCode,
@@ -382,31 +399,37 @@ public class YouTubeSyncService : IYouTubeSyncService
     {
         var platform = await store.GetPlatformByCodeAsync(platformCode, cancellationToken);
         if (platform is null)
-            return null;
+            return [];
 
-        var account = await store.GetSocialAccountByUserAndPlatformAsync(userId, platform.Id, cancellationToken);
-        if (account is null || account.Status != SocialAccountStatus.Connected)
-            return null;
+        var accounts = (await store.GetSocialAccountsByUserAsync(userId, cancellationToken))
+            .Where(a => a.PlatformId == platform.Id && a.Status == SocialAccountStatus.Connected)
+            .ToList();
 
-        var token = await ResolveAccessTokenAsync(store, account.Id, cancellationToken);
-        if (string.IsNullOrWhiteSpace(token))
-            return null;
+        var contexts = new List<(SocialAccountEntityBase Account, SocialProfileEntityBase Profile, string Token)>();
+        foreach (var account in accounts)
+        {
+            var token = await ResolveAccessTokenAsync(store, account.Id, cancellationToken);
+            if (string.IsNullOrWhiteSpace(token))
+                continue;
 
-        var profiles = await store.GetProfilesByAccountAsync(account.Id, cancellationToken);
-        var profile = ProcessProfileResolver.PickConnectedProfile(
-            profiles,
-            account.ExternalAccountId,
-            ProfileType.YouTubeChannel);
-        if (profile is null || string.IsNullOrWhiteSpace(profile.ExternalProfileId))
-            return null;
+            var profiles = await store.GetProfilesByAccountAsync(account.Id, cancellationToken);
+            var profile = ProcessProfileResolver.PickConnectedProfile(
+                profiles,
+                account.ExternalAccountId,
+                ProfileType.YouTubeChannel);
+            if (profile is null || string.IsNullOrWhiteSpace(profile.ExternalProfileId))
+                continue;
 
-        await AccountProfileMaintenance.PurgeStaleProfilesAsync(
-            store,
-            account,
-            [profile.ExternalProfileId, account.ExternalAccountId ?? string.Empty],
-            cancellationToken);
+            await AccountProfileMaintenance.PurgeStaleProfilesAsync(
+                store,
+                account,
+                [profile.ExternalProfileId, account.ExternalAccountId ?? string.Empty],
+                cancellationToken);
 
-        return (account, profile, token);
+            contexts.Add((account, profile, token));
+        }
+
+        return contexts;
     }
 
     private static async Task<PostEntityBase?> FindExistingPostAsync(

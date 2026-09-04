@@ -2,6 +2,7 @@ using System.Text.Json;
 using SocialMedia.Application.Catalog;
 using SocialMedia.Application.DTOs.Common;
 using SocialMedia.Application.DTOs.Posts;
+using SocialMedia.Application.DTOs.TikTok;
 using SocialMedia.Application.Interfaces;
 using SocialMedia.Application.Meta;
 using SocialMedia.Domain.Enums;
@@ -15,17 +16,20 @@ public class PostService : IPostService
     private readonly IFacebookService _facebookService;
     private readonly IInstagramService _instagramService;
     private readonly IYouTubeService _youTubeService;
+    private readonly ITikTokService _tikTokService;
 
     public PostService(
         IProcessDataStoreFactory processData,
         IFacebookService facebookService,
         IInstagramService instagramService,
-        IYouTubeService youTubeService)
+        IYouTubeService youTubeService,
+        ITikTokService tikTokService)
     {
         _processData = processData;
         _facebookService = facebookService;
         _instagramService = instagramService;
         _youTubeService = youTubeService;
+        _tikTokService = tikTokService;
     }
 
     public async Task<ApiResponse<PublishPostResponse>> CreateAndPublishAsync(
@@ -125,6 +129,36 @@ public class PostService : IPostService
                         ApplyPublishSuccess(post, result.VideoId);
                         post.Text = title;
                         post.Caption = description;
+                        break;
+                    }
+                    case "tiktok":
+                    {
+                        if (media?.Stream is null)
+                            throw new InvalidOperationException("TikTok posts require a video file.");
+
+                        var (videoStream, videoSize) = await EnsureSeekableStreamAsync(media.Stream, cancellationToken);
+                        await using var ownedStream = videoStream != media.Stream ? videoStream : null;
+
+                        if (!IsVideoMedia(media))
+                            throw new InvalidOperationException("TikTok direct publish requires a video file (MP4, MOV, or WebM). Images are not supported.");
+
+                        videoStream.Position = 0;
+                        var result = await _tikTokService.PublishVideoAsync(
+                            accessToken,
+                            videoStream,
+                            videoSize,
+                            media.ContentType,
+                            new TikTokPublishOptions
+                            {
+                                Caption = request.Content ?? string.Empty,
+                                PrivacyLevel = NormalizeTikTokPrivacy(request.Privacy),
+                                DisableComment = request.AllowComment == false,
+                                DisableDuet = request.AllowDuet == false,
+                                DisableStitch = request.AllowStitch == false
+                            },
+                            cancellationToken);
+                        ApplyPublishSuccess(post, result.VideoId ?? result.PublishId);
+                        post.Type = ContentPostType.Video;
                         break;
                     }
                     default:
@@ -257,7 +291,11 @@ public class PostService : IPostService
     private static ContentPostType ResolvePostType(string platformCode, string? mediaUrl, PublishMediaInput? media)
     {
         if (media?.Stream is not null)
-            return platformCode == "youtube" ? ContentPostType.Video : ContentPostType.Image;
+        {
+            if (platformCode is "youtube" or "tiktok")
+                return ContentPostType.Video;
+            return IsVideoMedia(media) ? ContentPostType.Video : ContentPostType.Image;
+        }
 
         if (string.IsNullOrWhiteSpace(mediaUrl))
             return ContentPostType.Text;
@@ -266,6 +304,29 @@ public class PostService : IPostService
         return lower.Contains(".mp4") || lower.Contains(".mov") || lower.Contains(".webm")
             ? ContentPostType.Video
             : ContentPostType.Image;
+    }
+
+    private static bool IsVideoMedia(PublishMediaInput media)
+    {
+        var contentType = media.ContentType?.Trim().ToLowerInvariant() ?? string.Empty;
+        if (contentType.StartsWith("video/", StringComparison.Ordinal))
+            return true;
+
+        var fileName = media.FileName?.Trim().ToLowerInvariant() ?? string.Empty;
+        return fileName.EndsWith(".mp4") || fileName.EndsWith(".mov") || fileName.EndsWith(".webm");
+    }
+
+    private static async Task<(Stream Stream, long Size)> EnsureSeekableStreamAsync(
+        Stream input,
+        CancellationToken cancellationToken)
+    {
+        if (input.CanSeek)
+            return (input, input.Length);
+
+        var memory = new MemoryStream();
+        await input.CopyToAsync(memory, cancellationToken);
+        memory.Position = 0;
+        return (memory, memory.Length);
     }
 
     private static void ApplyPublishSuccess(PostEntityBase post, string externalId)
@@ -282,6 +343,15 @@ public class PostService : IPostService
             "private" => "private",
             "unlisted" => "unlisted",
             _ => "public"
+        };
+
+    private static string NormalizeTikTokPrivacy(string? privacy)
+        => (privacy ?? "public").Trim().ToLowerInvariant() switch
+        {
+            "friends" => "MUTUAL_FOLLOW_FRIENDS",
+            "followers" => "FOLLOWER_OF_CREATOR",
+            "only_you" => "SELF_ONLY",
+            _ => "PUBLIC_TO_EVERYONE"
         };
 
     private static string? ReadJsonString(string? json, string propertyName)

@@ -138,6 +138,39 @@ public sealed class ProcessDataStore : IProcessDataStore
                     .FirstOrDefaultAsync(cancellationToken))
         };
 
+    public Task<SocialAccountEntityBase?> GetSocialAccountByUserPlatformAndExternalIdAsync(
+        Guid userId,
+        Guid platformId,
+        string externalAccountId,
+        CancellationToken cancellationToken = default)
+        => _menuType switch
+        {
+            MenuTypes.AppConnection => AsBase<AppConnectionSocialAccount, SocialAccountEntityBase>(
+                _context.AppConnectionSocialAccounts
+                    .Include(a => a.Auth).Include(a => a.Profiles)
+                    .FirstOrDefaultAsync(
+                        a => a.UserId == userId
+                             && a.PlatformId == platformId
+                             && a.ExternalAccountId == externalAccountId,
+                        cancellationToken)),
+            MenuTypes.DeveloperApp => AsBase<DeveloperAppSocialAccount, SocialAccountEntityBase>(
+                _context.DeveloperAppSocialAccounts
+                    .Include(a => a.Auth).Include(a => a.Profiles)
+                    .FirstOrDefaultAsync(
+                        a => a.UserId == userId
+                             && a.PlatformId == platformId
+                             && a.ExternalAccountId == externalAccountId,
+                        cancellationToken)),
+            _ => AsBase<IntegrationSocialAccount, SocialAccountEntityBase>(
+                _context.IntegrationSocialAccounts
+                    .Include(a => a.Auth).Include(a => a.Profiles)
+                    .FirstOrDefaultAsync(
+                        a => a.UserId == userId
+                             && a.PlatformId == platformId
+                             && a.ExternalAccountId == externalAccountId,
+                        cancellationToken))
+        };
+
     public Task<SocialAccountEntityBase?> GetSocialAccountByExternalIdAsync(
         string externalAccountId,
         CancellationToken cancellationToken = default)

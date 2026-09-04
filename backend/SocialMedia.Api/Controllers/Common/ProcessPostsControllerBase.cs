@@ -54,7 +54,11 @@ public abstract class ProcessPostsControllerBase : ControllerBase
             Content = form.Content ?? string.Empty,
             MediaUrl = string.IsNullOrWhiteSpace(form.MediaUrl) ? null : form.MediaUrl.Trim(),
             Title = string.IsNullOrWhiteSpace(form.Title) ? null : form.Title.Trim(),
-            Visibility = string.IsNullOrWhiteSpace(form.Visibility) ? null : form.Visibility.Trim()
+            Visibility = string.IsNullOrWhiteSpace(form.Visibility) ? null : form.Visibility.Trim(),
+            Privacy = string.IsNullOrWhiteSpace(form.Privacy) ? null : form.Privacy.Trim(),
+            AllowComment = form.AllowComment,
+            AllowDuet = form.AllowDuet,
+            AllowStitch = form.AllowStitch
         };
 
         var response = await _postService.CreateAndPublishAsync(User.GetUserId(), request, media);

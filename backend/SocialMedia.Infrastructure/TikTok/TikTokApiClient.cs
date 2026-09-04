@@ -184,6 +184,122 @@ public sealed class TikTokApiClient
         return doc;
     }
 
+    public async Task<(string PublishId, string UploadUrl)> InitDirectVideoPublishAsync(
+        string accessToken,
+        string caption,
+        string privacyLevel,
+        bool disableComment,
+        bool disableDuet,
+        bool disableStitch,
+        long videoSize,
+        long chunkSize,
+        int totalChunkCount,
+        CancellationToken cancellationToken)
+    {
+        var payload = new Dictionary<string, object>
+        {
+            ["post_info"] = new Dictionary<string, object>
+            {
+                ["title"] = caption,
+                ["privacy_level"] = privacyLevel,
+                ["disable_comment"] = disableComment,
+                ["disable_duet"] = disableDuet,
+                ["disable_stitch"] = disableStitch
+            },
+            ["source_info"] = new Dictionary<string, object>
+            {
+                ["source"] = "FILE_UPLOAD",
+                ["video_size"] = videoSize,
+                ["chunk_size"] = chunkSize,
+                ["total_chunk_count"] = totalChunkCount
+            }
+        };
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, "https://open.tiktokapis.com/v2/post/publish/video/init/")
+        {
+            Content = new StringContent(JsonSerializer.Serialize(payload), System.Text.Encoding.UTF8, "application/json")
+        };
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+
+        using var response = await _http.SendAsync(request, cancellationToken);
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        using var doc = JsonDocument.Parse(body);
+        var root = doc.RootElement;
+
+        if (TryReadApiError(root, out var errorMessage))
+            throw new InvalidOperationException(errorMessage);
+
+        if (!response.IsSuccessStatusCode)
+            throw new InvalidOperationException($"TikTok video publish init failed ({(int)response.StatusCode}): {body}");
+
+        if (!root.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Object)
+            throw new InvalidOperationException("TikTok did not return publish init data.");
+
+        var publishId = data.TryGetProperty("publish_id", out var publishEl) ? publishEl.GetString() : null;
+        var uploadUrl = data.TryGetProperty("upload_url", out var uploadEl) ? uploadEl.GetString() : null;
+        if (string.IsNullOrWhiteSpace(publishId) || string.IsNullOrWhiteSpace(uploadUrl))
+            throw new InvalidOperationException("TikTok did not return publish_id or upload_url.");
+
+        return (publishId, uploadUrl);
+    }
+
+    public async Task UploadVideoChunkAsync(
+        string uploadUrl,
+        byte[] buffer,
+        int offset,
+        int count,
+        long totalSize,
+        CancellationToken cancellationToken)
+    {
+        var start = offset;
+        var end = offset + count - 1;
+        using var content = new ByteArrayContent(buffer, 0, count);
+        content.Headers.ContentType = new MediaTypeHeaderValue("video/mp4");
+        content.Headers.ContentLength = count;
+
+        using var request = new HttpRequestMessage(HttpMethod.Put, uploadUrl) { Content = content };
+        request.Headers.TryAddWithoutValidation("Content-Range", $"bytes {start}-{end}/{totalSize}");
+
+        using var response = await _http.SendAsync(request, cancellationToken);
+        if (response.IsSuccessStatusCode)
+            return;
+
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        throw new InvalidOperationException($"TikTok video upload failed ({(int)response.StatusCode}): {body}");
+    }
+
+    public async Task<JsonDocument> FetchPublishStatusAsync(
+        string accessToken,
+        string publishId,
+        CancellationToken cancellationToken)
+    {
+        var payload = JsonSerializer.Serialize(new Dictionary<string, string> { ["publish_id"] = publishId });
+        using var request = new HttpRequestMessage(HttpMethod.Post, "https://open.tiktokapis.com/v2/post/publish/status/fetch/")
+        {
+            Content = new StringContent(payload, System.Text.Encoding.UTF8, "application/json")
+        };
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+
+        using var response = await _http.SendAsync(request, cancellationToken);
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        var doc = JsonDocument.Parse(body);
+        var root = doc.RootElement;
+
+        if (TryReadApiError(root, out var errorMessage))
+        {
+            doc.Dispose();
+            throw new InvalidOperationException(errorMessage);
+        }
+
+        if (!response.IsSuccessStatusCode)
+        {
+            doc.Dispose();
+            throw new InvalidOperationException($"TikTok publish status failed ({(int)response.StatusCode}): {body}");
+        }
+
+        return doc;
+    }
+
     private static bool TryReadOAuthError(JsonElement root, out string message)
     {
         message = string.Empty;
