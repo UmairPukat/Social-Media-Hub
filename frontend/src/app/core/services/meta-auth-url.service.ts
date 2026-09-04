@@ -29,6 +29,36 @@ interface OAuthPopupPayload {
   message?: string;
 }
 
+interface OAuthPopupRect {
+  width: number;
+  height: number;
+  left: number;
+  top: number;
+}
+
+/** TikTok's authorize page expects a wider viewport than Meta/Google popups. */
+function oauthPopupRect(platform: MetaPlatform): OAuthPopupRect {
+  const preferred =
+    platform === 'tiktok'
+      ? { width: 960, height: 780 }
+      : platform === 'youtube'
+        ? { width: 520, height: 640 }
+        : { width: 600, height: 720 };
+
+  const screenLeft = window.screenLeft ?? window.screenX ?? 0;
+  const screenTop = window.screenTop ?? window.screenY ?? 0;
+  const availWidth = window.screen.availWidth || window.outerWidth || preferred.width;
+  const availHeight = window.screen.availHeight || window.outerHeight || preferred.height;
+
+  const width = Math.min(preferred.width, Math.max(480, availWidth - 32));
+  const height = Math.min(preferred.height, Math.max(520, availHeight - 48));
+
+  const left = Math.round(screenLeft + Math.max(0, (window.outerWidth - width) / 2));
+  const top = Math.round(screenTop + Math.max(0, (window.outerHeight - height) / 2));
+
+  return { width, height, left, top };
+}
+
 /**
  * OAuth popup helper. The backend owns the redirect and callback HTML, which
  * posts the result back to this window via postMessage.
@@ -81,12 +111,7 @@ export class MetaAuthUrlService {
         return { ok: false, message: beginResponse.message || 'Could not start OAuth login.' };
       }
 
-      const width = 600;
-      const height = 720;
-      const screenLeft = window.screenLeft ?? window.screenX ?? 0;
-      const screenTop = window.screenTop ?? window.screenY ?? 0;
-      const left = Math.round(screenLeft + Math.max(0, (window.outerWidth - width) / 2));
-      const top = Math.round(screenTop + Math.max(0, (window.outerHeight - height) / 2));
+      const { width, height, left, top } = oauthPopupRect(platform);
       const features = `width=${width},height=${height},left=${left},top=${top},scrollbars=yes,resizable=yes`;
 
       const popup = window.open(beginResponse.data.authUrl, `meta_oauth_${platform}`, features);
