@@ -399,16 +399,6 @@ public class IntegrationService : IIntegrationService
                     store.UpdateSocialAuth(auth);
                     await store.SaveChangesAsync(cancellationToken);
                 }
-
-                foreach (var draft in channels)
-                    await UpsertProfileAsync(store, account, draft, cancellationToken);
-
-                await RemoveStaleProfilesExceptAsync(
-                    store,
-                    account,
-                    channels.Select(c => c.ExternalProfileId),
-                    cancellationToken);
-                await store.SaveChangesAsync(cancellationToken);
             }
 
             return response;
@@ -489,10 +479,6 @@ public class IntegrationService : IIntegrationService
                     store.UpdateSocialAuth(auth);
                     await store.SaveChangesAsync(cancellationToken);
                 }
-
-                await UpsertProfileAsync(store, account, profile, cancellationToken);
-                await RemoveStaleProfilesForDraftAsync(store, account, profile, cancellationToken);
-                await store.SaveChangesAsync(cancellationToken);
             }
 
             return response;
@@ -867,6 +853,15 @@ public class IntegrationService : IIntegrationService
 
                 foreach (var draft in drafts)
                     await UpsertProfileAsync(store, account, draft, cancellationToken);
+
+                if (platformCode is "tiktok" or "youtube")
+                {
+                    await RemoveStaleProfilesExceptAsync(
+                        store,
+                        account,
+                        drafts.Select(d => d.ExternalProfileId),
+                        cancellationToken);
+                }
             }
 
             await QueueInitialSyncAsync(store, account, cancellationToken);
@@ -1416,8 +1411,8 @@ public class IntegrationService : IIntegrationService
         var profiles = await store.GetProfilesByAccountAsync(account.Id, cancellationToken);
         var existingId = profiles.FirstOrDefault(p => p.ExternalProfileId == draft.ExternalProfileId)?.Id;
 
-        var profile = existingId.HasValue
-            ? await store.GetProfileByIdAsync(existingId.Value, cancellationToken)
+        SocialProfileEntityBase? profile = existingId.HasValue
+            ? await store.GetProfileByIdForUpdateAsync(existingId.Value, cancellationToken)
             : null;
 
         var isNew = profile is null;
@@ -1489,8 +1484,8 @@ public class IntegrationService : IIntegrationService
             if (orphan is null)
                 continue;
 
-            await AccountProfileMaintenance.MoveConversationsToProfileAsync(store, orphan.Id, canonicalProfile.Id, cancellationToken);
-            store.RemoveSocialProfile(orphan);
+            await AccountProfileMaintenance.MoveConversationsToProfileAsync(store, orphanSnapshot.Id, canonicalProfile.Id, cancellationToken);
+            store.RemoveSocialProfileById(orphanSnapshot.Id);
         }
     }
 

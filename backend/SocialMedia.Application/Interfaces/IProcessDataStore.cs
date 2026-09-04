@@ -36,10 +36,12 @@ public interface IProcessDataStore
     // Social profiles
     Task<IReadOnlyList<SocialProfileEntityBase>> GetProfilesByAccountAsync(Guid socialAccountId, CancellationToken cancellationToken = default);
     Task<SocialProfileEntityBase?> GetProfileByIdAsync(Guid id, CancellationToken cancellationToken = default);
+    Task<SocialProfileEntityBase?> GetProfileByIdForUpdateAsync(Guid id, CancellationToken cancellationToken = default);
     Task<SocialProfileEntityBase?> GetProfileByExternalIdAsync(string externalProfileId, CancellationToken cancellationToken = default);
     Task AddSocialProfileAsync(SocialProfileEntityBase profile, CancellationToken cancellationToken = default);
     void UpdateSocialProfile(SocialProfileEntityBase profile);
     void RemoveSocialProfile(SocialProfileEntityBase profile);
+    void RemoveSocialProfileById(Guid profileId);
     Task<IReadOnlyList<SocialProfileEntityBase>> FindProfilesByExternalIdAsync(string externalProfileId, CancellationToken cancellationToken = default);
 
     // Posts
@@ -49,6 +51,7 @@ public interface IProcessDataStore
     Task AddPostAsync(PostEntityBase post, CancellationToken cancellationToken = default);
     void UpdatePost(PostEntityBase post);
     void RemovePost(PostEntityBase post);
+    void RemovePostById(Guid postId);
 
     // Comments
     Task<IReadOnlyList<InboxCommentRow>> GetCommentsForInboxAsync(Guid userId, Guid? platformId, IReadOnlyList<Guid>? platformIds, CancellationToken cancellationToken = default);

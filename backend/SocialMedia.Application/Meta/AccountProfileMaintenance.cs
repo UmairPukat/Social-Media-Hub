@@ -39,7 +39,7 @@ public static class AccountProfileMaintenance
             if (profile.Id != canonical.Id)
                 await MoveConversationsToProfileAsync(store, profile.Id, canonical.Id, cancellationToken);
 
-            store.RemoveSocialProfile(profile);
+            store.RemoveSocialProfileById(profile.Id);
         }
     }
 
@@ -51,7 +51,7 @@ public static class AccountProfileMaintenance
     {
         var posts = await store.GetPostsByUserProfilesAsync(account.UserId, account.PlatformId, cancellationToken);
         foreach (var post in posts.Where(p => p.SocialProfileId == profileId).ToList())
-            store.RemovePost(post);
+            store.RemovePostById(post.Id);
     }
 
     public static async Task DeleteAllPostsForAccountAsync(
@@ -61,7 +61,7 @@ public static class AccountProfileMaintenance
     {
         var posts = await store.GetPostsByUserProfilesAsync(account.UserId, account.PlatformId, cancellationToken);
         foreach (var post in posts.ToList())
-            store.RemovePost(post);
+            store.RemovePostById(post.Id);
     }
 
     public static async Task MoveConversationsToProfileAsync(

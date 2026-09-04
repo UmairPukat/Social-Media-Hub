@@ -293,6 +293,21 @@ public sealed class ProcessDataStore : IProcessDataStore
                 _context.IntegrationSocialProfiles.AsNoTracking().FirstOrDefaultAsync(p => p.Id == id, cancellationToken))
         };
 
+    public Task<SocialProfileEntityBase?> GetProfileByIdForUpdateAsync(Guid id, CancellationToken cancellationToken = default)
+    {
+        SocialProfileEntityBase? profile = _menuType switch
+        {
+            MenuTypes.AppConnection => _context.AppConnectionSocialProfiles.Local.FirstOrDefault(p => p.Id == id)
+                ?? _context.AppConnectionSocialProfiles.Find(id),
+            MenuTypes.DeveloperApp => _context.DeveloperAppSocialProfiles.Local.FirstOrDefault(p => p.Id == id)
+                ?? _context.DeveloperAppSocialProfiles.Find(id),
+            _ => _context.IntegrationSocialProfiles.Local.FirstOrDefault(p => p.Id == id)
+                ?? _context.IntegrationSocialProfiles.Find(id)
+        };
+
+        return Task.FromResult(profile);
+    }
+
     public Task<SocialProfileEntityBase?> GetProfileByExternalIdAsync(
         string externalProfileId,
         CancellationToken cancellationToken = default)
@@ -336,17 +351,20 @@ public sealed class ProcessDataStore : IProcessDataStore
     }
 
     public void RemoveSocialProfile(SocialProfileEntityBase profile)
+        => RemoveSocialProfileById(profile.Id);
+
+    public void RemoveSocialProfileById(Guid profileId)
     {
         switch (_menuType)
         {
             case MenuTypes.AppConnection:
-                RemoveTracked(_context.AppConnectionSocialProfiles, (AppConnectionSocialProfile)profile);
+                RemoveTrackedById(_context.AppConnectionSocialProfiles, profileId);
                 break;
             case MenuTypes.DeveloperApp:
-                RemoveTracked(_context.DeveloperAppSocialProfiles, (DeveloperAppSocialProfile)profile);
+                RemoveTrackedById(_context.DeveloperAppSocialProfiles, profileId);
                 break;
             default:
-                RemoveTracked(_context.IntegrationSocialProfiles, (IntegrationSocialProfile)profile);
+                RemoveTrackedById(_context.IntegrationSocialProfiles, profileId);
                 break;
         }
     }
@@ -471,17 +489,20 @@ public sealed class ProcessDataStore : IProcessDataStore
     }
 
     public void RemovePost(PostEntityBase post)
+        => RemovePostById(post.Id);
+
+    public void RemovePostById(Guid postId)
     {
         switch (_menuType)
         {
             case MenuTypes.AppConnection:
-                RemoveTracked(_context.AppConnectionPosts, (AppConnectionPost)post);
+                RemoveTrackedById(_context.AppConnectionPosts, postId);
                 break;
             case MenuTypes.DeveloperApp:
-                RemoveTracked(_context.DeveloperAppPosts, (DeveloperAppPost)post);
+                RemoveTrackedById(_context.DeveloperAppPosts, postId);
                 break;
             default:
-                RemoveTracked(_context.IntegrationPosts, (IntegrationPost)post);
+                RemoveTrackedById(_context.IntegrationPosts, postId);
                 break;
         }
     }
@@ -1117,11 +1138,20 @@ public sealed class ProcessDataStore : IProcessDataStore
         entry.State = EntityState.Modified;
     }
 
+    private void RemoveTrackedById<TEntity>(DbSet<TEntity> set, Guid id)
+        where TEntity : BaseEntity
+    {
+        var tracked = set.Local.FirstOrDefault(e => e.Id == id) ?? set.Find(id);
+        if (tracked is not null)
+            set.Remove(tracked);
+    }
+
     private static void RemoveTracked<TEntity>(DbSet<TEntity> set, TEntity entity)
         where TEntity : BaseEntity
     {
-        var tracked = set.Local.FirstOrDefault(e => e.Id == entity.Id);
-        set.Remove(tracked ?? entity);
+        var tracked = set.Local.FirstOrDefault(e => e.Id == entity.Id) ?? set.Find(entity.Id);
+        if (tracked is not null)
+            set.Remove(tracked);
     }
 }
 
