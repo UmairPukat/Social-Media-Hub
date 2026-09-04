@@ -133,33 +133,64 @@ public class PostService : IPostService
                     }
                     case "tiktok":
                     {
-                        if (media?.Stream is null)
-                            throw new InvalidOperationException("TikTok posts require a video file.");
+                        var tikTokOptions = BuildTikTokPublishOptions(request);
 
-                        var (videoStream, videoSize) = await EnsureSeekableStreamAsync(media.Stream, cancellationToken);
-                        await using var ownedStream = videoStream != media.Stream ? videoStream : null;
+                        if (media?.Stream is not null && IsVideoMedia(media))
+                        {
+                            var (videoStream, videoSize) = await EnsureSeekableStreamAsync(media.Stream, cancellationToken);
+                            await using var ownedStream = videoStream != media.Stream ? videoStream : null;
 
-                        if (!IsVideoMedia(media))
-                            throw new InvalidOperationException("TikTok direct publish requires a video file (MP4, MOV, or WebM). Images are not supported.");
+                            videoStream.Position = 0;
+                            var result = await _tikTokService.PublishVideoAsync(
+                                accessToken,
+                                videoStream,
+                                videoSize,
+                                media.ContentType,
+                                tikTokOptions,
+                                cancellationToken);
+                            ApplyPublishSuccess(post, result.VideoId ?? result.PublishId);
+                            post.Type = ContentPostType.Video;
+                            break;
+                        }
 
-                        videoStream.Position = 0;
-                        var result = await _tikTokService.PublishVideoAsync(
-                            accessToken,
-                            videoStream,
-                            videoSize,
-                            media.ContentType,
-                            new TikTokPublishOptions
-                            {
-                                Caption = request.Content ?? string.Empty,
-                                PrivacyLevel = NormalizeTikTokPrivacy(request.Privacy),
-                                DisableComment = request.AllowComment == false,
-                                DisableDuet = request.AllowDuet == false,
-                                DisableStitch = request.AllowStitch == false
-                            },
-                            cancellationToken);
-                        ApplyPublishSuccess(post, result.VideoId ?? result.PublishId);
-                        post.Type = ContentPostType.Video;
-                        break;
+                        if (media?.Stream is not null && IsImageMedia(media))
+                        {
+                            media.Stream.Position = 0;
+                            var stagedUrl = await _tikTokService.StagePublishMediaAsync(
+                                media.Stream,
+                                media.FileName,
+                                media.ContentType,
+                                cancellationToken);
+                            var result = await _tikTokService.PublishPhotoAsync(
+                                accessToken,
+                                [stagedUrl],
+                                tikTokOptions,
+                                photoCoverIndex: 0,
+                                cancellationToken);
+                            ApplyPublishSuccess(post, result.VideoId ?? result.PublishId);
+                            post.Type = ContentPostType.Image;
+                            break;
+                        }
+
+                        if (!string.IsNullOrWhiteSpace(request.MediaUrl) &&
+                            Uri.TryCreate(request.MediaUrl, UriKind.Absolute, out _))
+                        {
+                            var photoUrls = request.MediaUrl
+                                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                                .ToList();
+                            var result = await _tikTokService.PublishPhotoAsync(
+                                accessToken,
+                                photoUrls,
+                                tikTokOptions,
+                                photoCoverIndex: 0,
+                                cancellationToken);
+                            ApplyPublishSuccess(post, result.VideoId ?? result.PublishId);
+                            post.Type = ContentPostType.Image;
+                            break;
+                        }
+
+                        throw new InvalidOperationException(
+                            "TikTok posts require a video file, an image file, or a public HTTPS image URL.");
                     }
                     default:
                         post.Status = ContentPostStatus.Failed;
@@ -314,6 +345,35 @@ public class PostService : IPostService
 
         var fileName = media.FileName?.Trim().ToLowerInvariant() ?? string.Empty;
         return fileName.EndsWith(".mp4") || fileName.EndsWith(".mov") || fileName.EndsWith(".webm");
+    }
+
+    private static bool IsImageMedia(PublishMediaInput media)
+    {
+        var contentType = media.ContentType?.Trim().ToLowerInvariant() ?? string.Empty;
+        if (contentType.StartsWith("image/", StringComparison.Ordinal))
+            return true;
+
+        var fileName = media.FileName?.Trim().ToLowerInvariant() ?? string.Empty;
+        return fileName.EndsWith(".jpg") || fileName.EndsWith(".jpeg") || fileName.EndsWith(".png")
+               || fileName.EndsWith(".webp") || fileName.EndsWith(".gif");
+    }
+
+    private static TikTokPublishOptions BuildTikTokPublishOptions(CreatePostRequest request)
+    {
+        var content = request.Content ?? string.Empty;
+        var title = string.IsNullOrWhiteSpace(request.Title) ? content : request.Title.Trim();
+        return new TikTokPublishOptions
+        {
+            Title = title,
+            Description = content,
+            PrivacyLevel = NormalizeTikTokPrivacy(request.Privacy),
+            DisableComment = request.AllowComment == false,
+            DisableDuet = request.AllowDuet == false,
+            DisableStitch = request.AllowStitch == false,
+            BrandContentToggle = request.BrandedContent == true,
+            BrandOrganicToggle = request.YourBrand == true,
+            AutoAddMusic = request.AutoAddMusic != false
+        };
     }
 
     private static async Task<(Stream Stream, long Size)> EnsureSeekableStreamAsync(

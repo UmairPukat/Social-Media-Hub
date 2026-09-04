@@ -58,7 +58,10 @@ public abstract class ProcessPostsControllerBase : ControllerBase
             Privacy = string.IsNullOrWhiteSpace(form.Privacy) ? null : form.Privacy.Trim(),
             AllowComment = form.AllowComment,
             AllowDuet = form.AllowDuet,
-            AllowStitch = form.AllowStitch
+            AllowStitch = form.AllowStitch,
+            YourBrand = form.YourBrand,
+            BrandedContent = form.BrandedContent,
+            AutoAddMusic = form.AutoAddMusic
         };
 
         var response = await _postService.CreateAndPublishAsync(User.GetUserId(), request, media);

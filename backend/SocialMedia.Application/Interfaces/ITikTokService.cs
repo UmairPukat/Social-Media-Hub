@@ -39,6 +39,19 @@ public interface ITikTokService
         string contentType,
         TikTokPublishOptions options,
         CancellationToken cancellationToken = default);
+
+    Task<TikTokPublishResult> PublishPhotoAsync(
+        string accessToken,
+        IReadOnlyList<string> photoUrls,
+        TikTokPublishOptions options,
+        int photoCoverIndex = 0,
+        CancellationToken cancellationToken = default);
+
+    Task<string> StagePublishMediaAsync(
+        Stream stream,
+        string fileName,
+        string contentType,
+        CancellationToken cancellationToken = default);
 }
 
 public sealed class TikTokVideoSnapshot

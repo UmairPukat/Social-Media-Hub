@@ -75,8 +75,8 @@ export const CREATE_PLATFORMS: CreatePlatformMeta[] = [
     supportsPublish: true,
     supportsFiles: true,
     requiresMedia: true,
-    accept: 'video/*',
-    hint: 'Video clip + caption (MP4, MOV, or WebM)'
+    accept: 'video/*,image/*',
+    hint: 'Video or photo post + caption'
   },
   {
     code: 'youtube',

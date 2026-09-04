@@ -15,6 +15,9 @@ public class CreatePostRequest
     public bool? AllowComment { get; set; }
     public bool? AllowDuet { get; set; }
     public bool? AllowStitch { get; set; }
+    public bool? YourBrand { get; set; }
+    public bool? BrandedContent { get; set; }
+    public bool? AutoAddMusic { get; set; }
 }
 
 public sealed class PublishMediaInput

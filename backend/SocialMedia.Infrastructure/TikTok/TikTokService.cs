@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using SocialMedia.Application.DTOs.Meta;
 using SocialMedia.Application.DTOs.TikTok;
@@ -9,11 +10,16 @@ namespace SocialMedia.Infrastructure.TikTok;
 public class TikTokService : ITikTokService
 {
     private readonly TikTokApiClient _api;
+    private readonly IConfiguration _configuration;
     private readonly ILogger<TikTokService> _logger;
 
-    public TikTokService(TikTokApiClient api, ILogger<TikTokService> logger)
+    public TikTokService(
+        TikTokApiClient api,
+        IConfiguration configuration,
+        ILogger<TikTokService> logger)
     {
         _api = api;
+        _configuration = configuration;
         _logger = logger;
     }
 
@@ -180,23 +186,25 @@ public class TikTokService : ITikTokService
             throw new InvalidOperationException("TikTok requires a non-empty video file.");
 
         if (!IsVideoContentType(contentType))
-            throw new InvalidOperationException("TikTok direct publish requires a video file (MP4, MOV, or WebM). Images are not supported.");
+            throw new InvalidOperationException("TikTok direct publish requires a video file (MP4, MOV, or WebM).");
+
+        var prepared = await PreparePublishOptionsAsync(accessToken, options, isPhoto: false, cancellationToken);
 
         const long maxChunkSize = 10 * 1024 * 1024;
         var chunkSize = videoSize <= maxChunkSize ? videoSize : maxChunkSize;
         var totalChunkCount = (int)Math.Ceiling((double)videoSize / chunkSize);
 
-        var caption = string.IsNullOrWhiteSpace(options.Caption) ? string.Empty : options.Caption.Trim();
-        if (caption.Length > 2200)
-            caption = caption[..2200];
+        var title = Truncate(prepared.Title, 2200);
 
         var (publishId, uploadUrl) = await _api.InitDirectVideoPublishAsync(
             accessToken,
-            caption,
-            options.PrivacyLevel,
-            options.DisableComment,
-            options.DisableDuet,
-            options.DisableStitch,
+            title,
+            prepared.PrivacyLevel,
+            prepared.DisableComment,
+            prepared.DisableDuet,
+            prepared.DisableStitch,
+            prepared.BrandContentToggle,
+            prepared.BrandOrganicToggle,
             videoSize,
             chunkSize,
             totalChunkCount,
@@ -210,6 +218,173 @@ public class TikTokService : ITikTokService
             PublishId = publishId,
             VideoId = videoId
         };
+    }
+
+    public async Task<TikTokPublishResult> PublishPhotoAsync(
+        string accessToken,
+        IReadOnlyList<string> photoUrls,
+        TikTokPublishOptions options,
+        int photoCoverIndex = 0,
+        CancellationToken cancellationToken = default)
+    {
+        var urls = photoUrls
+            .Where(url => !string.IsNullOrWhiteSpace(url))
+            .Select(url => url.Trim())
+            .Where(url => Uri.TryCreate(url, UriKind.Absolute, out var uri)
+                          && (uri.Scheme == Uri.UriSchemeHttps || uri.Scheme == Uri.UriSchemeHttp))
+            .ToList();
+
+        if (urls.Count == 0)
+        {
+            throw new InvalidOperationException(
+                "TikTok photo posts require publicly accessible HTTPS image URLs. " +
+                "Upload an image file or provide a verified public URL.");
+        }
+
+        if (photoCoverIndex < 0 || photoCoverIndex >= urls.Count)
+            photoCoverIndex = 0;
+
+        var prepared = await PreparePublishOptionsAsync(accessToken, options, isPhoto: true, cancellationToken);
+        var title = Truncate(prepared.Title, 90);
+        var description = Truncate(string.IsNullOrWhiteSpace(prepared.Description) ? prepared.Title : prepared.Description, 4000);
+
+        var publishId = await _api.InitDirectPhotoPublishAsync(
+            accessToken,
+            title,
+            description,
+            prepared.PrivacyLevel,
+            prepared.DisableComment,
+            prepared.BrandContentToggle,
+            prepared.BrandOrganicToggle,
+            prepared.AutoAddMusic,
+            urls,
+            photoCoverIndex,
+            cancellationToken);
+
+        var postId = await PollPublishStatusAsync(accessToken, publishId, cancellationToken);
+        return new TikTokPublishResult
+        {
+            PublishId = publishId,
+            VideoId = postId
+        };
+    }
+
+    public async Task<string> StagePublishMediaAsync(
+        Stream stream,
+        string fileName,
+        string contentType,
+        CancellationToken cancellationToken = default)
+    {
+        var cacheDir = Path.Combine(Directory.GetCurrentDirectory(), "publish-cache");
+        Directory.CreateDirectory(cacheDir);
+
+        var extension = Path.GetExtension(fileName);
+        if (string.IsNullOrWhiteSpace(extension))
+        {
+            extension = contentType.Trim().ToLowerInvariant() switch
+            {
+                "image/jpeg" or "image/jpg" => ".jpg",
+                "image/png" => ".png",
+                "image/webp" => ".webp",
+                "image/gif" => ".gif",
+                _ => ".jpg"
+            };
+        }
+
+        var storedName = $"{Guid.NewGuid():N}{extension}";
+        var fullPath = Path.Combine(cacheDir, storedName);
+        await using (var output = File.Create(fullPath))
+        {
+            await stream.CopyToAsync(output, cancellationToken);
+        }
+
+        var baseUrl = ResolvePublishMediaBaseUrl();
+        return $"{baseUrl}/publish-cache/{storedName}";
+    }
+
+    private async Task<TikTokPublishOptions> PreparePublishOptionsAsync(
+        string accessToken,
+        TikTokPublishOptions options,
+        bool isPhoto,
+        CancellationToken cancellationToken)
+    {
+        using var doc = await _api.QueryCreatorInfoAsync(accessToken, cancellationToken);
+        var creator = ParseCreatorInfo(doc.RootElement);
+        var prepared = new TikTokPublishOptions
+        {
+            Title = options.Title,
+            Description = options.Description,
+            PrivacyLevel = ResolvePrivacyLevel(options.PrivacyLevel, creator.PrivacyLevelOptions),
+            DisableComment = options.DisableComment || creator.CommentDisabled,
+            DisableDuet = isPhoto || options.DisableDuet || creator.DuetDisabled,
+            DisableStitch = isPhoto || options.DisableStitch || creator.StitchDisabled,
+            BrandContentToggle = options.BrandContentToggle,
+            BrandOrganicToggle = options.BrandOrganicToggle,
+            AutoAddMusic = options.AutoAddMusic
+        };
+
+        return prepared;
+    }
+
+    private static TikTokCreatorInfo ParseCreatorInfo(JsonElement root)
+    {
+        var info = new TikTokCreatorInfo();
+        if (!root.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Object)
+            return info;
+
+        if (data.TryGetProperty("privacy_level_options", out var privacyEl) &&
+            privacyEl.ValueKind == JsonValueKind.Array)
+        {
+            info.PrivacyLevelOptions = privacyEl.EnumerateArray()
+                .Select(item => item.GetString())
+                .Where(value => !string.IsNullOrWhiteSpace(value))
+                .Select(value => value!)
+                .ToList();
+        }
+
+        info.CommentDisabled = ReadBool(data, "comment_disabled");
+        info.DuetDisabled = ReadBool(data, "duet_disabled");
+        info.StitchDisabled = ReadBool(data, "stitch_disabled");
+        return info;
+    }
+
+    private static string ResolvePrivacyLevel(string requested, IReadOnlyList<string> allowedOptions)
+    {
+        if (allowedOptions.Count == 0)
+            return string.IsNullOrWhiteSpace(requested) ? "SELF_ONLY" : requested;
+
+        if (!string.IsNullOrWhiteSpace(requested) &&
+            allowedOptions.Contains(requested, StringComparer.Ordinal))
+        {
+            return requested;
+        }
+
+        return allowedOptions[0];
+    }
+
+    private static bool ReadBool(JsonElement element, string propertyName)
+        => element.TryGetProperty(propertyName, out var valueEl) &&
+           valueEl.ValueKind == JsonValueKind.True;
+
+    private string ResolvePublishMediaBaseUrl()
+    {
+        var configured = _configuration["TikTokSettings:PublishMediaBaseUrl"]
+                           ?? _configuration["BackendBaseUrl"];
+        var baseUrl = configured?.Trim().TrimEnd('/');
+        if (string.IsNullOrWhiteSpace(baseUrl))
+        {
+            throw new InvalidOperationException(
+                "BackendBaseUrl (or TikTokSettings:PublishMediaBaseUrl) must be configured so TikTok can pull photo URLs. " +
+                "Verify the URL prefix in your TikTok developer app under Content Posting → URL ownership.");
+        }
+
+        return baseUrl;
+    }
+
+    private static string Truncate(string value, int maxLength)
+    {
+        var trimmed = value.Trim();
+        return trimmed.Length <= maxLength ? trimmed : trimmed[..maxLength];
     }
 
     private async Task UploadVideoInChunksAsync(

@@ -52,6 +52,7 @@ export class CreatePostComponent implements OnInit, OnDestroy {
   readonly ttDiscloseContent = signal(false);
   readonly ttYourBrand = signal(false);
   readonly ttBrandedContent = signal(false);
+  readonly ttAutoAddMusic = signal(true);
   readonly ttAccountOpen = signal(false);
   readonly selectedFileSize = signal<number | null>(null);
   readonly videoDimensions = signal<{ width: number; height: number } | null>(null);
@@ -116,7 +117,10 @@ export class CreatePostComponent implements OnInit, OnDestroy {
         const hasVideo =
           this.selectedFileKind() === 'video' ||
           (!!media && /\.(mp4|mov|webm)(\?|$)/i.test(media));
-        return hasVideo && !!content;
+        const hasImage =
+          this.selectedFileKind() === 'image' ||
+          (!!media && /\.(jpg|jpeg|png|webp|gif)(\?|$)/i.test(media));
+        return (hasVideo || hasImage) && !!content;
       }
       case 'youtube':
         return !!title && hasMedia;
@@ -217,6 +221,7 @@ export class CreatePostComponent implements OnInit, OnDestroy {
     if (!next) {
       this.ttYourBrand.set(false);
       this.ttBrandedContent.set(false);
+    this.ttAutoAddMusic.set(true);
     }
   }
 
@@ -228,6 +233,7 @@ export class CreatePostComponent implements OnInit, OnDestroy {
     this.ttDiscloseContent.set(false);
     this.ttYourBrand.set(false);
     this.ttBrandedContent.set(false);
+    this.ttAutoAddMusic.set(true);
     this.ttAccountOpen.set(false);
   }
 
@@ -398,6 +404,7 @@ export class CreatePostComponent implements OnInit, OnDestroy {
       formData.append('discloseContent', String(this.ttDiscloseContent()));
       formData.append('yourBrand', String(this.ttYourBrand()));
       formData.append('brandedContent', String(this.ttBrandedContent()));
+      formData.append('autoAddMusic', String(this.ttAutoAddMusic()));
     }
     if (file) {
       formData.append('mediaFile', file, file.name);
