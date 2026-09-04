@@ -1,5 +1,5 @@
-<section class="page platform-sync">
-  <header class="sync-hero">
+<section class="page integrations platform-sync">
+  <header class="int-hero">
     <div>
       <p class="eyebrow">Manual sync</p>
       <h1>Platform sync</h1>
@@ -13,7 +13,7 @@
         <mat-icon>refresh</mat-icon>
         Refresh
       </button>
-      <a mat-flat-button [routerLink]="connectLink()">
+      <a mat-flat-button color="primary" [routerLink]="connectLink()">
         <mat-icon>hub</mat-icon>
         Connect accounts
       </a>
@@ -25,7 +25,7 @@
   }
 
   @if (lastResult()) {
-    <div class="result-card">
+    <div class="sync-result">
       <mat-icon>cloud_done</mat-icon>
       <div>
         <strong>Last sync · {{ lastResultPlatform() }}</strong>
@@ -45,109 +45,117 @@
   }
 
   @if (loading()) {
-    <div class="platform-grid">
-      @for (item of [1, 2]; track item) {
-        <article class="platform-card skeleton">
-          <div class="skeleton-line medium"></div>
-          <div class="skeleton-line"></div>
-          <div class="skeleton-line short"></div>
-        </article>
-      }
+    <div class="catalog">
+      <section class="category">
+        <div class="category-head">
+          <div>
+            <h2>Webhook-free platforms</h2>
+            <p>Loading platforms…</p>
+          </div>
+        </div>
+        <div class="stats">
+          @for (item of [1, 2]; track item) {
+            <article class="stat sync-stat skeleton">
+              <div class="skeleton-line medium"></div>
+              <div class="skeleton-line"></div>
+              <div class="skeleton-line short"></div>
+            </article>
+          }
+        </div>
+      </section>
     </div>
   } @else if (manualPlatforms().length) {
-    <section class="category">
-      <div class="category-head">
-        <div>
-          <h2>Webhook-free platforms</h2>
-          <p>Fetch content on demand when live updates are unavailable.</p>
-        </div>
-      </div>
-
-      <div class="platform-grid">
-        @for (entry of manualPlatforms(); track entry.card.platformId) {
-          <article
-            class="platform-card"
-            [attr.data-tone]="entry.tone"
-            [class.is-connected]="entry.card.isConnected">
-            <div class="card-banner">
-              <span class="platform-badge">
-                <mat-icon>{{ entry.icon }}</mat-icon>
-              </span>
-              <div class="banner-copy">
-                <strong>{{ entry.card.displayName }}</strong>
-                <span class="status-pill" [class.on]="entry.card.isConnected">
-                  @if (entry.card.isConnected) {
-                    Connected
-                  } @else if (entry.card.hasAppConfig) {
-                    Configured
-                  } @else {
-                    Not connected
-                  }
-                </span>
-              </div>
-              @if (entry.card.isConnected) {
-                <button
-                  type="button"
-                  class="icon-btn"
-                  matTooltip="View account information"
-                  [attr.aria-label]="'View ' + entry.card.displayName + ' account information'"
-                  (click)="openDetails(entry.card)">
-                  <mat-icon>visibility</mat-icon>
-                </button>
-              }
-            </div>
-
-            <p class="card-hint">
-              @if (entry.card.accountName) {
-                Linked as {{ entry.card.accountName }}
-              } @else {
-                {{ entry.hint }}
-              }
+    <div class="catalog">
+      <section class="category">
+        <div class="category-head">
+          <div>
+            <h2>Webhook-free platforms</h2>
+            <p>
+              {{ manualPlatforms().length }} platform{{ manualPlatforms().length === 1 ? '' : 's' }} ·
+              {{ connectedCount() }} connected
             </p>
+          </div>
+        </div>
 
-            <div class="sync-actions">
-              @for (action of entry.actions; track action) {
-                @if (action === 'statistics') {
-                  <button
-                    mat-flat-button
-                    color="primary"
-                    type="button"
-                    [disabled]="!entry.card.isConnected || isRunning(entry.card.code, action)"
-                    (click)="runSync(entry.card, action)">
-                    <mat-icon>{{ actionIcon(action) }}</mat-icon>
-                    {{ actionLabel(action, entry.card.code) }}
-                  </button>
+        <div class="stats">
+          @for (entry of manualPlatforms(); track entry.card.platformId) {
+            <article
+              class="stat sync-stat"
+              [attr.data-tone]="tone(entry.card.code)"
+              [class.live]="entry.card.isConnected">
+              <div class="stat-top">
+                <span class="stat-ico">
+                  <mat-icon>{{ entry.icon }}</mat-icon>
+                </span>
+                <div class="stat-top-end">
+                  <span class="stat-label">
+                    @if (entry.card.isConnected) {
+                      Connected
+                    } @else if (entry.card.hasAppConfig) {
+                      Configured
+                    } @else {
+                      Not connected
+                    }
+                  </span>
+                  @if (entry.card.isConnected) {
+                    <div class="card-actions">
+                      <button
+                        type="button"
+                        class="icon-btn"
+                        matTooltip="View account information"
+                        [attr.aria-label]="'View ' + entry.card.displayName + ' account information'"
+                        (click)="openDetails(entry.card)">
+                        <mat-icon>visibility</mat-icon>
+                      </button>
+                    </div>
+                  }
+                </div>
+              </div>
+
+              <strong class="stat-value">{{ entry.card.displayName }}</strong>
+
+              <p class="stat-hint">
+                @if (entry.card.accountName) {
+                  Linked as {{ entry.card.accountName }}
                 } @else {
+                  {{ entry.hint }}
+                }
+              </p>
+
+              <div class="sync-actions">
+                @for (action of entry.actions; track action) {
                   <button
                     mat-stroked-button
                     type="button"
+                    class="sync-btn"
+                    [class.is-running]="isRunning(entry.card.code, action)"
                     [disabled]="!entry.card.isConnected || isRunning(entry.card.code, action)"
                     (click)="runSync(entry.card, action)">
                     <mat-icon>{{ actionIcon(action) }}</mat-icon>
                     {{ actionLabel(action, entry.card.code) }}
                   </button>
                 }
-              }
-            </div>
+              </div>
 
-            <footer class="card-foot">
-              @if (!entry.card.isConnected) {
-                <a class="connect-link" [routerLink]="connectLink()">
-                  <mat-icon>link</mat-icon>
-                  Connect {{ entry.card.displayName }}
-                </a>
-              } @else {
-                <button mat-stroked-button type="button" class="danger" (click)="disconnect(entry.card)">
-                  Disconnect
-                </button>
-              }
-            </footer>
-          </article>
-        }
-      </div>
-    </section>
+              <div class="stat-action">
+                @if (entry.card.isConnected) {
+                  <button mat-stroked-button type="button" class="danger" (click)="disconnect(entry.card)">
+                    Disconnect
+                  </button>
+                } @else {
+                  <a mat-flat-button color="primary" class="connect-btn" [routerLink]="connectLink()">
+                    <mat-icon>link</mat-icon>
+                    Connect {{ entry.card.displayName }}
+                  </a>
+                }
+              </div>
+            </article>
+          }
+        </div>
+      </section>
+    </div>
   } @else {
-    <div class="empty">
+    <div class="sync-empty">
       <mat-icon>sync_disabled</mat-icon>
       <h3>No manual sync platforms available</h3>
       <p>YouTube and TikTok will appear here once they are enabled in your platform catalog.</p>

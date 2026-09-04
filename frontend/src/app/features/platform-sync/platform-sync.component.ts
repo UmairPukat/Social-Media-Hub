@@ -80,6 +80,10 @@ export class PlatformSyncComponent implements OnInit {
       })
   );
 
+  readonly connectedCount = computed(
+    () => this.manualPlatforms().filter((entry) => entry.card.isConnected).length
+  );
+
   ngOnInit(): void {
     this.reload();
   }
@@ -213,6 +217,14 @@ export class PlatformSyncComponent implements OnInit {
 
   isTikTokDetails(): boolean {
     return this.detailsPlatform() === 'tiktok';
+  }
+
+  tone(code: string): string {
+    const map: Record<string, string> = {
+      youtube: 'youtube',
+      tiktok: 'tiktok'
+    };
+    return map[code.toLowerCase()] || 'slate';
   }
 
   maskedToken(token: string): string {
