@@ -24,6 +24,7 @@ public sealed class TikTokApiClient
         string clientSecret,
         string redirectUri,
         string code,
+        string codeVerifier,
         CancellationToken cancellationToken)
     {
         using var content = new FormUrlEncodedContent(new Dictionary<string, string>
@@ -32,7 +33,8 @@ public sealed class TikTokApiClient
             ["client_secret"] = clientSecret,
             ["code"] = code,
             ["grant_type"] = "authorization_code",
-            ["redirect_uri"] = redirectUri
+            ["redirect_uri"] = redirectUri,
+            ["code_verifier"] = codeVerifier
         });
 
         using var request = new HttpRequestMessage(HttpMethod.Post, "https://open.tiktokapis.com/v2/oauth/token/")

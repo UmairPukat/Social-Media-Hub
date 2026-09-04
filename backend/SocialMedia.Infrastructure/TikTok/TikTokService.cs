@@ -21,10 +21,11 @@ public class TikTokService : ITikTokService
         string clientSecret,
         string redirectUri,
         string code,
+        string codeVerifier,
         CancellationToken cancellationToken = default)
     {
         using var doc = await _api.ExchangeAuthorizationCodeAsync(
-            clientKey, clientSecret, redirectUri, code, cancellationToken);
+            clientKey, clientSecret, redirectUri, code, codeVerifier, cancellationToken);
         var root = doc.RootElement;
 
         // Token endpoint returns fields at the root — not under "data".

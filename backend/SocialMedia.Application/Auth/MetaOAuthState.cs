@@ -16,7 +16,13 @@ public static class MetaOAuthState
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase
     };
 
-    public static string Create(Guid userId, string platformCode, string menuType, string signingKey, TimeSpan? lifetime = null)
+    public static string Create(
+        Guid userId,
+        string platformCode,
+        string menuType,
+        string signingKey,
+        TimeSpan? lifetime = null,
+        string? codeVerifier = null)
     {
         var payload = new Payload
         {
@@ -24,7 +30,8 @@ public static class MetaOAuthState
             Platform = platformCode.Trim().ToLowerInvariant(),
             MenuType = MenuTypes.Normalize(menuType),
             Nonce = Guid.NewGuid().ToString("N"),
-            ExpiresAtUnix = DateTimeOffset.UtcNow.Add(lifetime ?? TimeSpan.FromMinutes(15)).ToUnixTimeSeconds()
+            ExpiresAtUnix = DateTimeOffset.UtcNow.Add(lifetime ?? TimeSpan.FromMinutes(15)).ToUnixTimeSeconds(),
+            CodeVerifier = string.IsNullOrWhiteSpace(codeVerifier) ? null : codeVerifier.Trim()
         };
 
         var body = Base64UrlEncode(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(payload, JsonOptions)));
@@ -38,11 +45,13 @@ public static class MetaOAuthState
         out Guid userId,
         out string platformCode,
         out string menuType,
-        out string error)
+        out string error,
+        out string? codeVerifier)
     {
         userId = Guid.Empty;
         platformCode = string.Empty;
         menuType = MenuTypes.Integration;
+        codeVerifier = null;
         error = "Invalid OAuth state.";
 
         if (string.IsNullOrWhiteSpace(state))
@@ -85,6 +94,7 @@ public static class MetaOAuthState
             userId = payload.UserId;
             platformCode = payload.Platform;
             menuType = MenuTypes.Normalize(payload.MenuType);
+            codeVerifier = payload.CodeVerifier;
             error = string.Empty;
             return true;
         }
@@ -121,5 +131,6 @@ public static class MetaOAuthState
         public string MenuType { get; set; } = MenuTypes.Integration;
         public string Nonce { get; set; } = string.Empty;
         public long ExpiresAtUnix { get; set; }
+        public string? CodeVerifier { get; set; }
     }
 }

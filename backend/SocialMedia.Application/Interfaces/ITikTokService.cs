@@ -9,6 +9,7 @@ public interface ITikTokService
         string clientSecret,
         string redirectUri,
         string code,
+        string codeVerifier,
         CancellationToken cancellationToken = default);
 
     Task<SocialProfileDraft?> ResolveProfileAsync(

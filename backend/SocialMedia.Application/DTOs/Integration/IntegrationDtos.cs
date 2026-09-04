@@ -37,11 +37,11 @@ public class OAuthCallbackRequest
     /// <summary>Authorization code returned by Meta in the redirect query string.</summary>
     public string Code { get; set; } = string.Empty;
 
-    /// <summary>
-    /// Must match the redirect_uri used when opening the Meta popup.
-    /// If empty, the configured RedirectUri from appsettings is used.
-    /// </summary>
+    /// <summary>Must match the redirect_uri used when opening the Meta popup.</summary>
     public string? RedirectUri { get; set; }
+
+    /// <summary>TikTok PKCE code_verifier captured during oauth/begin (carried in signed state).</summary>
+    public string? CodeVerifier { get; set; }
 }
 
 /// <summary>Starts Meta Login — returns the dialog URL that uses the backend Callback redirect.</summary>

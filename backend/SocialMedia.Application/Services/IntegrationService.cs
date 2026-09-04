@@ -173,7 +173,18 @@ public class IntegrationService : IIntegrationService
         if (string.IsNullOrWhiteSpace(redirectUri))
             return ApiResponse<BeginOAuthResponse>.Fail("Redirect URI is not configured. Save a callback URL in platform configuration or set backendBaseUrl.");
 
-        var state = MetaOAuthState.Create(userId, platformCode, menuType, _jwt.SecretKey);
+        string? tikTokCodeChallenge = null;
+        string state;
+        if (platformCode == "tiktok")
+        {
+            var codeVerifier = TikTokPkce.GenerateCodeVerifier();
+            tikTokCodeChallenge = TikTokPkce.CodeChallengeFromVerifier(codeVerifier);
+            state = MetaOAuthState.Create(userId, platformCode, menuType, _jwt.SecretKey, codeVerifier: codeVerifier);
+        }
+        else
+        {
+            state = MetaOAuthState.Create(userId, platformCode, menuType, _jwt.SecretKey);
+        }
 
         var authUrl = platformCode switch
         {
@@ -184,7 +195,7 @@ public class IntegrationService : IIntegrationService
                                  + $"&scope={Uri.EscapeDataString(scopes)}"
                                  + "&response_type=code",
             "youtube" => BuildYouTubeAuthorizationUrl(authBase, appId, redirectUri, state, scopes),
-            "tiktok" => BuildTikTokAuthorizationUrl(authBase, appId, redirectUri, state, scopes),
+            "tiktok" => BuildTikTokAuthorizationUrl(authBase, appId, redirectUri, state, scopes, tikTokCodeChallenge),
             _ => authBase
                  + $"?client_id={Uri.EscapeDataString(appId)}"
                  + $"&redirect_uri={Uri.EscapeDataString(redirectUri)}"
@@ -216,7 +227,7 @@ public class IntegrationService : IIntegrationService
             return OAuthRedirectResult(false, error!, origins, relayOrigin);
         }
 
-        if (!MetaOAuthState.TryValidate(state, _jwt.SecretKey, out var userId, out var platformCode, out var menuType, out var stateError))
+        if (!MetaOAuthState.TryValidate(state, _jwt.SecretKey, out var userId, out var platformCode, out var menuType, out var stateError, out var codeVerifier))
         {
             return OAuthRedirectResult(false, stateError, origins, relayOrigin);
         }
@@ -230,7 +241,8 @@ public class IntegrationService : IIntegrationService
         {
             PlatformCode = platformCode,
             MenuType = menuType,
-            Code = code!
+            Code = code!,
+            CodeVerifier = codeVerifier
         }, cancellationToken);
 
         return OAuthRedirectResult(
@@ -421,11 +433,18 @@ public class IntegrationService : IIntegrationService
                 return ApiResponse<SocialAccountDto>.Fail("Redirect URI is not configured.");
 
             var authCode = Uri.UnescapeDataString(request.Code.Trim());
+            if (string.IsNullOrWhiteSpace(request.CodeVerifier))
+            {
+                return ApiResponse<SocialAccountDto>.Fail(
+                    "Missing PKCE verifier. Start TikTok connect again from the same browser.");
+            }
+
             var token = await _tikTokService.ExchangeAuthorizationCodeAsync(
                 config.ClientId.Trim(),
                 config.ClientSecret.Trim(),
                 redirectUri,
                 authCode,
+                request.CodeVerifier.Trim(),
                 cancellationToken);
 
             var profile = await _tikTokService.ResolveProfileAsync(token, cancellationToken);
@@ -595,15 +614,25 @@ public class IntegrationService : IIntegrationService
         string clientKey,
         string redirectUri,
         string state,
-        string scopes)
+        string scopes,
+        string? codeChallenge)
     {
         var scopeParam = PlatformCatalog.NormalizeTikTokScopes(scopes);
-        return authBase
-               + $"?client_key={Uri.EscapeDataString(clientKey)}"
-               + $"&redirect_uri={Uri.EscapeDataString(redirectUri)}"
-               + $"&state={Uri.EscapeDataString(state)}"
-               + $"&scope={Uri.EscapeDataString(scopeParam)}"
-               + "&response_type=code";
+        var url = authBase
+                  + $"?client_key={Uri.EscapeDataString(clientKey)}"
+                  + $"&redirect_uri={Uri.EscapeDataString(redirectUri)}"
+                  + $"&state={Uri.EscapeDataString(state)}"
+                  + $"&scope={Uri.EscapeDataString(scopeParam)}"
+                  + "&response_type=code"
+                  + "&disable_auto_auth=1";
+
+        if (!string.IsNullOrWhiteSpace(codeChallenge))
+        {
+            url += $"&code_challenge={Uri.EscapeDataString(codeChallenge)}"
+                   + "&code_challenge_method=S256";
+        }
+
+        return url;
     }
 
     private static string FirstNonEmpty(params string?[] values)
