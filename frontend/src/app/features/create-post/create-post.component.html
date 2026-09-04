@@ -477,6 +477,7 @@
                     <label class="tt-label" for="tt-privacy">Who can view this video</label>
                     <div class="tt-select-wrap">
                       <select id="tt-privacy" [value]="ttPrivacy()" (change)="ttPrivacy.set($any($event.target).value)">
+                        <option value="" disabled selected>Select privacy</option>
                         <option value="Public">Public</option>
                         <option value="Friends">Friends</option>
                         <option value="Followers">Followers</option>

@@ -444,11 +444,40 @@ public sealed class TikTokApiClient
 
         var description = errorEl.TryGetProperty("message", out var msgEl) ? msgEl.GetString() : null;
         var logId = errorEl.TryGetProperty("log_id", out var logEl) ? logEl.GetString() : null;
-        message = string.IsNullOrWhiteSpace(description)
-            ? $"TikTok API error: {code ?? "unknown"}"
-            : $"TikTok API error: {description}";
+        message = string.IsNullOrWhiteSpace(code)
+            ? $"TikTok API error: {description ?? "unknown"}"
+            : string.IsNullOrWhiteSpace(description)
+                ? $"TikTok API error ({code})"
+                : $"TikTok API error ({code}): {description}";
+        message = EnrichTikTokErrorMessage(code, message);
         if (!string.IsNullOrWhiteSpace(logId))
             message += $" (log_id: {logId})";
         return true;
+    }
+
+    private static string EnrichTikTokErrorMessage(string? code, string message)
+    {
+        if (string.Equals(code, "unaudited_client_can_only_post_to_private_accounts", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Public TikTok posts require your developer app to pass TikTok's Direct Post audit. " +
+                   "Until approved, TikTok only allows private (SELF_ONLY) posts from unaudited apps — this cannot be bypassed in code. " +
+                   "Apply for audit at https://developers.tiktok.com/ (Content Posting API). " +
+                   message;
+        }
+
+        if (string.Equals(code, "privacy_level_option_mismatch", StringComparison.OrdinalIgnoreCase))
+        {
+            return "The selected TikTok privacy level is not allowed for this account. " +
+                   "Query creator info and pick a supported privacy option. " +
+                   message;
+        }
+
+        if (string.Equals(code, "url_ownership_unverified", StringComparison.OrdinalIgnoreCase))
+        {
+            return "TikTok cannot pull your media URL. Verify your backend domain under Content Posting in the TikTok developer portal. " +
+                   message;
+        }
+
+        return message;
     }
 }

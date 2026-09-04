@@ -406,13 +406,19 @@ public class PostService : IPostService
         };
 
     private static string NormalizeTikTokPrivacy(string? privacy)
-        => (privacy ?? "public").Trim().ToLowerInvariant() switch
+    {
+        if (string.IsNullOrWhiteSpace(privacy))
+            return "PUBLIC_TO_EVERYONE";
+
+        return privacy.Trim().ToLowerInvariant() switch
         {
             "friends" => "MUTUAL_FOLLOW_FRIENDS",
             "followers" => "FOLLOWER_OF_CREATOR",
-            "only_you" => "SELF_ONLY",
-            _ => "PUBLIC_TO_EVERYONE"
+            "only_you" or "only you" => "SELF_ONLY",
+            "public" => "PUBLIC_TO_EVERYONE",
+            _ => privacy.Trim().ToUpperInvariant()
         };
+    }
 
     private static string? ReadJsonString(string? json, string propertyName)
     {

@@ -345,21 +345,31 @@ public class TikTokService : ITikTokService
         info.CommentDisabled = ReadBool(data, "comment_disabled");
         info.DuetDisabled = ReadBool(data, "duet_disabled");
         info.StitchDisabled = ReadBool(data, "stitch_disabled");
+        if (data.TryGetProperty("max_video_post_duration_sec", out var durationEl) &&
+            durationEl.TryGetInt32(out var durationSec))
+        {
+            info.MaxVideoPostDurationSec = durationSec;
+        }
+
         return info;
     }
 
     private static string ResolvePrivacyLevel(string requested, IReadOnlyList<string> allowedOptions)
     {
-        if (allowedOptions.Count == 0)
-            return string.IsNullOrWhiteSpace(requested) ? "SELF_ONLY" : requested;
-
         if (!string.IsNullOrWhiteSpace(requested) &&
+            allowedOptions.Count > 0 &&
             allowedOptions.Contains(requested, StringComparer.Ordinal))
         {
             return requested;
         }
 
-        return allowedOptions[0];
+        if (!string.IsNullOrWhiteSpace(requested))
+            return requested;
+
+        if (allowedOptions.Count > 0)
+            return allowedOptions[0];
+
+        return "PUBLIC_TO_EVERYONE";
     }
 
     private static bool ReadBool(JsonElement element, string propertyName)

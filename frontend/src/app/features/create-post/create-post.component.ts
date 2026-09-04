@@ -45,10 +45,10 @@ export class CreatePostComponent implements OnInit, OnDestroy {
   readonly waAudience = signal<'Status' | 'Broadcast'>('Status');
   readonly ytVisibility = signal<'Public' | 'Unlisted' | 'Private'>('Public');
   readonly liAudience = signal<'Anyone' | 'Connections'>('Anyone');
-  readonly ttPrivacy = signal<'Public' | 'Friends' | 'Followers' | 'Only you'>('Public');
-  readonly ttAllowComment = signal(true);
-  readonly ttAllowDuet = signal(true);
-  readonly ttAllowStitch = signal(true);
+  readonly ttPrivacy = signal<'' | 'Public' | 'Friends' | 'Followers' | 'Only you'>('');
+  readonly ttAllowComment = signal(false);
+  readonly ttAllowDuet = signal(false);
+  readonly ttAllowStitch = signal(false);
   readonly ttDiscloseContent = signal(false);
   readonly ttYourBrand = signal(false);
   readonly ttBrandedContent = signal(false);
@@ -120,7 +120,7 @@ export class CreatePostComponent implements OnInit, OnDestroy {
         const hasImage =
           this.selectedFileKind() === 'image' ||
           (!!media && /\.(jpg|jpeg|png|webp|gif)(\?|$)/i.test(media));
-        return (hasVideo || hasImage) && !!content;
+        return (hasVideo || hasImage) && !!content && !!this.ttPrivacy();
       }
       case 'youtube':
         return !!title && hasMedia;
@@ -226,10 +226,10 @@ export class CreatePostComponent implements OnInit, OnDestroy {
   }
 
   private resetTikTokSettings(): void {
-    this.ttPrivacy.set('Public');
-    this.ttAllowComment.set(true);
-    this.ttAllowDuet.set(true);
-    this.ttAllowStitch.set(true);
+    this.ttPrivacy.set('');
+    this.ttAllowComment.set(false);
+    this.ttAllowDuet.set(false);
+    this.ttAllowStitch.set(false);
     this.ttDiscloseContent.set(false);
     this.ttYourBrand.set(false);
     this.ttBrandedContent.set(false);
@@ -397,7 +397,8 @@ export class CreatePostComponent implements OnInit, OnDestroy {
       formData.append('visibility', this.ytVisibility().toLowerCase());
     }
     if (this.platform() === 'tiktok') {
-      formData.append('privacy', this.ttPrivacy().toLowerCase().replace(' ', '_'));
+      const privacy = this.ttPrivacy().toLowerCase().replace(' ', '_');
+      if (privacy) formData.append('privacy', privacy);
       formData.append('allowComment', String(this.ttAllowComment()));
       formData.append('allowDuet', String(this.ttAllowDuet()));
       formData.append('allowStitch', String(this.ttAllowStitch()));
