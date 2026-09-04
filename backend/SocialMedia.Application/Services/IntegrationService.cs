@@ -1541,6 +1541,13 @@ public class IntegrationService : IIntegrationService
                 cancellationToken);
         }
 
+        if (account is null && platformCode is "tiktok" or "youtube")
+        {
+            var existing = await store.GetSocialAccountByUserAndPlatformAsync(userId, platform.Id, cancellationToken);
+            if (existing is not null && existing.Status == SocialAccountStatus.Disconnected)
+                return (existing, false);
+        }
+
         if (account is null && platformCode is not ("tiktok" or "youtube"))
         {
             account = await store.GetSocialAccountByUserAndPlatformAsync(userId, platform.Id, cancellationToken);

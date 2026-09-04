@@ -109,6 +109,7 @@ public static class DbSeeder
 
         await ModuleSchemaEnsurer.EnsureAsync(db, logger);
         await ModuleTableMigration.MigrateAndDropLegacyAsync(db, logger);
+        await EnsureMultiSocialAccountPerPlatformIndexAsync(db, logger);
         await SeedModulePlatformsAsync(db);
         await db.SaveChangesAsync();
     }
@@ -249,6 +250,34 @@ public static class DbSeeder
         await db.Database.ExecuteSqlRawAsync("""
             CREATE INDEX IF NOT EXISTS "IX_WebhookLogs_ReceivedAt" ON "WebhookLogs" ("ReceivedAt");
             """);
+    }
+
+    /// <summary>
+    /// Allows multiple connected social accounts per platform (e.g. two TikTok accounts) by
+    /// keying uniqueness on external account id instead of user + platform alone.
+    /// </summary>
+    private static async Task EnsureMultiSocialAccountPerPlatformIndexAsync(AppDbContext db, ILogger? logger = null)
+    {
+        foreach (var prefix in new[] { "Integration", "AppConnection", "DeveloperApp" })
+        {
+            var table = $"{prefix}SocialAccounts";
+            if (!await ModuleTableMigration.TableExistsAsync(db, table))
+                continue;
+
+            var legacyIndex = $"IX_{table}_UserId_PlatformId";
+            var nextIndex = $"IX_{table}_UserId_PlatformId_ExternalAccountId";
+
+            logger?.LogInformation("Ensuring multi-account index on {Table}...", table);
+
+            await db.Database.ExecuteSqlRawAsync($"""
+                DROP INDEX IF EXISTS "{legacyIndex}";
+                """);
+
+            await db.Database.ExecuteSqlRawAsync($"""
+                CREATE UNIQUE INDEX IF NOT EXISTS "{nextIndex}"
+                ON "{table}" ("UserId", "PlatformId", "ExternalAccountId");
+                """);
+        }
     }
 
     /// <summary>

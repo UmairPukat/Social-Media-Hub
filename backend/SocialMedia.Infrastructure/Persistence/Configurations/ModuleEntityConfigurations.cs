@@ -30,7 +30,7 @@ public class IntegrationSocialAccountConfiguration : IEntityTypeConfiguration<In
         builder.Property(x => x.DisplayName).IsRequired().HasMaxLength(200);
         builder.Property(x => x.Username).HasMaxLength(200);
         builder.Property(x => x.Email).HasMaxLength(256);
-        builder.HasIndex(x => new { x.UserId, x.PlatformId }).IsUnique();
+        builder.HasIndex(x => new { x.UserId, x.PlatformId, x.ExternalAccountId }).IsUnique();
         builder.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
         builder.HasOne(x => x.Platform).WithMany(x => x.SocialAccounts).HasForeignKey(x => x.PlatformId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne(x => x.Auth).WithOne(x => x.SocialAccount).HasForeignKey<IntegrationSocialAuth>(x => x.SocialAccountId).OnDelete(DeleteBehavior.Cascade);
@@ -198,7 +198,7 @@ public class AppConnectionSocialAccountConfiguration : IEntityTypeConfiguration<
         builder.Property(x => x.DisplayName).IsRequired().HasMaxLength(200);
         builder.Property(x => x.Username).HasMaxLength(200);
         builder.Property(x => x.Email).HasMaxLength(256);
-        builder.HasIndex(x => new { x.UserId, x.PlatformId }).IsUnique();
+        builder.HasIndex(x => new { x.UserId, x.PlatformId, x.ExternalAccountId }).IsUnique();
         builder.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
         builder.HasOne(x => x.Platform).WithMany(x => x.SocialAccounts).HasForeignKey(x => x.PlatformId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne(x => x.Auth).WithOne(x => x.SocialAccount).HasForeignKey<AppConnectionSocialAuth>(x => x.SocialAccountId).OnDelete(DeleteBehavior.Cascade);
@@ -366,7 +366,7 @@ public class DeveloperAppSocialAccountConfiguration : IEntityTypeConfiguration<D
         builder.Property(x => x.DisplayName).IsRequired().HasMaxLength(200);
         builder.Property(x => x.Username).HasMaxLength(200);
         builder.Property(x => x.Email).HasMaxLength(256);
-        builder.HasIndex(x => new { x.UserId, x.PlatformId }).IsUnique();
+        builder.HasIndex(x => new { x.UserId, x.PlatformId, x.ExternalAccountId }).IsUnique();
         builder.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
         builder.HasOne(x => x.Platform).WithMany(x => x.SocialAccounts).HasForeignKey(x => x.PlatformId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne(x => x.Auth).WithOne(x => x.SocialAccount).HasForeignKey<DeveloperAppSocialAuth>(x => x.SocialAccountId).OnDelete(DeleteBehavior.Cascade);
