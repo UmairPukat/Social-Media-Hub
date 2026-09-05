@@ -137,8 +137,11 @@ public class PostService : IPostService
 
                         if (media?.Stream is not null && IsVideoMedia(media))
                         {
-                            var (videoStream, videoSize) = await EnsureSeekableStreamAsync(media.Stream, cancellationToken);
-                            await using var ownedStream = videoStream != media.Stream ? videoStream : null;
+                            var (videoStream, videoSize) = await EnsureSeekableStreamAsync(
+                                media.Stream,
+                                media.Length,
+                                cancellationToken);
+                            await using var ownedStream = videoStream;
 
                             videoStream.Position = 0;
                             var result = await _tikTokService.PublishVideoAsync(
@@ -378,14 +381,21 @@ public class PostService : IPostService
 
     private static async Task<(Stream Stream, long Size)> EnsureSeekableStreamAsync(
         Stream input,
+        long? declaredLength,
         CancellationToken cancellationToken)
     {
-        if (input.CanSeek)
-            return (input, input.Length);
-
         var memory = new MemoryStream();
         await input.CopyToAsync(memory, cancellationToken);
         memory.Position = 0;
+
+        if (memory.Length == 0)
+            throw new InvalidOperationException("Uploaded media file is empty.");
+
+        if (declaredLength is > 0 && declaredLength != memory.Length)
+        {
+            // Multipart stream length can be wrong on some hosts; always trust bytes read.
+        }
+
         return (memory, memory.Length);
     }
 

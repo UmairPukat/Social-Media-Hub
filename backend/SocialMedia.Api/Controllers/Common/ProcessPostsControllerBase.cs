@@ -44,7 +44,8 @@ public abstract class ProcessPostsControllerBase : ControllerBase
             {
                 Stream = form.MediaFile.OpenReadStream(),
                 FileName = form.MediaFile.FileName,
-                ContentType = form.MediaFile.ContentType ?? "application/octet-stream"
+                ContentType = form.MediaFile.ContentType ?? "application/octet-stream",
+                Length = form.MediaFile.Length
             };
         }
 

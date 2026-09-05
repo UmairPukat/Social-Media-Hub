@@ -189,12 +189,14 @@ public class TikTokService : ITikTokService
             throw new InvalidOperationException("TikTok direct publish requires a video file (MP4, MOV, or WebM).");
 
         var prepared = await PreparePublishOptionsAsync(accessToken, options, isPhoto: false, cancellationToken);
-
-        const long maxChunkSize = 10 * 1024 * 1024;
-        var chunkSize = videoSize <= maxChunkSize ? videoSize : maxChunkSize;
-        var totalChunkCount = (int)Math.Ceiling((double)videoSize / chunkSize);
-
+        var (chunkSize, totalChunkCount) = BuildVideoUploadPlan(videoSize);
         var title = Truncate(prepared.Title, 2200);
+
+        _logger.LogInformation(
+            "TikTok video upload plan: size={VideoSize}, chunkSize={ChunkSize}, chunks={ChunkCount}",
+            videoSize,
+            chunkSize,
+            totalChunkCount);
 
         var (publishId, uploadUrl) = await InitVideoPublishAsync(
             accessToken,
@@ -205,7 +207,14 @@ public class TikTokService : ITikTokService
             totalChunkCount,
             cancellationToken);
 
-        await UploadVideoInChunksAsync(videoStream, uploadUrl, videoSize, (int)chunkSize, cancellationToken);
+        await UploadVideoInChunksAsync(
+            videoStream,
+            uploadUrl,
+            videoSize,
+            chunkSize,
+            totalChunkCount,
+            contentType,
+            cancellationToken);
 
         var videoId = await PollPublishStatusAsync(accessToken, publishId, cancellationToken);
         return new TikTokPublishResult
@@ -586,19 +595,43 @@ public class TikTokService : ITikTokService
         return trimmed.Length <= maxLength ? trimmed : trimmed[..maxLength];
     }
 
+    private static (long ChunkSize, int TotalChunkCount) BuildVideoUploadPlan(long videoSize)
+    {
+        const long minWholeUploadSize = 5 * 1024 * 1024;
+        const long preferredChunkSize = 10 * 1024 * 1024;
+
+        if (videoSize <= minWholeUploadSize)
+            return (videoSize, 1);
+
+        var chunkSize = preferredChunkSize;
+        var totalChunkCount = (int)(videoSize / chunkSize);
+        if (totalChunkCount < 1)
+            totalChunkCount = 1;
+
+        return (chunkSize, totalChunkCount);
+    }
+
     private async Task UploadVideoInChunksAsync(
         Stream videoStream,
         string uploadUrl,
         long videoSize,
-        int chunkSize,
+        long chunkSize,
+        int totalChunkCount,
+        string contentType,
         CancellationToken cancellationToken)
     {
         var buffer = new byte[chunkSize];
         long uploaded = 0;
+        var chunkNumber = 0;
 
         while (uploaded < videoSize)
         {
-            var toRead = (int)Math.Min(chunkSize, videoSize - uploaded);
+            chunkNumber++;
+            var isLastChunk = chunkNumber >= totalChunkCount;
+            var toRead = isLastChunk
+                ? (int)(videoSize - uploaded)
+                : (int)Math.Min(chunkSize, videoSize - uploaded);
+
             var read = 0;
             while (read < toRead)
             {
@@ -608,7 +641,14 @@ public class TikTokService : ITikTokService
                 read += n;
             }
 
-            await _api.UploadVideoChunkAsync(uploadUrl, buffer, (int)uploaded, read, videoSize, cancellationToken);
+            await _api.UploadVideoChunkAsync(
+                uploadUrl,
+                buffer,
+                (int)uploaded,
+                read,
+                videoSize,
+                contentType,
+                cancellationToken);
             uploaded += read;
         }
     }

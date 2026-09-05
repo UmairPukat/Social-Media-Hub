@@ -345,23 +345,45 @@ public sealed class TikTokApiClient
         int offset,
         int count,
         long totalSize,
+        string contentType,
         CancellationToken cancellationToken)
     {
         var start = offset;
         var end = offset + count - 1;
-        using var content = new ByteArrayContent(buffer, 0, count);
-        content.Headers.ContentType = new MediaTypeHeaderValue("video/mp4");
+        var chunk = new byte[count];
+        Buffer.BlockCopy(buffer, 0, chunk, 0, count);
+
+        using var content = new ByteArrayContent(chunk);
+        content.Headers.ContentType = new MediaTypeHeaderValue(ResolveVideoContentType(contentType));
         content.Headers.ContentLength = count;
 
         using var request = new HttpRequestMessage(HttpMethod.Put, uploadUrl) { Content = content };
         request.Headers.TryAddWithoutValidation("Content-Range", $"bytes {start}-{end}/{totalSize}");
 
         using var response = await _http.SendAsync(request, cancellationToken);
-        if (response.IsSuccessStatusCode)
+        if (response.StatusCode is System.Net.HttpStatusCode.Created
+            or System.Net.HttpStatusCode.OK
+            or System.Net.HttpStatusCode.PartialContent)
+        {
             return;
+        }
 
         var body = await response.Content.ReadAsStringAsync(cancellationToken);
-        throw new InvalidOperationException($"TikTok video upload failed ({(int)response.StatusCode}): {body}");
+        var message = string.IsNullOrWhiteSpace(body)
+            ? $"TikTok video upload failed ({(int)response.StatusCode}) for bytes {start}-{end}/{totalSize}."
+            : $"TikTok video upload failed ({(int)response.StatusCode}): {body}";
+        throw new InvalidOperationException(message);
+    }
+
+    private static string ResolveVideoContentType(string contentType)
+    {
+        var normalized = contentType.Trim().ToLowerInvariant();
+        return normalized switch
+        {
+            "video/quicktime" => "video/quicktime",
+            "video/webm" => "video/webm",
+            _ => "video/mp4"
+        };
     }
 
     public async Task<JsonDocument> FetchPublishStatusAsync(
