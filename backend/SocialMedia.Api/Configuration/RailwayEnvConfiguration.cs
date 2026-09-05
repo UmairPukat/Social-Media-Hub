@@ -33,6 +33,12 @@ public static class RailwayEnvConfiguration
         Map(mapped, "FRONTEND_BASE_URL", "FrontendBaseUrl");
         Map(mapped, "tiktokSandboxMode", "TikTokSettings:SandboxMode");
         Map(mapped, "TikTokSettings__SandboxMode", "TikTokSettings:SandboxMode");
+        Map(mapped, "tiktokPublishMediaBaseUrl", "TikTokSettings:PublishMediaBaseUrl");
+        Map(mapped, "TikTokSettings__PublishMediaBaseUrl", "TikTokSettings:PublishMediaBaseUrl");
+        Map(mapped, "tiktokUrlVerificationFileName", "TikTokSettings:UrlVerificationFileName");
+        Map(mapped, "TikTokSettings__UrlVerificationFileName", "TikTokSettings:UrlVerificationFileName");
+        Map(mapped, "tiktokUrlVerificationFileContent", "TikTokSettings:UrlVerificationFileContent");
+        Map(mapped, "TikTokSettings__UrlVerificationFileContent", "TikTokSettings:UrlVerificationFileContent");
 
         // Frontend-style META_* App Ids also accepted on the API service.
         Map(mapped, "META_FACEBOOK_APP_ID", "MetaSettings:Facebook:AppId");

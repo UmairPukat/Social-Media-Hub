@@ -266,22 +266,12 @@ public class TikTokService : ITikTokService
         string contentType,
         CancellationToken cancellationToken = default)
     {
+        EnsureSupportedTikTokPhotoFormat(fileName, contentType);
+
         var cacheDir = Path.Combine(Directory.GetCurrentDirectory(), "publish-cache");
         Directory.CreateDirectory(cacheDir);
 
-        var extension = Path.GetExtension(fileName);
-        if (string.IsNullOrWhiteSpace(extension))
-        {
-            extension = contentType.Trim().ToLowerInvariant() switch
-            {
-                "image/jpeg" or "image/jpg" => ".jpg",
-                "image/png" => ".png",
-                "image/webp" => ".webp",
-                "image/gif" => ".gif",
-                _ => ".jpg"
-            };
-        }
-
+        var extension = ResolveTikTokPhotoExtension(fileName, contentType);
         var storedName = $"{Guid.NewGuid():N}{extension}";
         var fullPath = Path.Combine(cacheDir, storedName);
         await using (var output = File.Create(fullPath))
@@ -290,7 +280,43 @@ public class TikTokService : ITikTokService
         }
 
         var baseUrl = ResolvePublishMediaBaseUrl();
-        return $"{baseUrl}/publish-cache/{storedName}";
+        var publicUrl = $"{baseUrl}/publish-cache/{storedName}";
+        _logger.LogInformation("Staged TikTok photo at {Url}", publicUrl);
+        return publicUrl;
+    }
+
+    internal static void EnsureSupportedTikTokPhotoFormat(string fileName, string contentType)
+    {
+        if (IsSupportedTikTokPhotoFormat(fileName, contentType))
+            return;
+
+        throw new InvalidOperationException(
+            "TikTok photo posts only support JPEG and WebP images. Convert PNG/GIF to JPG or WebP, or upload an MP4 video instead.");
+    }
+
+    private static bool IsSupportedTikTokPhotoFormat(string fileName, string contentType)
+    {
+        var extension = Path.GetExtension(fileName).Trim().ToLowerInvariant();
+        var normalizedType = contentType.Trim().ToLowerInvariant();
+
+        if (extension is ".jpg" or ".jpeg" or ".webp")
+            return true;
+
+        return normalizedType is "image/jpeg" or "image/jpg" or "image/webp";
+    }
+
+    private static string ResolveTikTokPhotoExtension(string fileName, string contentType)
+    {
+        var extension = Path.GetExtension(fileName).Trim().ToLowerInvariant();
+        if (extension is ".jpg" or ".jpeg" or ".webp")
+            return extension == ".jpeg" ? ".jpg" : extension;
+
+        return contentType.Trim().ToLowerInvariant() switch
+        {
+            "image/webp" => ".webp",
+            "image/jpeg" or "image/jpg" => ".jpg",
+            _ => ".jpg"
+        };
     }
 
     private async Task<TikTokPublishOptions> PreparePublishOptionsAsync(
@@ -467,7 +493,20 @@ public class TikTokService : ITikTokService
                 photoCoverIndex,
                 cancellationToken);
         }
+        catch (InvalidOperationException ex) when (IsUrlOwnershipUnverifiedError(ex))
+        {
+            throw new InvalidOperationException(
+                $"TikTok cannot pull photo URLs until you verify this URL prefix in TikTok Developer Portal → your app → URL properties: " +
+                $"{DescribeVerifiedUrlPrefix()} " +
+                "Choose URL prefix verification, download TikTok's signature file, set Railway env vars " +
+                "TikTokSettings__UrlVerificationFileName and TikTokSettings__UrlVerificationFileContent to that file's name and body, redeploy, then click Verify. " +
+                ex.Message,
+                ex);
+        }
     }
+
+    private static bool IsUrlOwnershipUnverifiedError(InvalidOperationException ex)
+        => ex.Message.Contains("url_ownership_unverified", StringComparison.OrdinalIgnoreCase);
 
     private static bool IsUnauditedDirectPostError(InvalidOperationException ex)
         => ex.Message.Contains("unaudited_client_can_only_post_to_private_accounts", StringComparison.OrdinalIgnoreCase);
@@ -525,17 +564,21 @@ public class TikTokService : ITikTokService
     private string ResolvePublishMediaBaseUrl()
     {
         var configured = _configuration["TikTokSettings:PublishMediaBaseUrl"]
-                           ?? _configuration["BackendBaseUrl"];
+                           ?? _configuration["BackendBaseUrl"]
+                           ?? _configuration["backendBaseUrl"];
         var baseUrl = configured?.Trim().TrimEnd('/');
         if (string.IsNullOrWhiteSpace(baseUrl))
         {
             throw new InvalidOperationException(
                 "BackendBaseUrl (or TikTokSettings:PublishMediaBaseUrl) must be configured so TikTok can pull photo URLs. " +
-                "Verify the URL prefix in your TikTok developer app under Content Posting → URL ownership.");
+                "Verify the URL prefix in your TikTok developer app under Content Posting → URL properties.");
         }
 
         return baseUrl;
     }
+
+    private string DescribeVerifiedUrlPrefix()
+        => $"{ResolvePublishMediaBaseUrl()}/publish-cache/";
 
     private static string Truncate(string value, int maxLength)
     {

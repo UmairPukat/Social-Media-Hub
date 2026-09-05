@@ -75,8 +75,8 @@ export const CREATE_PLATFORMS: CreatePlatformMeta[] = [
     supportsPublish: true,
     supportsFiles: true,
     requiresMedia: true,
-    accept: 'video/*,image/*',
-    hint: 'Video or photo post + caption'
+    accept: 'video/mp4,video/quicktime,video/webm,image/jpeg,image/jpg,image/webp',
+    hint: 'MP4 video or JPG/WebP photo (PNG not supported by TikTok)'
   },
   {
     code: 'youtube',

@@ -475,7 +475,9 @@ public sealed class TikTokApiClient
 
         if (string.Equals(code, "url_ownership_unverified", StringComparison.OrdinalIgnoreCase))
         {
-            return "TikTok cannot pull your media URL. Verify your backend domain under Content Posting in the TikTok developer portal. " +
+            return "TikTok cannot pull your media URL until the domain/URL prefix is verified in TikTok Developer Portal " +
+                   "(Content Posting → URL properties). Photo posts require PULL_FROM_URL from a verified HTTPS prefix such as " +
+                   "https://your-backend-domain/publish-cache/. " +
                    message;
         }
 

@@ -125,11 +125,15 @@ app.UseSwaggerUI();
 app.UseCors("Frontend");
 
 var publishCachePath = Path.Combine(app.Environment.ContentRootPath, "publish-cache");
-Directory.CreateDirectory(publishCachePath);
+TikTokPublishCacheBootstrap.EnsurePublishCache(app.Configuration, publishCachePath, app.Logger);
+TikTokPublishCacheBootstrap.LogVerificationStatus(app.Configuration, app.Logger);
+app.Use(TikTokPublishCacheBootstrap.CreateVerificationMiddleware(app.Configuration));
 app.UseStaticFiles(new StaticFileOptions
 {
     FileProvider = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(publishCachePath),
-    RequestPath = "/publish-cache"
+    RequestPath = "/publish-cache",
+    ServeUnknownFileTypes = true,
+    DefaultContentType = "application/octet-stream"
 });
 
 app.UseAuthentication();
