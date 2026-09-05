@@ -459,9 +459,10 @@ public sealed class TikTokApiClient
     {
         if (string.Equals(code, "unaudited_client_can_only_post_to_private_accounts", StringComparison.OrdinalIgnoreCase))
         {
-            return "TikTok sandbox/unaudited apps only allow private posts (SELF_ONLY). " +
-                   "Ensure TikTokSettings:SandboxMode is true, use privacy only_you, add the account as a Sandbox Target User, " +
-                   "and set the TikTok profile to Private in the mobile app. " +
+            return "TikTok rejected this publish because the connected account is not eligible for unaudited Direct Post " +
+                   "(privacy only_you / SELF_ONLY is already correct). The TikTok profile must be Private in the mobile app " +
+                   "at the moment you post, and that same account must be listed as a Sandbox Target User with video.publish scope. " +
+                   "Disconnect TikTok in SocialHub and reconnect after fixing those settings. " +
                    message;
         }
 

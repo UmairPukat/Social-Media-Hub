@@ -315,7 +315,39 @@ public class TikTokService : ITikTokService
         };
 
         ApplySandboxPrivacyRules(prepared, options.PrivacyLevel);
+        ValidateSandboxCreatorEligibility(creator);
+        _logger.LogInformation(
+            "TikTok publish init with privacy {Privacy} (sandbox={Sandbox}, creatorOptions=[{Options}]).",
+            prepared.PrivacyLevel,
+            IsSandboxMode(),
+            creator.PrivacyLevelOptions.Count == 0
+                ? "unknown"
+                : string.Join(", ", creator.PrivacyLevelOptions));
         return prepared;
+    }
+
+    private void ValidateSandboxCreatorEligibility(TikTokCreatorInfo creator)
+    {
+        if (!IsSandboxMode())
+            return;
+
+        if (creator.PrivacyLevelOptions.Count == 0)
+        {
+            _logger.LogWarning(
+                "TikTok creator info did not return privacy_level_options; sandbox publish may fail if the account is public.");
+            return;
+        }
+
+        if (creator.PrivacyLevelOptions.Contains("SELF_ONLY", StringComparer.Ordinal))
+            return;
+
+        var offered = string.Join(", ", creator.PrivacyLevelOptions);
+        throw new InvalidOperationException(
+            "TikTok sandbox publish is blocked for this account because creator info does not include SELF_ONLY " +
+            $"(offered: {offered}). Unaudited apps require the TikTok profile itself to be Private at post time. " +
+            "In the TikTok mobile app: Profile → Menu → Settings and privacy → Privacy → turn on Private account. " +
+            "In TikTok Developer Portal: add this exact account as a Sandbox Target User, enable Direct Post + video.publish, " +
+            "then disconnect and reconnect TikTok in SocialHub.");
     }
 
     private void ApplySandboxPrivacyRules(TikTokPublishOptions prepared, string requestedPrivacy)
