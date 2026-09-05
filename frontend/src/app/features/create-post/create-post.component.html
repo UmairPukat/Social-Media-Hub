@@ -417,6 +417,16 @@
                     <h3>Upload to TikTok</h3>
                   </header>
 
+                  @if (tikTokSandboxMode) {
+                    <div class="tt-info tt-sandbox">
+                      <mat-icon>science</mat-icon>
+                      <p>
+                        <strong>Sandbox mode.</strong> Posts publish as <strong>Only you</strong> (private) until TikTok approves Direct Post audit.
+                        Add this account as a Target User in the TikTok developer sandbox and set the TikTok account to <strong>Private</strong> in the mobile app if publish fails.
+                      </p>
+                    </div>
+                  }
+
                   <div class="tt-field">
                     <div class="tt-account-picker">
                       <button
@@ -477,10 +487,12 @@
                     <label class="tt-label" for="tt-privacy">Who can view this video</label>
                     <div class="tt-select-wrap">
                       <select id="tt-privacy" [value]="ttPrivacy()" (change)="ttPrivacy.set($any($event.target).value)">
-                        <option value="" disabled selected>Select privacy</option>
-                        <option value="Public">Public</option>
-                        <option value="Friends">Friends</option>
-                        <option value="Followers">Followers</option>
+                        @if (!tikTokSandboxMode) {
+                          <option value="" disabled selected>Select privacy</option>
+                          <option value="Public">Public</option>
+                          <option value="Friends">Friends</option>
+                          <option value="Followers">Followers</option>
+                        }
                         <option value="Only you">Only you</option>
                       </select>
                       <mat-icon>expand_more</mat-icon>

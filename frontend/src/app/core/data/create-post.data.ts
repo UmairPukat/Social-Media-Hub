@@ -171,3 +171,6 @@ export const DEMO_COMPOSER_PROFILES: ComposerProfile[] = [
     isDemo: true
   }
 ];
+
+/** When true, TikTok publish UI defaults to private-only (matches backend TikTokSettings:SandboxMode). */
+export const TIKTOK_SANDBOX_MODE = true;

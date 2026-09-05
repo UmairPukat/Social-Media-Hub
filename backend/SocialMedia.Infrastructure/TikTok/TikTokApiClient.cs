@@ -459,9 +459,9 @@ public sealed class TikTokApiClient
     {
         if (string.Equals(code, "unaudited_client_can_only_post_to_private_accounts", StringComparison.OrdinalIgnoreCase))
         {
-            return "Public TikTok posts require your developer app to pass TikTok's Direct Post audit. " +
-                   "Until approved, TikTok only allows private (SELF_ONLY) posts from unaudited apps — this cannot be bypassed in code. " +
-                   "Apply for audit at https://developers.tiktok.com/ (Content Posting API). " +
+            return "TikTok sandbox/unaudited apps only allow private posts (SELF_ONLY). " +
+                   "Ensure TikTokSettings:SandboxMode is true, use privacy only_you, add the account as a Sandbox Target User, " +
+                   "and set the TikTok profile to Private in the mobile app. " +
                    message;
         }
 

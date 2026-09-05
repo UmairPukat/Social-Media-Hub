@@ -408,7 +408,7 @@ public class PostService : IPostService
     private static string NormalizeTikTokPrivacy(string? privacy)
     {
         if (string.IsNullOrWhiteSpace(privacy))
-            return "PUBLIC_TO_EVERYONE";
+            return "SELF_ONLY";
 
         return privacy.Trim().ToLowerInvariant() switch
         {

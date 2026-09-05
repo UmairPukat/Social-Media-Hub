@@ -196,15 +196,10 @@ public class TikTokService : ITikTokService
 
         var title = Truncate(prepared.Title, 2200);
 
-        var (publishId, uploadUrl) = await _api.InitDirectVideoPublishAsync(
+        var (publishId, uploadUrl) = await InitVideoPublishAsync(
             accessToken,
             title,
-            prepared.PrivacyLevel,
-            prepared.DisableComment,
-            prepared.DisableDuet,
-            prepared.DisableStitch,
-            prepared.BrandContentToggle,
-            prepared.BrandOrganicToggle,
+            prepared,
             videoSize,
             chunkSize,
             totalChunkCount,
@@ -248,15 +243,11 @@ public class TikTokService : ITikTokService
         var title = Truncate(prepared.Title, 90);
         var description = Truncate(string.IsNullOrWhiteSpace(prepared.Description) ? prepared.Title : prepared.Description, 4000);
 
-        var publishId = await _api.InitDirectPhotoPublishAsync(
+        var publishId = await InitPhotoPublishAsync(
             accessToken,
             title,
             description,
-            prepared.PrivacyLevel,
-            prepared.DisableComment,
-            prepared.BrandContentToggle,
-            prepared.BrandOrganicToggle,
-            prepared.AutoAddMusic,
+            prepared,
             urls,
             photoCoverIndex,
             cancellationToken);
@@ -323,8 +314,131 @@ public class TikTokService : ITikTokService
             AutoAddMusic = options.AutoAddMusic
         };
 
+        ApplySandboxPrivacyRules(prepared, options.PrivacyLevel);
         return prepared;
     }
+
+    private void ApplySandboxPrivacyRules(TikTokPublishOptions prepared, string requestedPrivacy)
+    {
+        if (!IsSandboxMode())
+            return;
+
+        if (!string.Equals(prepared.PrivacyLevel, "SELF_ONLY", StringComparison.Ordinal))
+        {
+            _logger.LogInformation(
+                "TikTok sandbox mode: using SELF_ONLY instead of {Privacy} for Direct Post testing.",
+                prepared.PrivacyLevel);
+        }
+
+        prepared.PrivacyLevel = "SELF_ONLY";
+    }
+
+    private bool IsSandboxMode()
+    {
+        var configured = _configuration["TikTokSettings:SandboxMode"];
+        if (string.IsNullOrWhiteSpace(configured))
+            return true;
+
+        return !string.Equals(configured.Trim(), "false", StringComparison.OrdinalIgnoreCase)
+               && !string.Equals(configured.Trim(), "0", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private async Task<(string PublishId, string UploadUrl)> InitVideoPublishAsync(
+        string accessToken,
+        string title,
+        TikTokPublishOptions prepared,
+        long videoSize,
+        long chunkSize,
+        int totalChunkCount,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await _api.InitDirectVideoPublishAsync(
+                accessToken,
+                title,
+                prepared.PrivacyLevel,
+                prepared.DisableComment,
+                prepared.DisableDuet,
+                prepared.DisableStitch,
+                prepared.BrandContentToggle,
+                prepared.BrandOrganicToggle,
+                videoSize,
+                chunkSize,
+                totalChunkCount,
+                cancellationToken);
+        }
+        catch (InvalidOperationException ex) when (IsSandboxMode() && IsUnauditedDirectPostError(ex))
+        {
+            if (string.Equals(prepared.PrivacyLevel, "SELF_ONLY", StringComparison.Ordinal))
+                throw;
+
+            _logger.LogWarning(ex, "TikTok sandbox publish retrying with SELF_ONLY.");
+            prepared.PrivacyLevel = "SELF_ONLY";
+            return await _api.InitDirectVideoPublishAsync(
+                accessToken,
+                title,
+                prepared.PrivacyLevel,
+                prepared.DisableComment,
+                prepared.DisableDuet,
+                prepared.DisableStitch,
+                prepared.BrandContentToggle,
+                prepared.BrandOrganicToggle,
+                videoSize,
+                chunkSize,
+                totalChunkCount,
+                cancellationToken);
+        }
+    }
+
+    private async Task<string> InitPhotoPublishAsync(
+        string accessToken,
+        string title,
+        string description,
+        TikTokPublishOptions prepared,
+        IReadOnlyList<string> photoUrls,
+        int photoCoverIndex,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await _api.InitDirectPhotoPublishAsync(
+                accessToken,
+                title,
+                description,
+                prepared.PrivacyLevel,
+                prepared.DisableComment,
+                prepared.BrandContentToggle,
+                prepared.BrandOrganicToggle,
+                prepared.AutoAddMusic,
+                photoUrls,
+                photoCoverIndex,
+                cancellationToken);
+        }
+        catch (InvalidOperationException ex) when (IsSandboxMode() && IsUnauditedDirectPostError(ex))
+        {
+            if (string.Equals(prepared.PrivacyLevel, "SELF_ONLY", StringComparison.Ordinal))
+                throw;
+
+            _logger.LogWarning(ex, "TikTok sandbox photo publish retrying with SELF_ONLY.");
+            prepared.PrivacyLevel = "SELF_ONLY";
+            return await _api.InitDirectPhotoPublishAsync(
+                accessToken,
+                title,
+                description,
+                prepared.PrivacyLevel,
+                prepared.DisableComment,
+                prepared.BrandContentToggle,
+                prepared.BrandOrganicToggle,
+                prepared.AutoAddMusic,
+                photoUrls,
+                photoCoverIndex,
+                cancellationToken);
+        }
+    }
+
+    private static bool IsUnauditedDirectPostError(InvalidOperationException ex)
+        => ex.Message.Contains("unaudited_client_can_only_post_to_private_accounts", StringComparison.OrdinalIgnoreCase);
 
     private static TikTokCreatorInfo ParseCreatorInfo(JsonElement root)
     {

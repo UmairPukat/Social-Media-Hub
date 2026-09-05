@@ -11,7 +11,8 @@ import {
   CREATE_PLATFORMS,
   CreatePlatform,
   ComposerProfile,
-  DEMO_COMPOSER_PROFILES
+  DEMO_COMPOSER_PROFILES,
+  TIKTOK_SANDBOX_MODE
 } from '../../core/data/create-post.data';
 import { ApiResponse, PublishPostResponse, SocialAccount } from '../../core/models/api.models';
 
@@ -45,7 +46,10 @@ export class CreatePostComponent implements OnInit, OnDestroy {
   readonly waAudience = signal<'Status' | 'Broadcast'>('Status');
   readonly ytVisibility = signal<'Public' | 'Unlisted' | 'Private'>('Public');
   readonly liAudience = signal<'Anyone' | 'Connections'>('Anyone');
-  readonly ttPrivacy = signal<'' | 'Public' | 'Friends' | 'Followers' | 'Only you'>('');
+  readonly ttPrivacy = signal<'' | 'Public' | 'Friends' | 'Followers' | 'Only you'>(
+    TIKTOK_SANDBOX_MODE ? 'Only you' : ''
+  );
+  readonly tikTokSandboxMode = TIKTOK_SANDBOX_MODE;
   readonly ttAllowComment = signal(false);
   readonly ttAllowDuet = signal(false);
   readonly ttAllowStitch = signal(false);
@@ -226,7 +230,7 @@ export class CreatePostComponent implements OnInit, OnDestroy {
   }
 
   private resetTikTokSettings(): void {
-    this.ttPrivacy.set('');
+    this.ttPrivacy.set(TIKTOK_SANDBOX_MODE ? 'Only you' : '');
     this.ttAllowComment.set(false);
     this.ttAllowDuet.set(false);
     this.ttAllowStitch.set(false);
@@ -420,7 +424,9 @@ export class CreatePostComponent implements OnInit, OnDestroy {
         this.messageOk.set(ok);
         this.message.set(
           ok
-            ? `Published to ${meta.label} as “${profile.name}”.`
+            ? res.data?.post?.status === 1 && this.platform() === 'tiktok' && TIKTOK_SANDBOX_MODE
+              ? `Published to ${meta.label} as “${profile.name}” (private — sandbox mode).`
+              : `Published to ${meta.label} as “${profile.name}”.`
             : res.data?.errorMessage || res.message || 'Publish failed.'
         );
         if (ok) this.resetComposerKeepProfile();
