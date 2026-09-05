@@ -356,9 +356,9 @@ public sealed class TikTokApiClient
         using var content = new ByteArrayContent(chunk);
         content.Headers.ContentType = new MediaTypeHeaderValue(ResolveVideoContentType(contentType));
         content.Headers.ContentLength = count;
+        content.Headers.ContentRange = new ContentRangeHeaderValue(start, end, totalSize);
 
         using var request = new HttpRequestMessage(HttpMethod.Put, uploadUrl) { Content = content };
-        request.Headers.TryAddWithoutValidation("Content-Range", $"bytes {start}-{end}/{totalSize}");
 
         using var response = await _http.SendAsync(request, cancellationToken);
         if (response.StatusCode is System.Net.HttpStatusCode.Created
@@ -369,9 +369,19 @@ public sealed class TikTokApiClient
         }
 
         var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        var responseRange = response.Content.Headers.ContentRange?.ToString();
         var message = string.IsNullOrWhiteSpace(body)
             ? $"TikTok video upload failed ({(int)response.StatusCode}) for bytes {start}-{end}/{totalSize}."
             : $"TikTok video upload failed ({(int)response.StatusCode}): {body}";
+        if (!string.IsNullOrWhiteSpace(responseRange))
+            message += $" Server Content-Range: {responseRange}.";
+
+        _logger.LogWarning("TikTok chunk upload failed. UrlHost={Host}, Range={Range}, Status={Status}, Body={Body}",
+            new Uri(uploadUrl).Host,
+            $"{start}-{end}/{totalSize}",
+            (int)response.StatusCode,
+            body);
+
         throw new InvalidOperationException(message);
     }
 

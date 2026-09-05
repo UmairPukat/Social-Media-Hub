@@ -598,9 +598,14 @@ public class TikTokService : ITikTokService
     private static (long ChunkSize, int TotalChunkCount) BuildVideoUploadPlan(long videoSize)
     {
         const long minWholeUploadSize = 5 * 1024 * 1024;
+        const long maxWholeUploadSize = 64 * 1024 * 1024;
         const long preferredChunkSize = 10 * 1024 * 1024;
 
+        // TikTok requires chunk_size == video_size for single-chunk uploads.
         if (videoSize <= minWholeUploadSize)
+            return (videoSize, 1);
+
+        if (videoSize <= maxWholeUploadSize)
             return (videoSize, 1);
 
         var chunkSize = preferredChunkSize;
@@ -620,7 +625,10 @@ public class TikTokService : ITikTokService
         string contentType,
         CancellationToken cancellationToken)
     {
-        var buffer = new byte[chunkSize];
+        if (chunkSize > int.MaxValue)
+            throw new InvalidOperationException("TikTok video chunk size exceeds supported limit.");
+
+        var buffer = new byte[(int)chunkSize];
         long uploaded = 0;
         var chunkNumber = 0;
 
@@ -637,7 +645,8 @@ public class TikTokService : ITikTokService
             {
                 var n = await videoStream.ReadAsync(buffer.AsMemory(read, toRead - read), cancellationToken);
                 if (n == 0)
-                    throw new InvalidOperationException("Video stream ended before upload completed.");
+                    throw new InvalidOperationException(
+                        $"Video stream ended after {uploaded + read} bytes; expected {videoSize} bytes.");
                 read += n;
             }
 
@@ -650,6 +659,12 @@ public class TikTokService : ITikTokService
                 contentType,
                 cancellationToken);
             uploaded += read;
+        }
+
+        if (uploaded != videoSize)
+        {
+            throw new InvalidOperationException(
+                $"TikTok video upload size mismatch: sent {uploaded} bytes, expected {videoSize} bytes.");
         }
     }
 

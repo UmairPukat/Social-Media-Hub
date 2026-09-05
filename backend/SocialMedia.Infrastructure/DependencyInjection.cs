@@ -43,7 +43,11 @@ public static class DependencyInjection
 
         services.AddHttpClient<MetaGraphClient>();
         services.AddHttpClient<YouTubeApiClient>();
-        services.AddHttpClient<TikTokApiClient>();
+        services.AddHttpClient<TikTokApiClient>()
+            .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
+            {
+                AllowAutoRedirect = false
+            });
         services.AddScoped<IMetaOAuthExchange, MetaOAuthExchangeService>();
         services.AddScoped<IFacebookService, FacebookService>();
         services.AddScoped<IInstagramService, InstagramService>();
