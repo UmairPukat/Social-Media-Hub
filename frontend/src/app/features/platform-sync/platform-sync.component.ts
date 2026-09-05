@@ -4,6 +4,7 @@ import { RouterLink } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatTooltipModule } from '@angular/material/tooltip';
+import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { finalize } from 'rxjs/operators';
 import { ProcessApiService } from '../../core/services/process-api.service';
 import { ProcessRouteService } from '../../core/services/process-route.service';
@@ -43,7 +44,7 @@ const MANUAL_SYNC_CONFIG: Record<string, Omit<ManualSyncPlatform, 'card'>> = {
 @Component({
   selector: 'app-platform-sync',
   standalone: true,
-  imports: [DatePipe, DecimalPipe, RouterLink, MatButtonModule, MatIconModule, MatTooltipModule],
+  imports: [DatePipe, DecimalPipe, RouterLink, MatButtonModule, MatIconModule, MatTooltipModule, MatProgressSpinnerModule],
   templateUrl: './platform-sync.component.html',
   styleUrl: './platform-sync.component.scss'
 })

@@ -84,6 +84,11 @@
     background: color-mix(in srgb, var(--tone, #2563eb) 8%, #fff) !important;
   }
 
+  .sync-spinner {
+    margin-right: 4px;
+    --mdc-circular-progress-active-indicator-color: var(--tone, #475569);
+  }
+
   &[disabled] {
     opacity: 0.45;
     color: #94a3b8 !important;

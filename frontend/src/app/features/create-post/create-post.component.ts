@@ -4,6 +4,8 @@ import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatTooltipModule } from '@angular/material/tooltip';
+import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { finalize } from 'rxjs/operators';
 import { Subscription } from 'rxjs';
 import { ProcessApiService } from '../../core/services/process-api.service';
 import { ProcessRouteService } from '../../core/services/process-route.service';
@@ -19,7 +21,7 @@ import { ApiResponse, PublishPostResponse, SocialAccount } from '../../core/mode
 @Component({
   selector: 'app-create-post',
   standalone: true,
-  imports: [DecimalPipe, ReactiveFormsModule, MatButtonModule, MatIconModule, MatTooltipModule],
+  imports: [DecimalPipe, ReactiveFormsModule, MatButtonModule, MatIconModule, MatTooltipModule, MatProgressSpinnerModule],
   templateUrl: './create-post.component.html',
   styleUrl: './create-post.component.scss'
 })
@@ -40,6 +42,7 @@ export class CreatePostComponent implements OnInit, OnDestroy {
   readonly message = signal('');
   readonly messageOk = signal(false);
   readonly publishing = signal(false);
+  readonly loadingAccounts = signal(true);
   readonly selectedFileName = signal<string | null>(null);
   readonly selectedFileKind = signal<'image' | 'video' | 'file' | null>(null);
   readonly audience = signal<'Public' | 'Friends' | 'Only me'>('Public');
@@ -69,6 +72,8 @@ export class CreatePostComponent implements OnInit, OnDestroy {
     location: [''],
     feeling: ['']
   });
+
+  readonly trackedPublishPlatforms: CreatePlatform[] = ['facebook', 'instagram', 'tiktok', 'youtube'];
 
   readonly activeMeta = computed(() =>
     this.platforms.find((p) => p.code === this.platform())!
@@ -143,7 +148,10 @@ export class CreatePostComponent implements OnInit, OnDestroy {
       this.formTick.update((n) => n + 1);
     });
 
-    this.processApi.getAccounts(this.processRoute.currentMenuType()).subscribe({
+    this.processApi
+      .getAccounts(this.processRoute.currentMenuType())
+      .pipe(finalize(() => this.loadingAccounts.set(false)))
+      .subscribe({
       next: (res: ApiResponse<SocialAccount[]>) => {
         const live: ComposerProfile[] = (res.data || []).flatMap((account) =>
           (account.profiles || []).map((p) => ({
@@ -482,7 +490,7 @@ export class CreatePostComponent implements OnInit, OnDestroy {
       case 'facebook':
         return 'Sending your post to Facebook…';
       case 'tiktok':
-        return 'Preparing your video and upload settings…';
+        return 'Uploading your media to TikTok. Large videos can take several minutes.';
       default:
         return 'Please wait while we publish your content.';
     }
@@ -506,6 +514,39 @@ export class CreatePostComponent implements OnInit, OnDestroy {
         return 'Post';
       default:
         return 'Publish';
+    }
+  }
+
+  moduleLabel(): string {
+    switch (this.processRoute.currentMenuType()) {
+      case 'developer_app':
+        return 'Developer Apps';
+      case 'app_connection':
+        return 'App Connections';
+      default:
+        return 'Integrations';
+    }
+  }
+
+  isTrackedPublishPlatform(): boolean {
+    return this.trackedPublishPlatforms.includes(this.platform());
+  }
+
+  showPublishSpinner(): boolean {
+    return this.publishing() && this.isTrackedPublishPlatform();
+  }
+
+  publishBusyLabel(): string {
+    switch (this.platform()) {
+      case 'facebook':
+        return 'Posting…';
+      case 'instagram':
+        return 'Sharing…';
+      case 'youtube':
+      case 'tiktok':
+        return 'Uploading…';
+      default:
+        return 'Publishing…';
     }
   }
 }

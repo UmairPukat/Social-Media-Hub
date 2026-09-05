@@ -131,7 +131,11 @@
                     [class.is-running]="isRunning(entry.card.code, action)"
                     [disabled]="!entry.card.isConnected || isRunning(entry.card.code, action)"
                     (click)="runSync(entry.card, action)">
-                    <mat-icon>{{ actionIcon(action) }}</mat-icon>
+                    @if (isRunning(entry.card.code, action)) {
+                      <mat-spinner diameter="16" class="sync-spinner"></mat-spinner>
+                    } @else {
+                      <mat-icon>{{ actionIcon(action) }}</mat-icon>
+                    }
                     {{ actionLabel(action, entry.card.code) }}
                   </button>
                 }

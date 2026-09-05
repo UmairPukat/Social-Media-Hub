@@ -95,7 +95,7 @@ public static class PlatformCatalog
         Add("social", "Social", LinkedInId, "linkedin", "LinkedIn", "linkedin",
             "Coming soon — professional company and personal posts.");
         Add("social", "Social", TikTokId, "tiktok", "TikTok", "tiktok",
-            "Fetch published videos and statistics via manual sync.", false, false, true, true);
+            "Publish videos and photos, fetch published content, and refresh statistics.", false, false, true, true);
         Add("social", "Social", YouTubeId, "youtube", "YouTube", "youtube",
             "Fetch channel videos, comments, and statistics via manual sync.", true, false, true, true);
         Add("social", "Social", NewId(9), "pinterest", "Pinterest", "pinterest",

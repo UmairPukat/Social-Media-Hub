@@ -15,7 +15,7 @@
   }
 
   <div class="studio-body">
-    <aside class="rail">
+    <aside class="rail" [class.is-loading]="loadingAccounts()">
       <section class="rail-block">
         <h2>1. Platform</h2>
         <div class="plat-list" role="tablist" aria-label="Platform">
@@ -45,21 +45,34 @@
       <section class="rail-block">
         <h2>2. Account</h2>
         <div class="account-list">
-          @for (prof of platformProfiles(); track prof.id) {
-            <button
-              type="button"
-              class="account"
-              [class.active]="selectedProfileId() === prof.id"
-              (click)="selectProfile(prof.id)">
-              <span class="av" [style.background]="activeMeta().color">{{ initials(prof.name) }}</span>
-              <span class="account-copy">
-                <strong>{{ prof.name }}</strong>
-                <small>{{ prof.isDemo ? 'Demo profile' : (prof.username || prof.profileType) }}</small>
-              </span>
-              <span class="pill" [class.demo]="prof.isDemo">{{ prof.isDemo ? 'Demo' : 'Live' }}</span>
-            </button>
-          } @empty {
-            <p class="empty-rail">No profile available for this platform.</p>
+          @if (loadingAccounts()) {
+            @for (item of [1, 2]; track item) {
+              <div class="account account-skeleton" aria-hidden="true">
+                <span class="av sm skeleton-block"></span>
+                <span class="account-copy">
+                  <span class="skeleton-line medium"></span>
+                  <span class="skeleton-line short"></span>
+                </span>
+              </div>
+            }
+            <p class="empty-rail loading-note">Loading connected accounts…</p>
+          } @else {
+            @for (prof of platformProfiles(); track prof.id) {
+              <button
+                type="button"
+                class="account"
+                [class.active]="selectedProfileId() === prof.id"
+                (click)="selectProfile(prof.id)">
+                <span class="av" [style.background]="activeMeta().color">{{ initials(prof.name) }}</span>
+                <span class="account-copy">
+                  <strong>{{ prof.name }}</strong>
+                  <small>{{ prof.isDemo ? 'Demo profile' : (prof.username || prof.profileType) }}</small>
+                </span>
+                <span class="pill" [class.demo]="prof.isDemo">{{ prof.isDemo ? 'Demo' : 'Live' }}</span>
+              </button>
+            } @empty {
+              <p class="empty-rail">No profile available for this platform.</p>
+            }
           }
         </div>
       </section>
@@ -78,7 +91,7 @@
       </section>
     </aside>
 
-    <main class="canvas">
+    <main class="canvas" [class.is-loading]="loadingAccounts() || publishing()">
       <div class="canvas-head">
         <div>
           <h2>3. Compose</h2>
@@ -88,6 +101,13 @@
       </div>
 
       <div class="canvas-frame">
+        @if (loadingAccounts()) {
+          <div class="composer-loading" role="status" aria-live="polite" aria-busy="true">
+            <mat-spinner diameter="42"></mat-spinner>
+            <strong>Loading composer</strong>
+            <p>Fetching connected accounts for {{ moduleLabel() }}…</p>
+          </div>
+        }
         @switch (platform()) {
           @case ('facebook') {
             <div class="sheet fb">
@@ -154,10 +174,13 @@
               </div>
               <button
                 type="button"
-                class="cta fb"
+                class="cta fb cta-with-spinner"
                 [disabled]="!canPublish() || publishing()"
                 (click)="publish()">
-                {{ publishing() ? 'Posting…' : ctaLabel() }}
+                @if (showPublishSpinner()) {
+                  <mat-spinner diameter="18" class="cta-spinner"></mat-spinner>
+                }
+                {{ publishing() ? publishBusyLabel() : ctaLabel() }}
               </button>
             </div>
           }
@@ -169,10 +192,13 @@
                 <h3>New post</h3>
                 <button
                   type="button"
-                  class="link-cta"
+                  class="link-cta cta-with-spinner"
                   [disabled]="!canPublish() || publishing()"
                   (click)="publish()">
-                  {{ publishing() ? 'Sharing…' : ctaLabel() }}
+                  @if (showPublishSpinner()) {
+                    <mat-spinner diameter="18" class="cta-spinner"></mat-spinner>
+                  }
+                  {{ publishing() ? publishBusyLabel() : ctaLabel() }}
                 </button>
               </header>
               <div class="ig-body">
@@ -300,10 +326,13 @@
                 <h3>Upload video</h3>
                 <button
                   type="button"
-                  class="cta yt"
+                  class="cta yt cta-with-spinner"
                   [disabled]="!canPublish() || publishing()"
                   (click)="publish()">
-                  {{ publishing() ? 'Uploading…' : ctaLabel() }}
+                  @if (showPublishSpinner()) {
+                    <mat-spinner diameter="18" class="cta-spinner"></mat-spinner>
+                  }
+                  {{ publishing() ? publishBusyLabel() : ctaLabel() }}
                 </button>
               </header>
               <div class="yt-grid">
@@ -590,10 +619,13 @@
 
                   <button
                     type="button"
-                    class="cta tt-upload"
+                    class="cta tt-upload cta-with-spinner"
                     [disabled]="!canPublish() || publishing()"
                     (click)="publish()">
-                    {{ publishing() ? 'Uploading…' : ctaLabel() }}
+                    @if (showPublishSpinner()) {
+                      <mat-spinner diameter="18" class="cta-spinner"></mat-spinner>
+                    }
+                    {{ publishing() ? publishBusyLabel() : ctaLabel() }}
                   </button>
                 </div>
               </div>
@@ -764,7 +796,7 @@
     </main>
   </div>
 
-  @if (publishing()) {
+  @if (publishing() && isTrackedPublishPlatform()) {
     <div class="publish-overlay" role="status" aria-live="polite" aria-busy="true">
       <div class="publish-loader" [style.--loader-accent]="activeMeta().color">
         <div class="publish-orbit" aria-hidden="true">
