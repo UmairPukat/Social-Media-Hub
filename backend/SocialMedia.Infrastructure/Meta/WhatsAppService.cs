@@ -183,10 +183,35 @@ public class WhatsAppService : IWhatsAppService
                     var phoneNumberId = value.TryGetProperty("metadata", out var meta)
                         && meta.TryGetProperty("phone_number_id", out var pn)
                         ? pn.GetString() : null;
-                    if (phoneNumberId is null) continue;
+                    if (phoneNumberId is null)
+                    {
+                        _logger.LogWarning(
+                            "WhatsApp webhook skipped change without metadata.phone_number_id in module {MenuType}.",
+                            _menuType);
+                        continue;
+                    }
 
                     var profile = await _store.GetProfileByExternalIdAsync(phoneNumberId, cancellationToken);
-                    if (profile is null || !value.TryGetProperty("messages", out var messages)) continue;
+                    if (profile is null)
+                    {
+                        result.Skip(
+                            $"No connected WhatsApp profile for phone_number_id '{phoneNumberId}'. " +
+                            "Save the same Phone number Id in Developer Apps config and reconnect WhatsApp.");
+                        _logger.LogWarning(
+                            "WhatsApp webhook: no profile for phone_number_id {PhoneNumberId} in module {MenuType}.",
+                            phoneNumberId,
+                            _menuType);
+                        continue;
+                    }
+
+                    if (!value.TryGetProperty("messages", out var messages))
+                    {
+                        _logger.LogInformation(
+                            "WhatsApp webhook ignored non-message payload for phone_number_id {PhoneNumberId} in module {MenuType}.",
+                            phoneNumberId,
+                            _menuType);
+                        continue;
+                    }
 
                     var account = await _store.GetSocialAccountByIdAsync(profile.SocialAccountId, cancellationToken);
                     if (account is null) continue;
@@ -197,7 +222,8 @@ public class WhatsAppService : IWhatsAppService
                     foreach (var message in messages.EnumerateArray())
                     {
                         var id = message.TryGetProperty("id", out var mid) ? mid.GetString() : null;
-                        var from = message.TryGetProperty("from", out var fromEl) ? fromEl.GetString() : null;
+                        var from = ReadWhatsAppSenderId(message);
+                        var senderName = ReadWhatsAppSenderName(message) ?? from;
                         var text = message.TryGetProperty("text", out var textObj) && textObj.TryGetProperty("body", out var body)
                             ? body.GetString() ?? string.Empty : string.Empty;
                         if (string.IsNullOrWhiteSpace(id)) continue;
@@ -210,7 +236,7 @@ public class WhatsAppService : IWhatsAppService
                             conversation.SocialProfileId = profile.Id;
                             conversation.ExternalConversationId = from ?? id;
                             conversation.CustomerId = from;
-                            conversation.CustomerName = from;
+                            conversation.CustomerName = senderName;
                             conversation.LastMessageAt = DateTime.UtcNow;
                             conversation.UnreadCount = 1;
                             conversation.Status = ConversationStatus.Open;
@@ -248,7 +274,7 @@ public class WhatsAppService : IWhatsAppService
                             ItemKind = "message",
                             PlatformCode = "whatsapp",
                             ExternalId = row.ExternalMessageId,
-                            AuthorName = conversation.CustomerName ?? from ?? "WhatsApp user",
+                            AuthorName = conversation.CustomerName ?? senderName ?? from ?? "WhatsApp user",
                             AuthorId = from,
                             Content = text,
                             IsHidden = false,
@@ -275,5 +301,34 @@ public class WhatsAppService : IWhatsAppService
             _store = null;
             _menuType = string.Empty;
         }
+    }
+
+    private static string? ReadWhatsAppSenderId(JsonElement message)
+    {
+        if (!message.TryGetProperty("from", out var fromEl))
+            return null;
+
+        if (fromEl.ValueKind == JsonValueKind.String)
+            return fromEl.GetString();
+
+        if (fromEl.TryGetProperty("phone", out var phone) && !string.IsNullOrWhiteSpace(phone.GetString()))
+            return phone.GetString();
+
+        if (fromEl.TryGetProperty("id", out var id))
+            return id.ToString();
+
+        return null;
+    }
+
+    private static string? ReadWhatsAppSenderName(JsonElement message)
+    {
+        if (!message.TryGetProperty("from", out var fromEl) || fromEl.ValueKind != JsonValueKind.Object)
+            return null;
+
+        if (fromEl.TryGetProperty("profile", out var profile) &&
+            profile.TryGetProperty("name", out var name))
+            return name.GetString();
+
+        return null;
     }
 }
