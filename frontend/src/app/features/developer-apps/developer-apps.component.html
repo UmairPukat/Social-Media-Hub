@@ -197,10 +197,21 @@
             </button>
           </mat-form-field>
 
-          <mat-form-field appearance="outline">
-            <mat-label>Redirect URI (Developer Apps)</mat-label>
-            <input matInput [ngModel]="moduleRedirectUri" name="redirectUri" readonly />
-          </mat-form-field>
+          @if (isWhatsAppPlatform(configPlatformCode())) {
+            <mat-form-field appearance="outline" class="full">
+              <mat-label>Callback URL</mat-label>
+              <input matInput [ngModel]="configForm().redirectUri" name="redirectUri" (ngModelChange)="updateConfigField('redirectUri', $event)" />
+            </mat-form-field>
+            <mat-form-field appearance="outline" class="full">
+              <mat-label>Webhook URL</mat-label>
+              <input matInput [ngModel]="configForm().webhookUrl" name="webhookUrl" (ngModelChange)="updateConfigField('webhookUrl', $event)" />
+            </mat-form-field>
+          } @else {
+            <mat-form-field appearance="outline">
+              <mat-label>Redirect URI (Developer Apps)</mat-label>
+              <input matInput [ngModel]="moduleRedirectUri" name="redirectUri" readonly />
+            </mat-form-field>
+          }
 
           <mat-form-field appearance="outline">
             <mat-label>Auth URL</mat-label>
@@ -222,7 +233,7 @@
             <textarea matInput rows="3" [ngModel]="configForm().scopes" name="scopes" (ngModelChange)="updateConfigField('scopes', $event)"></textarea>
           </mat-form-field>
 
-          @if (usesMetaWebhooks(configPlatformCode())) {
+          @if (usesMetaWebhooks(configPlatformCode()) && !isWhatsAppPlatform(configPlatformCode())) {
             <mat-form-field appearance="outline">
               <mat-label>Webhook URL (Developer Apps)</mat-label>
               <input matInput [ngModel]="moduleWebhookUri" name="webhookUrl" readonly />
@@ -233,9 +244,6 @@
             <mat-form-field appearance="outline">
               <mat-label>Webhook verify token</mat-label>
               <input matInput [ngModel]="configForm().webhookVerifyToken" name="webhookVerifyToken" (ngModelChange)="updateConfigField('webhookVerifyToken', $event)" />
-              @if (isWhatsAppPlatform(configPlatformCode())) {
-                <mat-hint>Must match the verify token configured in Meta for this webhook URL.</mat-hint>
-              }
             </mat-form-field>
           }
 
@@ -243,7 +251,6 @@
             <mat-form-field appearance="outline">
               <mat-label>Phone number Id</mat-label>
               <input matInput required [ngModel]="configForm().phoneNumberId" name="phoneNumberId" (ngModelChange)="updateConfigField('phoneNumberId', $event)" />
-              <mat-hint>From Meta → WhatsApp → API Setup. Required before connecting.</mat-hint>
             </mat-form-field>
             <mat-form-field appearance="outline">
               <mat-label>WABA Id (optional)</mat-label>

@@ -23,6 +23,7 @@ export interface AppConnectionConfig {
   clientSecret?: string;
   hasClientSecret: boolean;
   redirectUri?: string;
+  webhookUrl?: string;
   authUrl?: string;
   baseUrl?: string;
   scopes?: string;
@@ -41,6 +42,7 @@ export interface SaveAppConnectionConfigRequest {
   clientId: string;
   clientSecret?: string;
   redirectUri?: string;
+  webhookUrl?: string;
   authUrl?: string;
   baseUrl?: string;
   scopes?: string;

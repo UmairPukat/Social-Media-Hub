@@ -70,6 +70,18 @@ public class WebhooksController : ProcessWebhooksControllerBase
     protected override string WebhookRoute => ProcessModules.Integrations.WebhookRoute;
 }
 
+[AllowAnonymous]
+[Route(ProcessModules.Integrations.ApiRoute + "/whatsapp")]
+[ApiController]
+public class WhatsAppWebhooksController : ProcessWebhooksControllerBase
+{
+    public WhatsAppWebhooksController(IWebhookService webhookService, ILoggerFactory loggerFactory)
+        : base(webhookService, loggerFactory) { }
+
+    protected override string MenuType => ProcessModules.Integrations.MenuType;
+    protected override string WebhookRoute => ProcessModules.Integrations.WhatsAppWebhookRoute;
+}
+
 [Authorize]
 [Route(ProcessModules.Integrations.ApiRoute)]
 [ApiController]

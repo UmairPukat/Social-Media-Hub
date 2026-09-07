@@ -281,6 +281,7 @@ public class ProcessAppConfigService : IProcessAppConfigService
             throw new InvalidOperationException("Client Secret is required.");
 
         config.RedirectUri = NullIfEmpty(ResolveRedirectUri(menuType, code, request.RedirectUri));
+        config.WebhookUrl = NullIfEmpty(ResolveWebhookUri(menuType, code, request.WebhookUrl));
         config.AuthUrl = ResolveStoredAuthUrl(code, NullIfEmpty(request.AuthUrl), version);
         config.BaseUrl = ResolveStoredBaseUrl(code, NullIfEmpty(request.BaseUrl));
         config.Scopes = NullIfEmpty(NormalizeStoredScopes(code, request.Scopes)) ?? DefaultScopes(code);
@@ -301,6 +302,7 @@ public class ProcessAppConfigService : IProcessAppConfigService
             throw new InvalidOperationException("Client Secret is required.");
 
         config.RedirectUri = NullIfEmpty(ResolveRedirectUri(menuType, code, request.RedirectUri));
+        config.WebhookUrl = NullIfEmpty(ResolveWebhookUri(menuType, code, request.WebhookUrl));
         config.AuthUrl = ResolveStoredAuthUrl(code, NullIfEmpty(request.AuthUrl), version);
         config.BaseUrl = ResolveStoredBaseUrl(code, NullIfEmpty(request.BaseUrl));
         config.Scopes = NullIfEmpty(NormalizeStoredScopes(code, request.Scopes)) ?? DefaultScopes(code);
@@ -321,6 +323,7 @@ public class ProcessAppConfigService : IProcessAppConfigService
             throw new InvalidOperationException("Client Secret is required.");
 
         config.RedirectUri = NullIfEmpty(ResolveRedirectUri(menuType, code, request.RedirectUri));
+        config.WebhookUrl = NullIfEmpty(ResolveWebhookUri(menuType, code, request.WebhookUrl));
         config.AuthUrl = ResolveStoredAuthUrl(code, NullIfEmpty(request.AuthUrl), version);
         config.BaseUrl = ResolveStoredBaseUrl(code, NullIfEmpty(request.BaseUrl));
         config.Scopes = NullIfEmpty(NormalizeStoredScopes(code, request.Scopes)) ?? DefaultScopes(code);
@@ -333,17 +336,47 @@ public class ProcessAppConfigService : IProcessAppConfigService
 
     private string? ResolveRedirectUri(string menuType, string platformCode, string? configRedirectUri)
     {
+        var backendBase = _configuration["BackendBaseUrl"] ?? _configuration["backendBaseUrl"];
+
+        if (string.Equals(platformCode, "whatsapp", StringComparison.OrdinalIgnoreCase))
+            return NullIfEmpty(ProcessOAuthRedirect.ResolveWhatsAppCallback(menuType, configRedirectUri, backendBase));
+
         if (!ProcessOAuthRedirect.SupportsAutoRedirect(platformCode))
             return NullIfEmpty(configRedirectUri);
 
-        var backendBase = _configuration["BackendBaseUrl"] ?? _configuration["backendBaseUrl"];
         // OAuth callbacks are always scoped to the active process module.
         var resolved = ProcessOAuthRedirect.Resolve(menuType, null, backendBase);
         return NullIfEmpty(resolved);
     }
 
-    private string? DisplayRedirectUri(string menuType, string platformCode, string? storedRedirectUri) =>
-        ResolveRedirectUri(menuType, platformCode, storedRedirectUri) ?? storedRedirectUri;
+    private string? ResolveWebhookUri(string menuType, string platformCode, string? configWebhookUrl)
+    {
+        if (!string.Equals(platformCode, "whatsapp", StringComparison.OrdinalIgnoreCase))
+            return NullIfEmpty(configWebhookUrl);
+
+        var backendBase = _configuration["BackendBaseUrl"] ?? _configuration["backendBaseUrl"];
+        return NullIfEmpty(ProcessOAuthRedirect.ResolveWhatsAppWebhook(menuType, configWebhookUrl, backendBase));
+    }
+
+    private string? DisplayRedirectUri(string menuType, string platformCode, string? storedRedirectUri)
+    {
+        if (string.Equals(platformCode, "whatsapp", StringComparison.OrdinalIgnoreCase))
+        {
+            var backendBase = _configuration["BackendBaseUrl"] ?? _configuration["backendBaseUrl"];
+            return ProcessOAuthRedirect.ResolveWhatsAppCallback(menuType, storedRedirectUri, backendBase);
+        }
+
+        return ResolveRedirectUri(menuType, platformCode, storedRedirectUri) ?? storedRedirectUri;
+    }
+
+    private string? DisplayWebhookUri(string menuType, string platformCode, string? storedWebhookUrl)
+    {
+        if (!string.Equals(platformCode, "whatsapp", StringComparison.OrdinalIgnoreCase))
+            return storedWebhookUrl;
+
+        var backendBase = _configuration["BackendBaseUrl"] ?? _configuration["backendBaseUrl"];
+        return ProcessOAuthRedirect.ResolveWhatsAppWebhook(menuType, storedWebhookUrl, backendBase);
+    }
 
     private ProcessAppConfigDto Map(IntegrationAppConfig config, bool revealSecret) => new()
     {
@@ -356,6 +389,7 @@ public class ProcessAppConfigService : IProcessAppConfigService
         ClientSecret = revealSecret ? config.ClientSecret : MaskSecret(config.ClientSecret),
         HasClientSecret = !string.IsNullOrWhiteSpace(config.ClientSecret),
         RedirectUri = DisplayRedirectUri(config.MenuType, config.PlatformCode, config.RedirectUri),
+        WebhookUrl = DisplayWebhookUri(config.MenuType, config.PlatformCode, config.WebhookUrl),
         AuthUrl = config.AuthUrl,
         BaseUrl = config.BaseUrl,
         Scopes = config.Scopes,
@@ -378,6 +412,7 @@ public class ProcessAppConfigService : IProcessAppConfigService
         ClientSecret = revealSecret ? config.ClientSecret : MaskSecret(config.ClientSecret),
         HasClientSecret = !string.IsNullOrWhiteSpace(config.ClientSecret),
         RedirectUri = DisplayRedirectUri(config.MenuType, config.PlatformCode, config.RedirectUri),
+        WebhookUrl = DisplayWebhookUri(config.MenuType, config.PlatformCode, config.WebhookUrl),
         AuthUrl = config.AuthUrl,
         BaseUrl = config.BaseUrl,
         Scopes = config.Scopes,
@@ -400,6 +435,7 @@ public class ProcessAppConfigService : IProcessAppConfigService
         ClientSecret = revealSecret ? config.ClientSecret : MaskSecret(config.ClientSecret),
         HasClientSecret = !string.IsNullOrWhiteSpace(config.ClientSecret),
         RedirectUri = DisplayRedirectUri(config.MenuType, config.PlatformCode, config.RedirectUri),
+        WebhookUrl = DisplayWebhookUri(config.MenuType, config.PlatformCode, config.WebhookUrl),
         AuthUrl = config.AuthUrl,
         BaseUrl = config.BaseUrl,
         Scopes = config.Scopes,

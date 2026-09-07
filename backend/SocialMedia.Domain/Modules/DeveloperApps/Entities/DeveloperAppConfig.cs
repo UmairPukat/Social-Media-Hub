@@ -17,6 +17,7 @@ public class DeveloperAppConfig : BaseEntity
     public string ClientId { get; set; } = string.Empty;
     public string ClientSecret { get; set; } = string.Empty;
     public string? RedirectUri { get; set; }
+    public string? WebhookUrl { get; set; }
     public string? AuthUrl { get; set; }
     public string? BaseUrl { get; set; }
     public string? Scopes { get; set; }

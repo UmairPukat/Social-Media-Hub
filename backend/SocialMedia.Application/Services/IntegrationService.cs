@@ -545,6 +545,9 @@ public class IntegrationService : IIntegrationService
             _configuration["BackendBaseUrl"],
             _configuration["backendBaseUrl"]);
 
+        if (string.Equals(platformCode, "whatsapp", StringComparison.OrdinalIgnoreCase))
+            return ProcessOAuthRedirect.ResolveWhatsAppCallback(menuType, configRedirectUri, backendBase);
+
         if (ProcessOAuthRedirect.SupportsAutoRedirect(platformCode))
             return ProcessOAuthRedirect.Resolve(menuType, null, backendBase);
 

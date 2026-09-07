@@ -106,6 +106,7 @@ public static class DbSeeder
         await EnsureAppConnectionConfigsTableAsync(db);
         await EnsureIntegrationAppConfigsTableAsync(db);
         await EnsureDeveloperAppConfigsTableAsync(db);
+        await EnsureConfigWebhookUrlColumnsAsync(db);
 
         await ModuleSchemaEnsurer.EnsureAsync(db, logger);
         await ModuleTableMigration.MigrateAndDropLegacyAsync(db, logger);
@@ -522,6 +523,16 @@ public static class DbSeeder
             CREATE UNIQUE INDEX IF NOT EXISTS "IX_DeveloperAppConfigs_UserId_PlatformId_MenuType"
             ON "DeveloperAppConfigs" ("UserId", "PlatformId", "MenuType");
             """);
+    }
+
+    private static async Task EnsureConfigWebhookUrlColumnsAsync(AppDbContext db)
+    {
+        foreach (var table in new[] { "IntegrationAppConfigs", "AppConnectionConfigs", "DeveloperAppConfigs" })
+        {
+            await db.Database.ExecuteSqlRawAsync($"""
+                ALTER TABLE "{table}" ADD COLUMN IF NOT EXISTS "WebhookUrl" character varying(2000) NULL;
+                """);
+        }
     }
 }
 

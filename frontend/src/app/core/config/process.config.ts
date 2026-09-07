@@ -6,7 +6,9 @@ export const PROCESS_MODULES = {
     apiBase: 'integrations',
     routeBase: '/app/integrations',
     callbackPath: '/api/integrations/callback',
-    webhookPath: '/api/integrations/webhooks'
+    webhookPath: '/api/integrations/webhooks',
+    whatsappCallbackPath: '/api/integrations/whatsapp/callback',
+    whatsappWebhookPath: '/api/integrations/whatsapp/webhooks'
   },
   appConnections: {
     id: 'app_connection',
@@ -15,7 +17,9 @@ export const PROCESS_MODULES = {
     apiBase: 'app-connections',
     routeBase: '/app/app-connections',
     callbackPath: '/api/app-connections/callback',
-    webhookPath: '/api/app-connections/webhooks'
+    webhookPath: '/api/app-connections/webhooks',
+    whatsappCallbackPath: '/api/app-connections/whatsapp/callback',
+    whatsappWebhookPath: '/api/app-connections/whatsapp/webhooks'
   },
   developerApps: {
     id: 'developer_app',
@@ -24,7 +28,9 @@ export const PROCESS_MODULES = {
     apiBase: 'developer-apps',
     routeBase: '/app/developer-apps',
     callbackPath: '/api/developer-apps/callback',
-    webhookPath: '/api/developer-apps/webhooks'
+    webhookPath: '/api/developer-apps/webhooks',
+    whatsappCallbackPath: '/api/developer-apps/whatsapp/callback',
+    whatsappWebhookPath: '/api/developer-apps/whatsapp/webhooks'
   }
 } as const;
 

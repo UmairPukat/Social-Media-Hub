@@ -18,7 +18,7 @@ import {
   SaveAppConnectionConfigRequest
 } from '../../core/models/api.models';
 import { IntegrationCategoryGroup } from '../integrations/integrations.component';
-import { defaultOAuthRedirectUri, defaultWebhookRedirectUri } from '../../core/config/oauth-redirect.config';
+import { defaultOAuthRedirectUri, defaultWebhookRedirectUri, defaultWhatsAppOAuthRedirectUri, defaultWhatsAppWebhookUri } from '../../core/config/oauth-redirect.config';
 import { formatPlatformOAuthScopes, youtubeDefaultScopeString, tiktokDefaultScopeString } from '../../core/config/oauth-scopes.config';
 import { instagramAccountName, instagramDisplayName } from '../../core/utils/connection-details.util';
 
@@ -362,7 +362,8 @@ export class DeveloperAppsComponent implements OnInit {
       ...form,
       platformCode: code,
       menuType: this.menuType,
-      redirectUri: this.moduleRedirectUri,
+      redirectUri: this.isWhatsAppPlatform(code) ? form.redirectUri : this.moduleRedirectUri,
+      webhookUrl: this.isWhatsAppPlatform(code) ? form.webhookUrl : undefined,
       scopes: formatPlatformOAuthScopes(code, form.scopes)
     }).subscribe({
       next: (res) => {
@@ -608,12 +609,14 @@ export class DeveloperAppsComponent implements OnInit {
 
   private emptyConfigForm(platformCode: string): SaveAppConnectionConfigRequest {
     const code = platformCode.toLowerCase();
+    const isWhatsApp = code === 'whatsapp';
     return {
       platformCode: code,
       menuType: this.menuType,
       clientId: '',
       clientSecret: '',
-      redirectUri: this.moduleRedirectUri,
+      redirectUri: isWhatsApp ? defaultWhatsAppOAuthRedirectUri(this.menuType) : this.moduleRedirectUri,
+      webhookUrl: isWhatsApp ? defaultWhatsAppWebhookUri(this.menuType) : undefined,
       authUrl: DEFAULT_AUTH_URLS[code] || '',
       baseUrl: DEFAULT_BASE_URLS[code] || 'https://graph.facebook.com',
       scopes: DEFAULT_SCOPES[code] || '',
@@ -625,13 +628,19 @@ export class DeveloperAppsComponent implements OnInit {
   }
 
   private mapConfigToForm(config: AppConnectionConfig): SaveAppConnectionConfigRequest {
+    const isWhatsApp = this.isWhatsAppPlatform(config.platformCode);
     return {
       platformCode: config.platformCode,
       menuType: this.menuType,
       label: config.label,
       clientId: config.clientId,
       clientSecret: config.clientSecret,
-      redirectUri: this.moduleRedirectUri,
+      redirectUri: isWhatsApp
+        ? (config.redirectUri || defaultWhatsAppOAuthRedirectUri(this.menuType))
+        : this.moduleRedirectUri,
+      webhookUrl: isWhatsApp
+        ? (config.webhookUrl || defaultWhatsAppWebhookUri(this.menuType))
+        : undefined,
       authUrl: config.authUrl,
       baseUrl: config.baseUrl,
       scopes: config.scopes

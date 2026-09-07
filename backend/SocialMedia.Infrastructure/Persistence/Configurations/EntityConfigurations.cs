@@ -44,6 +44,7 @@ public class AppConnectionConfigConfiguration : IEntityTypeConfiguration<AppConn
         builder.Property(x => x.ClientId).IsRequired().HasMaxLength(200);
         builder.Property(x => x.ClientSecret).IsRequired();
         builder.Property(x => x.RedirectUri).HasMaxLength(2000);
+        builder.Property(x => x.WebhookUrl).HasMaxLength(2000);
         builder.Property(x => x.AuthUrl).HasMaxLength(2000);
         builder.Property(x => x.BaseUrl).HasMaxLength(500);
         builder.Property(x => x.Scopes).HasMaxLength(2000);

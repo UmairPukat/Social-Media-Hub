@@ -64,6 +64,15 @@ public abstract class ProcessConnectionControllerBase : ControllerBase
         return OAuthPopupHtmlBuilder.AsHtml(result);
     }
 
+    [AllowAnonymous]
+    [HttpGet("whatsapp/callback")]
+    public Task<IActionResult> WhatsAppCallback(
+        [FromQuery] string? code = null,
+        [FromQuery] string? state = null,
+        [FromQuery] string? error = null,
+        [FromQuery(Name = "error_description")] string? errorDescription = null)
+        => Callback(code, state, error, errorDescription);
+
     /// <summary>
     /// Meta webhooks must POST to <c>/webhooks</c>, not <c>/callback</c> (OAuth only).
     /// </summary>

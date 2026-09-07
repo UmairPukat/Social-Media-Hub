@@ -11,6 +11,7 @@ public class ProcessAppConfigDto
     public string? ClientSecret { get; set; }
     public bool HasClientSecret { get; set; }
     public string? RedirectUri { get; set; }
+    public string? WebhookUrl { get; set; }
     public string? AuthUrl { get; set; }
     public string? BaseUrl { get; set; }
     public string? Scopes { get; set; }
@@ -30,6 +31,7 @@ public class SaveProcessAppConfigRequest
     public string ClientId { get; set; } = string.Empty;
     public string? ClientSecret { get; set; }
     public string? RedirectUri { get; set; }
+    public string? WebhookUrl { get; set; }
     public string? AuthUrl { get; set; }
     public string? BaseUrl { get; set; }
     public string? Scopes { get; set; }
