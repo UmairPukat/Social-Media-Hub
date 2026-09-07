@@ -52,6 +52,28 @@ public abstract class ProcessWebhooksControllerBase : ControllerBase
         return Ok("EVENT_RECEIVED");
     }
 
+    /// <summary>
+    /// Manual/Postman testing — skips Meta signature validation (JWT required).
+    /// Wraps partial WhatsApp change payloads into the full Meta envelope before processing.
+    /// </summary>
+    [Authorize]
+    [HttpPost("webhooks/simulate")]
+    public async Task<IActionResult> Simulate()
+    {
+        var rawBody = await new StreamReader(Request.Body).ReadToEndAsync();
+        var normalized = SocialMedia.Application.Meta.MetaWebhookPayloadNormalizer.NormalizeForProcessing(rawBody);
+        var resolved = _webhookService.DetectPlatformFromPayload(normalized) ?? "whatsapp";
+        var headersJson = System.Text.Json.JsonSerializer.Serialize(
+            Request.Headers.ToDictionary(h => h.Key, h => h.Value.ToString()));
+
+        _logger.LogInformation("{MenuType} webhook simulate at {Time}. Platform={Platform}", MenuType, DateTime.UtcNow, resolved);
+
+        var response = await _webhookService.ReceiveForProcessAsync(
+            MenuType, resolved, normalized, null, headersJson, signatureValid: true);
+
+        return response.Success ? Ok(response) : BadRequest(response);
+    }
+
     [Authorize]
     [HttpPost("webhooks/subscribe")]
     public async Task<IActionResult> Subscribe(string platformCode, [FromQuery] string? callbackUrl = null)

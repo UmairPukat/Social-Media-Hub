@@ -153,8 +153,24 @@ public class WebhookService : IWebhookService
                     "Webhook rejected — invalid X-Hub-Signature-256 for module {MenuType}, platform {PlatformCode}.",
                     normalizedMenu,
                     platformCode);
+
+                if (!string.IsNullOrWhiteSpace(normalizedMenu))
+                {
+                    await StoreRejectedWebhookAsync(
+                        normalizedMenu,
+                        platformCode,
+                        payloadJson,
+                        signature,
+                        headersJson,
+                        "Invalid webhook signature — missing or wrong X-Hub-Signature-256 header. " +
+                        "Sign the raw POST body with this module's Meta App Secret.",
+                        cancellationToken);
+                }
+
                 return ApiResponse<object>.Fail("Invalid webhook signature.");
             }
+
+            payloadJson = MetaWebhookPayloadNormalizer.NormalizeForProcessing(payloadJson);
 
             var effectiveMenu = normalizedMenu ?? MenuTypes.Integration;
             var store = _processData.ForMenu(effectiveMenu);
@@ -515,5 +531,53 @@ public class WebhookService : IWebhookService
             Add(secret);
 
         return secrets;
+    }
+
+    private async Task StoreRejectedWebhookAsync(
+        string menuType,
+        string platformCode,
+        string payloadJson,
+        string? signature,
+        string? headersJson,
+        string error,
+        CancellationToken cancellationToken)
+    {
+        var store = _processData.ForMenu(menuType);
+        var normalizedPayload = MetaWebhookPayloadNormalizer.NormalizeForProcessing(payloadJson);
+        var descriptor = Describe(normalizedPayload);
+        var targetCode = descriptor.PlatformCode ?? platformCode;
+        var targetPlatform = await store.GetPlatformByCodeAsync(targetCode, cancellationToken);
+
+        var receivedAt = DateTime.UtcNow;
+        var webhookEvent = store.NewWebhookEvent();
+        webhookEvent.PlatformId = targetPlatform?.Id;
+        webhookEvent.EventType = descriptor.EventType;
+        webhookEvent.ObjectType = targetCode;
+        webhookEvent.ExternalObjectId = descriptor.EntryId;
+        webhookEvent.PayloadJson = payloadJson;
+        webhookEvent.Signature = signature;
+        webhookEvent.HeadersJson = headersJson;
+        webhookEvent.Status = WebhookEventStatus.Failed;
+        webhookEvent.Error = error;
+        webhookEvent.ReceivedAt = receivedAt;
+        webhookEvent.ProcessedAt = receivedAt;
+
+        await store.AddWebhookEventAsync(webhookEvent, cancellationToken);
+
+        var log = store.NewWebhookLog();
+        log.PlatformId = webhookEvent.PlatformId;
+        log.PlatformCode = platformCode;
+        log.Signature = signature;
+        log.HeadersJson = headersJson;
+        log.PayloadJson = payloadJson;
+        log.ReceivedAt = receivedAt;
+        await store.AddWebhookLogAsync(log, cancellationToken);
+        await store.SaveChangesAsync(cancellationToken);
+
+        _logger.LogInformation(
+            "Rejected webhook stored for module {MenuType}. WebhookEventId={WebhookEventId}, Error={Error}",
+            menuType,
+            webhookEvent.Id,
+            error);
     }
 }
