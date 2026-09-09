@@ -16,6 +16,7 @@ public static class DependencyInjection
     public static IServiceCollection AddApplication(this IServiceCollection services)
     {
         services.AddScoped<IAuthService, AuthService>();
+        services.AddScoped<IUserAdminService, UserAdminService>();
         services.AddScoped<IIntegrationService, IntegrationService>();
         services.AddScoped<IProcessAppConfigService, ProcessAppConfigService>();
         services.AddScoped<IIntegrationsAppConfigService, IntegrationsAppConfigService>();

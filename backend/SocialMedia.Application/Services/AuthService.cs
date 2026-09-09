@@ -94,6 +94,7 @@ public class AuthService : IAuthService
             Token = _jwtTokenService.GenerateToken(user),
             Email = user.Email,
             FullName = user.FullName,
+            Role = user.Role,
             ExpiresAt = DateTime.UtcNow.AddMinutes(_jwtSettings.ExpirationMinutes)
         };
     }

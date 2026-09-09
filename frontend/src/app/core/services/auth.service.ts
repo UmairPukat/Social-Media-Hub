@@ -14,7 +14,7 @@ export class AuthService {
 
   /** Reactive auth state for the shell layout. */
   readonly isAuthenticated = signal(!!localStorage.getItem(TOKEN_KEY));
-  readonly currentUser = signal<{ email: string; fullName: string } | null>(this.readStoredUser());
+  readonly currentUser = signal<{ email: string; fullName: string; role?: string } | null>(this.readStoredUser());
 
   constructor(private http: HttpClient, private router: Router) {}
 
@@ -46,14 +46,26 @@ export class AuthService {
     return localStorage.getItem(TOKEN_KEY);
   }
 
-  private persistSession(data: AuthResponse): void {
-    localStorage.setItem(TOKEN_KEY, data.token);
-    localStorage.setItem(USER_KEY, JSON.stringify({ email: data.email, fullName: data.fullName }));
-    this.isAuthenticated.set(true);
-    this.currentUser.set({ email: data.email, fullName: data.fullName });
+  isAdmin(): boolean {
+    return (this.currentUser()?.role || '').toLowerCase() === 'admin';
   }
 
-  private readStoredUser(): { email: string; fullName: string } | null {
+  private persistSession(data: AuthResponse): void {
+    localStorage.setItem(TOKEN_KEY, data.token);
+    localStorage.setItem(USER_KEY, JSON.stringify({
+      email: data.email,
+      fullName: data.fullName,
+      role: data.role || 'User'
+    }));
+    this.isAuthenticated.set(true);
+    this.currentUser.set({
+      email: data.email,
+      fullName: data.fullName,
+      role: data.role || 'User'
+    });
+  }
+
+  private readStoredUser(): { email: string; fullName: string; role?: string } | null {
     const raw = localStorage.getItem(USER_KEY);
     if (!raw) return null;
     try {

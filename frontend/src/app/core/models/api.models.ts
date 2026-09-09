@@ -56,7 +56,21 @@ export interface AuthResponse {
   token: string;
   email: string;
   fullName: string;
+  role?: string;
   expiresAt: string;
+}
+
+export interface UserListItem {
+  id: string;
+  email: string;
+  fullName: string;
+  role: string;
+  isActive: boolean;
+  createdAt: string;
+}
+
+export interface AdminResetPasswordRequest {
+  newPassword: string;
 }
 
 export interface LoginRequest {

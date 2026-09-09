@@ -1,0 +1,135 @@
+<section class="page users-page">
+  <header class="page-header">
+    <div>
+      <p class="eyebrow">Administration</p>
+      <h1>Users</h1>
+      <p>Manage workspace accounts, reset passwords, and remove users.</p>
+    </div>
+    <button mat-stroked-button type="button" (click)="reload()" [disabled]="loading()">
+      <mat-icon>refresh</mat-icon>
+      Refresh
+    </button>
+  </header>
+
+  @if (banner()) {
+    <p class="banner">{{ banner() }}</p>
+  }
+
+  @if (error() && !selectedUser()) {
+    <p class="error">{{ error() }}</p>
+  }
+
+  <div class="panel">
+    @if (loading()) {
+      <p class="empty">Loading users…</p>
+    } @else if (!users().length) {
+      <p class="empty">No users found.</p>
+    } @else {
+      <div class="table-wrap">
+        <table class="users-table">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Email</th>
+              <th>Role</th>
+              <th>Status</th>
+              <th>Created</th>
+              <th class="actions-col">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (user of users(); track user.id) {
+              <tr>
+                <td>
+                  <strong>{{ user.fullName }}</strong>
+                </td>
+                <td>{{ user.email }}</td>
+                <td>
+                  <span class="role-pill" [class.admin]="user.role === 'Admin'">{{ user.role }}</span>
+                </td>
+                <td>
+                  <span class="status-pill" [class.inactive]="!user.isActive">
+                    {{ user.isActive ? 'Active' : 'Inactive' }}
+                  </span>
+                </td>
+                <td>{{ user.createdAt | date: 'medium' }}</td>
+                <td class="actions-col">
+                  <button
+                    mat-icon-button
+                    type="button"
+                    matTooltip="Reset password"
+                    aria-label="Reset password"
+                    (click)="openReset(user)">
+                    <mat-icon>lock_reset</mat-icon>
+                  </button>
+                  <button
+                    mat-icon-button
+                    type="button"
+                    color="warn"
+                    matTooltip="Delete user"
+                    aria-label="Delete user"
+                    (click)="deleteUser(user)">
+                    <mat-icon>delete</mat-icon>
+                  </button>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    }
+  </div>
+</section>
+
+<dialog #resetDialog class="reset-dialog" (close)="selectedUser.set(null)">
+  @if (selectedUser(); as user) {
+    <header class="dialog-head">
+      <div>
+        <p class="eyebrow">Reset password</p>
+        <h2>{{ user.fullName }}</h2>
+        <p>{{ user.email }}</p>
+      </div>
+      <button type="button" class="icon-close" aria-label="Close" (click)="closeReset()">
+        <mat-icon>close</mat-icon>
+      </button>
+    </header>
+
+    @if (error()) {
+      <p class="error">{{ error() }}</p>
+    }
+
+    <form class="reset-form" (ngSubmit)="submitReset()">
+      <mat-form-field appearance="outline" class="full">
+        <mat-label>New password</mat-label>
+        <input
+          matInput
+          [type]="showPassword() ? 'text' : 'password'"
+          [ngModel]="newPassword()"
+          name="newPassword"
+          (ngModelChange)="newPassword.set($event)"
+          required />
+        <button matSuffix type="button" class="suffix-btn" (click)="togglePasswordVisibility()">
+          <mat-icon>{{ showPassword() ? 'visibility_off' : 'visibility' }}</mat-icon>
+        </button>
+      </mat-form-field>
+
+      <mat-form-field appearance="outline" class="full">
+        <mat-label>Confirm password</mat-label>
+        <input
+          matInput
+          [type]="showPassword() ? 'text' : 'password'"
+          [ngModel]="confirmPassword()"
+          name="confirmPassword"
+          (ngModelChange)="confirmPassword.set($event)"
+          required />
+      </mat-form-field>
+
+      <footer class="dialog-foot">
+        <button mat-stroked-button type="button" (click)="closeReset()">Cancel</button>
+        <button mat-flat-button color="primary" type="submit" [disabled]="saving()">
+          {{ saving() ? 'Saving…' : 'Update password' }}
+        </button>
+      </footer>
+    </form>
+  }
+</dialog>

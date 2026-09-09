@@ -59,7 +59,7 @@
 
         <p class="nav-label">Global</p>
         <nav class="nav-list">
-          @for (item of globalMenu; track item.path) {
+          @for (item of visibleGlobalMenu(); track item.path) {
             <a [routerLink]="item.path" routerLinkActive="active">
               <span class="nav-ico"><mat-icon>{{ item.icon }}</mat-icon></span>
               <span class="nav-text">{{ item.label }}</span>

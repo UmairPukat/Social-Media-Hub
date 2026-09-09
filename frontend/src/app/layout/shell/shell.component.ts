@@ -22,9 +22,14 @@ export class ShellComponent {
 
   readonly globalMenu = [
     { path: '/app/dashboard', icon: 'dashboard', label: 'Dashboard' },
+    { path: '/app/users', icon: 'group', label: 'Users', adminOnly: true },
     { path: '/app/signup', icon: 'person_add', label: 'Invite Signup' },
     { path: '/app/settings', icon: 'settings', label: 'Settings' }
   ];
+
+  visibleGlobalMenu() {
+    return this.globalMenu.filter((item) => !item.adminOnly || this.auth.isAdmin());
+  }
 
   readonly processSubItems = [
     { suffix: 'connect', icon: 'hub', label: 'Connect' },
