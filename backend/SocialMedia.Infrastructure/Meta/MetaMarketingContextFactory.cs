@@ -37,7 +37,7 @@ public class MetaMarketingContextFactory : IMetaMarketingContextFactory
             ?? throw new MetaGraphApiException("Facebook is not configured for this module.");
 
         var account = await store.GetSocialAccountByUserAndPlatformAsync(userId, platform.Id, cancellationToken)
-            ?? throw new MetaGraphApiException("Connect Facebook in Integrations before using Meta Ads & Commerce.");
+            ?? throw new MetaGraphApiException("Connect Facebook in Connect before using Meta Ads & Commerce.");
 
         if (account.Status != SocialAccountStatus.Connected)
             throw new MetaGraphApiException("Facebook account is not connected.");

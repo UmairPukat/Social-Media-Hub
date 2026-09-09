@@ -41,7 +41,7 @@ export class ShellComponent {
     { suffix: 'accounts', icon: 'link', label: 'Connected Accounts' }
   ];
 
-  readonly integrationMetaAdsItems = [
+  readonly metaAdsNavItems = [
     { suffix: 'meta-ads/ad-accounts', icon: 'account_balance', label: 'Ad Accounts' },
     { suffix: 'meta-ads/campaigns', icon: 'campaign', label: 'Campaigns' },
     { suffix: 'meta-ads/create-campaign', icon: 'add_circle', label: 'Create Campaign' },
@@ -56,8 +56,14 @@ export class ShellComponent {
     integration: true,
     integration_meta_ads: true,
     app_connection: false,
-    developer_app: false
+    app_connection_meta_ads: false,
+    developer_app: false,
+    developer_app_meta_ads: false
   });
+
+  metaAdsGroupKey(moduleId: string): string {
+    return `${moduleId}_meta_ads`;
+  }
 
   toggle(): void {
     this.opened.update(v => !v);

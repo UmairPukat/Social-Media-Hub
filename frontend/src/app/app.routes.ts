@@ -31,7 +31,7 @@ const processChildren = (connectComponent: () => Promise<{ default?: never } & i
   }
 ] satisfies Routes;
 
-const integrationMetaAdsRoutes = [
+const metaAdsRoutes = [
   {
     path: 'meta-ads',
     children: [
@@ -105,20 +105,26 @@ export const routes: Routes = [
           ...processChildren(() =>
             import('./features/integrations/integrations.component').then(m => m.IntegrationsComponent)
           ),
-          ...integrationMetaAdsRoutes
+          ...metaAdsRoutes
         ]
       },
       {
         path: 'app-connections',
-        children: processChildren(() =>
-          import('./features/app-connections/app-connections.component').then(m => m.AppConnectionsComponent)
-        )
+        children: [
+          ...processChildren(() =>
+            import('./features/app-connections/app-connections.component').then(m => m.AppConnectionsComponent)
+          ),
+          ...metaAdsRoutes
+        ]
       },
       {
         path: 'developer-apps',
-        children: processChildren(() =>
-          import('./features/developer-apps/developer-apps.component').then(m => m.DeveloperAppsComponent)
-        )
+        children: [
+          ...processChildren(() =>
+            import('./features/developer-apps/developer-apps.component').then(m => m.DeveloperAppsComponent)
+          ),
+          ...metaAdsRoutes
+        ]
       },
       // Legacy redirects
       { path: 'integrations-legacy', redirectTo: 'integrations/connect', pathMatch: 'full' },

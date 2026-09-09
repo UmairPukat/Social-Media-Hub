@@ -91,3 +91,17 @@ public class AnalyticsController : ProcessAnalyticsControllerBase
 
     protected override string MenuType => ProcessModules.DeveloperApps.MenuType;
 }
+
+[Authorize]
+[Route(ProcessModules.DeveloperApps.ApiRoute)]
+[ApiController]
+public class MetaAdsController : ProcessMetaAdsControllerBase
+{
+    public MetaAdsController(
+        IMetaAdsService adsService,
+        IMetaInsightsService insightsService,
+        IMetaCatalogService catalogService)
+        : base(adsService, insightsService, catalogService) { }
+
+    protected override string MenuType => ProcessModules.DeveloperApps.MenuType;
+}

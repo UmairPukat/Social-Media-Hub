@@ -6,6 +6,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MetaAdsApiService } from '../../core/services/meta-ads-api.service';
 import { MetaAdsStateService } from '../../core/services/meta-ads-state.service';
 import { ProcessRouteService } from '../../core/services/process-route.service';
+import { PROCESS_MODULE_LIST } from '../../core/config/process.config';
 import { MetaAdAccount } from '../../core/models/meta-ads.models';
 import { metaErrorMessage } from './meta-ads.util';
 
@@ -25,9 +26,14 @@ export class MetaAdsAdAccountsComponent implements OnInit {
   readonly loading = signal(false);
   readonly error = signal('');
   readonly banner = signal('');
-  readonly selectedId = signal<string | null>(this.state.selectedAdAccount()?.id ?? null);
+  readonly selectedId = signal<string | null>(null);
+
+  readonly processLabel = () =>
+    PROCESS_MODULE_LIST.find(m => m.id === this.processRoute.currentMenuType())?.label ?? 'Process';
 
   ngOnInit(): void {
+    this.state.syncForCurrentProcess();
+    this.selectedId.set(this.state.selectedAdAccount()?.id ?? null);
     this.load();
   }
 

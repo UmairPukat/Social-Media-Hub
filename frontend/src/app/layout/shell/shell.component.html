@@ -83,22 +83,20 @@
                   </a>
                 }
               </nav>
-              @if (module.id === 'integration') {
-                <button type="button" class="process-heading nested-heading" (click)="toggleGroup('integration_meta_ads')">
-                  <mat-icon>storefront</mat-icon>
-                  <span>Meta Ads & Commerce</span>
-                  <mat-icon class="chev">{{ isExpanded('integration_meta_ads') ? 'expand_less' : 'expand_more' }}</mat-icon>
-                </button>
-                @if (isExpanded('integration_meta_ads')) {
-                  <nav class="nav-list nested deeper">
-                    @for (sub of integrationMetaAdsItems; track sub.suffix) {
-                      <a [routerLink]="module.routeBase + '/' + sub.suffix" routerLinkActive="active">
-                        <span class="nav-ico"><mat-icon>{{ sub.icon }}</mat-icon></span>
-                        <span class="nav-text">{{ sub.label }}</span>
-                      </a>
-                    }
-                  </nav>
-                }
+              <button type="button" class="process-heading nested-heading" (click)="toggleGroup(metaAdsGroupKey(module.id))">
+                <mat-icon>storefront</mat-icon>
+                <span>Meta Ads & Commerce</span>
+                <mat-icon class="chev">{{ isExpanded(metaAdsGroupKey(module.id)) ? 'expand_less' : 'expand_more' }}</mat-icon>
+              </button>
+              @if (isExpanded(metaAdsGroupKey(module.id))) {
+                <nav class="nav-list nested deeper">
+                  @for (sub of metaAdsNavItems; track sub.suffix) {
+                    <a [routerLink]="module.routeBase + '/' + sub.suffix" routerLinkActive="active">
+                      <span class="nav-ico"><mat-icon>{{ sub.icon }}</mat-icon></span>
+                      <span class="nav-text">{{ sub.label }}</span>
+                    </a>
+                  }
+                </nav>
               }
             }
           </div>
