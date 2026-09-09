@@ -76,7 +76,7 @@ export class MetaAdsAdSetsComponent implements OnInit {
   loadAdSets(after?: string): void {
     const adAccount = this.state.selectedAdAccount();
     if (!adAccount) {
-      this.error.set('Select an ad account first.');
+      this.adSets.set([]);
       return;
     }
 
@@ -109,10 +109,7 @@ export class MetaAdsAdSetsComponent implements OnInit {
   createAdSet(): void {
     const adAccount = this.state.selectedAdAccount();
     const campaignId = this.selectedCampaignId();
-    if (!adAccount || !campaignId) {
-      this.error.set('Select an ad account and campaign first.');
-      return;
-    }
+    if (!adAccount || !campaignId) return;
 
     this.creating.set(true);
     this.api

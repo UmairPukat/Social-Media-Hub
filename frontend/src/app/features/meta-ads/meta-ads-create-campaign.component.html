@@ -1,67 +1,97 @@
-<section class="meta-page">
-  <header class="page-header">
+<section class="page meta-page">
+  <header class="meta-hero">
     <div>
       <p class="eyebrow">Meta Ads</p>
       <h1>Create Campaign</h1>
       <p class="lede">Create a paused campaign for Meta App Review. New campaigns default to PAUSED to avoid accidental spend.</p>
-      <span class="permission-badge"><mat-icon>verified_user</mat-icon> Permission: ads_management</span>
+      <div class="meta-badges">
+        <span class="permission-badge"><mat-icon>verified_user</mat-icon> ads_management</span>
+      </div>
     </div>
     <a mat-stroked-button routerLink="../campaigns"><mat-icon>arrow_back</mat-icon> Back to Campaigns</a>
   </header>
 
-  @if (state.selectedAdAccount(); as account) {
-    <div class="context-bar">
-      <span>Ad account:</span>
-      <strong>{{ account.name }}</strong>
-      <span>({{ account.id }})</span>
+  @if (banner()) {
+    <div class="notice success">
+      <mat-icon>check_circle</mat-icon>
+      <span>{{ banner() }}</span>
     </div>
-  } @else {
-    <p class="error">Select an ad account on the <a routerLink="../ad-accounts">Ad Accounts</a> page first.</p>
   }
 
-  @if (banner()) { <p class="banner">{{ banner() }}</p> }
-  @if (error()) { <p class="error">{{ error() }}</p> }
+  @if (error()) {
+    <div class="notice error">
+      <mat-icon>error</mat-icon>
+      <span>{{ error() }}</span>
+    </div>
+  }
 
-  <div class="panel form-panel">
-    <mat-form-field appearance="outline">
-      <mat-label>Campaign Name</mat-label>
-      <input matInput [ngModel]="name()" (ngModelChange)="name.set($event)" />
-    </mat-form-field>
-
-    <mat-form-field appearance="outline">
-      <mat-label>Objective</mat-label>
-      <mat-select [ngModel]="objective()" (ngModelChange)="objective.set($event)">
-        @for (obj of objectives; track obj) {
-          <mat-option [value]="obj">{{ obj }}</mat-option>
-        }
-      </mat-select>
-    </mat-form-field>
-
-    <mat-form-field appearance="outline">
-      <mat-label>Status</mat-label>
-      <mat-select [ngModel]="status()" (ngModelChange)="status.set($event)">
-        <mat-option value="PAUSED">PAUSED</mat-option>
-        <mat-option value="ACTIVE">ACTIVE</mat-option>
-      </mat-select>
-    </mat-form-field>
-
-    <mat-form-field appearance="outline">
-      <mat-label>Special Ad Category (optional)</mat-label>
-      <mat-select [ngModel]="specialCategory()" (ngModelChange)="specialCategory.set($event)">
-        <mat-option value="">None</mat-option>
-        <mat-option value="HOUSING">HOUSING</mat-option>
-        <mat-option value="EMPLOYMENT">EMPLOYMENT</mat-option>
-        <mat-option value="CREDIT">CREDIT</mat-option>
-      </mat-select>
-    </mat-form-field>
-
-    <button mat-flat-button color="primary" type="button" (click)="create()" [disabled]="loading() || !state.selectedAdAccount()">
-      <mat-icon>campaign</mat-icon>
-      Create Campaign
-    </button>
-
-    @if (createdId()) {
-      <p class="banner">Campaign ID: <strong>{{ createdId() }}</strong></p>
+  @if (!state.selectedAdAccount()) {
+    <div class="setup-hint">
+      <mat-icon>account_balance</mat-icon>
+      <div>
+        <strong>Select an ad account first</strong>
+        <p>Open <a routerLink="../ad-accounts">Ad Accounts</a> before creating a campaign.</p>
+      </div>
+      <a mat-stroked-button routerLink="../ad-accounts">Go to Ad Accounts</a>
+    </div>
+  } @else {
+    @if (state.selectedAdAccount(); as account) {
+      <div class="context-strip">
+        <span class="label">Active ad account</span>
+        <strong>{{ account.name }}</strong>
+        <span class="mono">{{ account.id }}</span>
+      </div>
     }
-  </div>
+
+    <section class="content-panel form-panel">
+      <h3>Campaign details</h3>
+      <div class="form-grid">
+        <mat-form-field appearance="outline">
+          <mat-label>Campaign Name</mat-label>
+          <input matInput [ngModel]="name()" (ngModelChange)="name.set($event)" />
+        </mat-form-field>
+
+        <mat-form-field appearance="outline">
+          <mat-label>Objective</mat-label>
+          <mat-select [ngModel]="objective()" (ngModelChange)="objective.set($event)">
+            @for (obj of objectives; track obj) {
+              <mat-option [value]="obj">{{ obj }}</mat-option>
+            }
+          </mat-select>
+        </mat-form-field>
+
+        <mat-form-field appearance="outline">
+          <mat-label>Status</mat-label>
+          <mat-select [ngModel]="status()" (ngModelChange)="status.set($event)">
+            <mat-option value="PAUSED">PAUSED</mat-option>
+            <mat-option value="ACTIVE">ACTIVE</mat-option>
+          </mat-select>
+        </mat-form-field>
+
+        <mat-form-field appearance="outline">
+          <mat-label>Special Ad Category (optional)</mat-label>
+          <mat-select [ngModel]="specialCategory()" (ngModelChange)="specialCategory.set($event)">
+            <mat-option value="">None</mat-option>
+            <mat-option value="HOUSING">HOUSING</mat-option>
+            <mat-option value="EMPLOYMENT">EMPLOYMENT</mat-option>
+            <mat-option value="CREDIT">CREDIT</mat-option>
+          </mat-select>
+        </mat-form-field>
+      </div>
+
+      <div class="form-actions">
+        <button mat-flat-button color="primary" type="button" (click)="create()" [disabled]="loading()">
+          <mat-icon>campaign</mat-icon>
+          Create Campaign
+        </button>
+      </div>
+
+      @if (createdId()) {
+        <div class="notice success" style="margin-top: 14px">
+          <mat-icon>check_circle</mat-icon>
+          <span>Campaign ID: <strong>{{ createdId() }}</strong></span>
+        </div>
+      }
+    </section>
+  }
 </section>

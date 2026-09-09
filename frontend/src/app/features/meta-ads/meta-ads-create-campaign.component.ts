@@ -43,10 +43,7 @@ export class MetaAdsCreateCampaignComponent {
 
   create(): void {
     const adAccount = this.state.selectedAdAccount();
-    if (!adAccount) {
-      this.error.set('Select an ad account first.');
-      return;
-    }
+    if (!adAccount) return;
 
     this.loading.set(true);
     this.error.set('');

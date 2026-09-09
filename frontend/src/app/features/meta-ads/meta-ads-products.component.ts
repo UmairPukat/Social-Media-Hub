@@ -53,7 +53,7 @@ export class MetaAdsProductsComponent implements OnInit {
   load(after?: string): void {
     const catalog = this.state.selectedCatalog();
     if (!catalog) {
-      this.error.set('Select a catalog on the Catalogs page first.');
+      this.products.set([]);
       return;
     }
 

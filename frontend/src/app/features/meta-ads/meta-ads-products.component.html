@@ -1,107 +1,141 @@
-<section class="meta-page">
-  <header class="page-header">
+<section class="page meta-page">
+  <header class="meta-hero">
     <div>
       <p class="eyebrow">Meta Commerce</p>
       <h1>Products</h1>
       <p class="lede">View and manage catalog products through the Meta Catalog API.</p>
-      <span class="permission-badge"><mat-icon>verified_user</mat-icon> Permission: catalog_management</span>
+      <div class="meta-badges">
+        <span class="permission-badge"><mat-icon>verified_user</mat-icon> catalog_management</span>
+      </div>
     </div>
-    <div class="header-actions">
-      <button mat-stroked-button type="button" (click)="openCreate()" [disabled]="!state.selectedCatalog()">
+    <div class="hero-actions">
+      <button mat-flat-button color="primary" type="button" (click)="openCreate()" [disabled]="!state.selectedCatalog()">
         <mat-icon>add</mat-icon> Create Product
       </button>
-      <button mat-stroked-button type="button" (click)="load()" [disabled]="loading()">
+      <button mat-stroked-button type="button" (click)="load()" [disabled]="loading() || !state.selectedCatalog()">
         <mat-icon>refresh</mat-icon> Refresh
       </button>
     </div>
   </header>
 
-  @if (state.selectedCatalog(); as catalog) {
-    <div class="context-bar">
-      <span>Catalog:</span>
-      <strong>{{ catalog.name }}</strong>
-      <span>({{ catalog.id }})</span>
-      <a routerLink="../catalogs">Change</a>
+  @if (banner()) {
+    <div class="notice success">
+      <mat-icon>check_circle</mat-icon>
+      <span>{{ banner() }}</span>
+    </div>
+  }
+
+  @if (error()) {
+    <div class="notice error">
+      <mat-icon>error</mat-icon>
+      <span>{{ error() }}</span>
+    </div>
+  }
+
+  @if (!state.selectedCatalog()) {
+    <div class="setup-hint">
+      <mat-icon>inventory_2</mat-icon>
+      <div>
+        <strong>Select a catalog first</strong>
+        <p>Open <a routerLink="../catalogs">Catalogs</a>, choose a catalog, then return here to browse and manage products.</p>
+      </div>
+      <a mat-stroked-button routerLink="../catalogs">Go to Catalogs</a>
     </div>
   } @else {
-    <p class="error">Select a catalog on the <a routerLink="../catalogs">Catalogs</a> page first.</p>
-  }
-
-  @if (banner()) { <p class="banner">{{ banner() }}</p> }
-  @if (error()) { <p class="error">{{ error() }}</p> }
-
-  @if (showForm()) {
-    <div class="panel form-panel">
-      <h3>{{ editProductId() ? 'Update Product' : 'Create Product' }}</h3>
-      <mat-form-field appearance="outline"><mat-label>Name</mat-label><input matInput [ngModel]="name()" (ngModelChange)="name.set($event)" /></mat-form-field>
-      @if (!editProductId()) {
-        <mat-form-field appearance="outline"><mat-label>Retailer ID</mat-label><input matInput [ngModel]="retailerId()" (ngModelChange)="retailerId.set($event)" /></mat-form-field>
-      }
-      <mat-form-field appearance="outline"><mat-label>Price</mat-label><input matInput [ngModel]="price()" (ngModelChange)="price.set($event)" /></mat-form-field>
-      <mat-form-field appearance="outline"><mat-label>Currency</mat-label><input matInput [ngModel]="currency()" (ngModelChange)="currency.set($event)" /></mat-form-field>
-      <mat-form-field appearance="outline"><mat-label>Availability</mat-label><input matInput [ngModel]="availability()" (ngModelChange)="availability.set($event)" /></mat-form-field>
-      <mat-form-field appearance="outline"><mat-label>Product URL</mat-label><input matInput [ngModel]="url()" (ngModelChange)="url.set($event)" /></mat-form-field>
-      <mat-form-field appearance="outline"><mat-label>Image URL</mat-label><input matInput [ngModel]="imageUrl()" (ngModelChange)="imageUrl.set($event)" /></mat-form-field>
-      <div class="header-actions">
-        <button mat-flat-button color="primary" type="button" (click)="saveProduct()" [disabled]="saving()">Save</button>
-        <button mat-stroked-button type="button" (click)="showForm.set(false)">Cancel</button>
-      </div>
-    </div>
-  }
-
-  <div class="toolbar">
-    <mat-form-field appearance="outline">
-      <mat-label>Search</mat-label>
-      <input matInput [ngModel]="search()" (ngModelChange)="search.set($event)" (keyup.enter)="load()" placeholder="Name or retailer ID" />
-    </mat-form-field>
-    <button mat-stroked-button type="button" (click)="load()">Search</button>
-  </div>
-
-  <div class="panel">
-    @if (loading()) {
-      <p class="empty">Loading products…</p>
-    } @else if (!filtered().length) {
-      <p class="empty">No products found in this catalog.</p>
-    } @else {
-      <div class="table-wrap">
-        <table class="data-table">
-          <thead>
-            <tr>
-              <th></th>
-              <th>Product ID</th>
-              <th>Name</th>
-              <th>Retailer ID</th>
-              <th>Price</th>
-              <th>Availability</th>
-              <th>Status</th>
-              <th>URL</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            @for (product of filtered(); track product.id) {
-              <tr>
-                <td>
-                  @if (product.imageUrl) {
-                    <img class="product-thumb" [src]="product.imageUrl" alt="" />
-                  }
-                </td>
-                <td>{{ product.id }}</td>
-                <td><strong>{{ product.name }}</strong></td>
-                <td>{{ product.retailerId || '—' }}</td>
-                <td>{{ product.price || '—' }} {{ product.currency || '' }}</td>
-                <td>{{ product.availability || '—' }}</td>
-                <td>{{ product.reviewStatus || '—' }}</td>
-                <td>@if (product.url) { <a [href]="product.url" target="_blank" rel="noopener">Open</a> } @else { — }</td>
-                <td>
-                  <button mat-button type="button" (click)="openEdit(product)">Edit</button>
-                  <button mat-button color="warn" type="button" (click)="deleteProduct(product)">Delete</button>
-                </td>
-              </tr>
-            }
-          </tbody>
-        </table>
+    @if (state.selectedCatalog(); as catalog) {
+      <div class="context-strip">
+        <span class="label">Active catalog</span>
+        <strong>{{ catalog.name }}</strong>
+        <span class="mono">{{ catalog.id }}</span>
+        <a routerLink="../catalogs">Change catalog</a>
       </div>
     }
-  </div>
+
+    @if (showForm()) {
+      <div class="form-panel">
+        <h3>{{ editProductId() ? 'Update product' : 'Create product' }}</h3>
+        <div class="form-grid">
+          <mat-form-field appearance="outline"><mat-label>Name</mat-label><input matInput [ngModel]="name()" (ngModelChange)="name.set($event)" /></mat-form-field>
+          @if (!editProductId()) {
+            <mat-form-field appearance="outline"><mat-label>Retailer ID</mat-label><input matInput [ngModel]="retailerId()" (ngModelChange)="retailerId.set($event)" /></mat-form-field>
+          }
+          <mat-form-field appearance="outline"><mat-label>Price</mat-label><input matInput [ngModel]="price()" (ngModelChange)="price.set($event)" /></mat-form-field>
+          <mat-form-field appearance="outline"><mat-label>Currency</mat-label><input matInput [ngModel]="currency()" (ngModelChange)="currency.set($event)" /></mat-form-field>
+          <mat-form-field appearance="outline"><mat-label>Availability</mat-label><input matInput [ngModel]="availability()" (ngModelChange)="availability.set($event)" /></mat-form-field>
+          <mat-form-field appearance="outline"><mat-label>Product URL</mat-label><input matInput [ngModel]="url()" (ngModelChange)="url.set($event)" /></mat-form-field>
+          <mat-form-field appearance="outline"><mat-label>Image URL</mat-label><input matInput [ngModel]="imageUrl()" (ngModelChange)="imageUrl.set($event)" /></mat-form-field>
+        </div>
+        <div class="form-actions">
+          <button mat-flat-button color="primary" type="button" (click)="saveProduct()" [disabled]="saving()">Save product</button>
+          <button mat-stroked-button type="button" (click)="showForm.set(false)">Cancel</button>
+        </div>
+      </div>
+    }
+
+    <section class="content-panel">
+      <div class="panel-head">
+        <h2>Product catalog</h2>
+        <div class="toolbar">
+          <mat-form-field appearance="outline">
+            <mat-label>Search products</mat-label>
+            <input matInput [ngModel]="search()" (ngModelChange)="search.set($event)" (keyup.enter)="load()" placeholder="Name or retailer ID" />
+          </mat-form-field>
+          <button mat-stroked-button type="button" (click)="load()">Search</button>
+        </div>
+      </div>
+
+      @if (loading()) {
+        <div class="empty-state">
+          <mat-icon>hourglass_top</mat-icon>
+          <strong>Loading products…</strong>
+        </div>
+      } @else if (!filtered().length) {
+        <div class="empty-state">
+          <mat-icon>shopping_bag</mat-icon>
+          <strong>No products in this catalog</strong>
+          <span>Create a test product or refresh after adding items in Meta Commerce Manager.</span>
+        </div>
+      } @else {
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th></th>
+                <th>Product ID</th>
+                <th>Name</th>
+                <th>Retailer ID</th>
+                <th>Price</th>
+                <th>Availability</th>
+                <th>Status</th>
+                <th>URL</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (product of filtered(); track product.id) {
+                <tr>
+                  <td>
+                    @if (product.imageUrl) {
+                      <img class="product-thumb" [src]="product.imageUrl" alt="" />
+                    }
+                  </td>
+                  <td>{{ product.id }}</td>
+                  <td><strong>{{ product.name }}</strong></td>
+                  <td>{{ product.retailerId || '—' }}</td>
+                  <td>{{ product.price || '—' }} {{ product.currency || '' }}</td>
+                  <td>{{ product.availability || '—' }}</td>
+                  <td>{{ product.reviewStatus || '—' }}</td>
+                  <td>@if (product.url) { <a [href]="product.url" target="_blank" rel="noopener">Open</a> } @else { — }</td>
+                  <td>
+                    <button mat-button type="button" (click)="openEdit(product)">Edit</button>
+                    <button mat-button color="warn" type="button" (click)="deleteProduct(product)">Delete</button>
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      }
+    </section>
+  }
 </section>

@@ -1,27 +1,46 @@
-<section class="meta-page">
-  <header class="page-header">
+<section class="page meta-page">
+  <header class="meta-hero">
     <div>
       <p class="eyebrow">Meta Commerce</p>
       <h1>Catalogs</h1>
-      <p class="lede">List product catalogs available to your connected Meta business.</p>
-      <span class="permission-badge"><mat-icon>verified_user</mat-icon> Permission: catalog_management</span>
+      <p class="lede">Browse product catalogs available to your connected Meta business, then select one to manage products.</p>
+      <div class="meta-badges">
+        <span class="permission-badge"><mat-icon>verified_user</mat-icon> catalog_management</span>
+      </div>
     </div>
-    <div class="header-actions">
-      <a mat-stroked-button routerLink="../connect"><mat-icon>hub</mat-icon> Connect Meta</a>
+    <div class="hero-actions">
       <button mat-stroked-button type="button" (click)="load()" [disabled]="loading()">
         <mat-icon>refresh</mat-icon> Refresh
       </button>
     </div>
   </header>
 
-  @if (banner()) { <p class="banner">{{ banner() }}</p> }
-  @if (error()) { <p class="error">{{ error() }}</p> }
+  @if (banner()) {
+    <div class="notice success">
+      <mat-icon>check_circle</mat-icon>
+      <span>{{ banner() }}</span>
+    </div>
+  }
 
-  <div class="panel">
+  @if (error()) {
+    <div class="notice error">
+      <mat-icon>error</mat-icon>
+      <span>{{ error() }}</span>
+    </div>
+  }
+
+  <section class="content-panel">
     @if (loading()) {
-      <p class="empty">Loading catalogs…</p>
+      <div class="empty-state">
+        <mat-icon>hourglass_top</mat-icon>
+        <strong>Loading catalogs…</strong>
+      </div>
     } @else if (!catalogs().length) {
-      <p class="empty">No catalogs found. Ensure catalog_management is granted and your Meta business owns catalogs.</p>
+      <div class="empty-state">
+        <mat-icon>inventory_2</mat-icon>
+        <strong>No catalogs found</strong>
+        <span>Ensure catalog_management is granted and your Meta business owns product catalogs.</span>
+      </div>
     } @else {
       <div class="table-wrap">
         <table class="data-table">
@@ -48,7 +67,7 @@
                     {{ isSelected(catalog) ? 'Selected' : 'Select' }}
                   </button>
                   @if (isSelected(catalog)) {
-                    <a mat-button routerLink="../products">View Products</a>
+                    <a mat-button routerLink="../products">View products</a>
                   }
                 </td>
               </tr>
@@ -57,5 +76,5 @@
         </table>
       </div>
     }
-  </div>
+  </section>
 </section>

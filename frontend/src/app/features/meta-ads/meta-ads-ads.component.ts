@@ -61,7 +61,7 @@ export class MetaAdsAdsComponent implements OnInit {
   loadAds(): void {
     const adAccount = this.state.selectedAdAccount();
     if (!adAccount) {
-      this.error.set('Select an ad account first.');
+      this.ads.set([]);
       return;
     }
 

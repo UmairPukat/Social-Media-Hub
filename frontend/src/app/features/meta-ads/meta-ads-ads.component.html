@@ -1,84 +1,118 @@
-<section class="meta-page">
-  <header class="page-header">
+<section class="page meta-page">
+  <header class="meta-hero">
     <div>
       <p class="eyebrow">Meta Ads</p>
       <h1>Ads</h1>
-      <p class="lede">View ads for a selected ad set. Creating ads requires creatives and is managed through Meta Ads Manager for this demo.</p>
-      <span class="permission-badge"><mat-icon>verified_user</mat-icon> Permission: ads_read / ads_management</span>
+      <p class="lede">View ads for a selected ad set. Pause and resume existing ads; creating new ads requires creatives in Meta Ads Manager.</p>
+      <div class="meta-badges">
+        <span class="permission-badge"><mat-icon>verified_user</mat-icon> ads_read</span>
+        <span class="permission-badge"><mat-icon>verified_user</mat-icon> ads_management</span>
+      </div>
     </div>
-    <button mat-stroked-button type="button" (click)="loadAds()" [disabled]="loading()">
+    <button mat-stroked-button type="button" (click)="loadAds()" [disabled]="loading() || !state.selectedAdAccount()">
       <mat-icon>refresh</mat-icon> Refresh
     </button>
   </header>
 
-  @if (state.selectedAdAccount(); as account) {
-    <div class="context-bar">
-      <span>Ad account:</span>
-      <strong>{{ account.name }}</strong>
-      <a routerLink="../ad-accounts">Change</a>
+  @if (banner()) {
+    <div class="notice success">
+      <mat-icon>check_circle</mat-icon>
+      <span>{{ banner() }}</span>
     </div>
-  } @else {
-    <p class="error">Select an ad account first.</p>
   }
 
-  @if (banner()) { <p class="banner">{{ banner() }}</p> }
-  @if (error()) { <p class="error">{{ error() }}</p> }
+  @if (error()) {
+    <div class="notice error">
+      <mat-icon>error</mat-icon>
+      <span>{{ error() }}</span>
+    </div>
+  }
 
-  <div class="toolbar">
-    <mat-form-field appearance="outline">
-      <mat-label>Ad Set</mat-label>
-      <mat-select [ngModel]="selectedAdSetId()" (ngModelChange)="selectedAdSetId.set($event)" (selectionChange)="loadAds()">
-        @for (adSet of adSets(); track adSet.id) {
-          <mat-option [value]="adSet.id">{{ adSet.name }} ({{ adSet.id }})</mat-option>
-        }
-      </mat-select>
-    </mat-form-field>
-    <mat-form-field appearance="outline">
-      <mat-label>Search</mat-label>
-      <input matInput [ngModel]="search()" (ngModelChange)="search.set($event)" placeholder="Name or ID" />
-    </mat-form-field>
-  </div>
-
-  <div class="panel">
-    @if (loading()) {
-      <p class="empty">Loading ads…</p>
-    } @else if (!filtered().length) {
-      <p class="empty">No ads found for this ad set.</p>
-    } @else {
-      <div class="table-wrap">
-        <table class="data-table">
-          <thead>
-            <tr>
-              <th>Ad ID</th>
-              <th>Ad Name</th>
-              <th>Ad Set</th>
-              <th>Campaign</th>
-              <th>Status</th>
-              <th>Creative</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            @for (ad of filtered(); track ad.id) {
-              <tr>
-                <td>{{ ad.id }}</td>
-                <td><strong>{{ ad.name }}</strong></td>
-                <td>{{ ad.adSetId || '—' }}</td>
-                <td>{{ ad.campaignId || '—' }}</td>
-                <td>{{ ad.status || '—' }}</td>
-                <td>{{ ad.creativeId || '—' }}</td>
-                <td>
-                  @if (ad.status !== 'PAUSED') {
-                    <button mat-button type="button" (click)="updateStatus(ad, 'PAUSED')">Pause</button>
-                  } @else {
-                    <button mat-button type="button" (click)="updateStatus(ad, 'ACTIVE')">Resume</button>
-                  }
-                </td>
-              </tr>
-            }
-          </tbody>
-        </table>
+  @if (!state.selectedAdAccount()) {
+    <div class="setup-hint">
+      <mat-icon>account_balance</mat-icon>
+      <div>
+        <strong>Select an ad account first</strong>
+        <p>Open <a routerLink="../ad-accounts">Ad Accounts</a> to continue.</p>
+      </div>
+      <a mat-stroked-button routerLink="../ad-accounts">Go to Ad Accounts</a>
+    </div>
+  } @else {
+    @if (state.selectedAdAccount(); as account) {
+      <div class="context-strip">
+        <span class="label">Active ad account</span>
+        <strong>{{ account.name }}</strong>
+        <span class="mono">{{ account.id }}</span>
+        <a routerLink="../ad-accounts">Change account</a>
       </div>
     }
-  </div>
+
+    <section class="content-panel">
+      <div class="panel-head">
+        <h2>Ad list</h2>
+        <div class="toolbar">
+          <mat-form-field appearance="outline">
+            <mat-label>Ad Set</mat-label>
+            <mat-select [ngModel]="selectedAdSetId()" (ngModelChange)="selectedAdSetId.set($event)" (selectionChange)="loadAds()">
+              @for (adSet of adSets(); track adSet.id) {
+                <mat-option [value]="adSet.id">{{ adSet.name }} ({{ adSet.id }})</mat-option>
+              }
+            </mat-select>
+          </mat-form-field>
+          <mat-form-field appearance="outline">
+            <mat-label>Search</mat-label>
+            <input matInput [ngModel]="search()" (ngModelChange)="search.set($event)" placeholder="Name or ID" />
+          </mat-form-field>
+        </div>
+      </div>
+
+      @if (loading()) {
+        <div class="empty-state">
+          <mat-icon>hourglass_top</mat-icon>
+          <strong>Loading ads…</strong>
+        </div>
+      } @else if (!filtered().length) {
+        <div class="empty-state">
+          <mat-icon>ads_click</mat-icon>
+          <strong>No ads found</strong>
+          <span>Try another ad set or create ads in Meta Ads Manager.</span>
+        </div>
+      } @else {
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Ad ID</th>
+                <th>Ad Name</th>
+                <th>Ad Set</th>
+                <th>Campaign</th>
+                <th>Status</th>
+                <th>Creative</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (ad of filtered(); track ad.id) {
+                <tr>
+                  <td>{{ ad.id }}</td>
+                  <td><strong>{{ ad.name }}</strong></td>
+                  <td>{{ ad.adSetId || '—' }}</td>
+                  <td>{{ ad.campaignId || '—' }}</td>
+                  <td>{{ ad.status || '—' }}</td>
+                  <td>{{ ad.creativeId || '—' }}</td>
+                  <td>
+                    @if (ad.status !== 'PAUSED') {
+                      <button mat-button type="button" (click)="updateStatus(ad, 'PAUSED')">Pause</button>
+                    } @else {
+                      <button mat-button type="button" (click)="updateStatus(ad, 'ACTIVE')">Resume</button>
+                    }
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      }
+    </section>
+  }
 </section>

@@ -1,96 +1,128 @@
-<section class="meta-page">
-  <header class="page-header">
+<section class="page meta-page">
+  <header class="meta-hero">
     <div>
       <p class="eyebrow">Meta Ads</p>
       <h1>Campaigns</h1>
       <p class="lede">View campaigns for the selected ad account using the Marketing API.</p>
-      <span class="permission-badge"><mat-icon>verified_user</mat-icon> Permission: ads_read</span>
+      <div class="meta-badges">
+        <span class="permission-badge"><mat-icon>verified_user</mat-icon> ads_read</span>
+      </div>
     </div>
-    <div class="header-actions">
-      <a mat-stroked-button routerLink="../create-campaign"><mat-icon>add</mat-icon> Create Campaign</a>
-      <button mat-stroked-button type="button" (click)="refresh()" [disabled]="loading()">
+    <div class="hero-actions">
+      <a mat-flat-button color="primary" routerLink="../create-campaign"><mat-icon>add</mat-icon> Create Campaign</a>
+      <button mat-stroked-button type="button" (click)="refresh()" [disabled]="loading() || !state.selectedAdAccount()">
         <mat-icon>refresh</mat-icon> Refresh
       </button>
     </div>
   </header>
 
-  @if (state.selectedAdAccount(); as account) {
-    <div class="context-bar">
-      <span>Ad account:</span>
-      <strong>{{ account.name }}</strong>
-      <span>({{ account.id }})</span>
-      <a routerLink="../ad-accounts">Change</a>
+  @if (banner()) {
+    <div class="notice success">
+      <mat-icon>check_circle</mat-icon>
+      <span>{{ banner() }}</span>
     </div>
-  } @else {
-    <p class="error">Select an ad account on the <a routerLink="../ad-accounts">Ad Accounts</a> page first.</p>
   }
 
-  @if (banner()) { <p class="banner">{{ banner() }}</p> }
-  @if (error()) { <p class="error">{{ error() }}</p> }
+  @if (error()) {
+    <div class="notice error">
+      <mat-icon>error</mat-icon>
+      <span>{{ error() }}</span>
+    </div>
+  }
 
-  <div class="toolbar">
-    <mat-form-field appearance="outline">
-      <mat-label>Search</mat-label>
-      <input matInput [ngModel]="search()" (ngModelChange)="search.set($event)" placeholder="Name or ID" />
-    </mat-form-field>
-    <mat-form-field appearance="outline">
-      <mat-label>Status</mat-label>
-      <mat-select [ngModel]="status()" (ngModelChange)="status.set($event)">
-        <mat-option value="">All</mat-option>
-        <mat-option value="ACTIVE">Active</mat-option>
-        <mat-option value="PAUSED">Paused</mat-option>
-        <mat-option value="ARCHIVED">Archived</mat-option>
-      </mat-select>
-    </mat-form-field>
-  </div>
-
-  <div class="panel">
-    @if (loading()) {
-      <p class="empty">Loading campaigns…</p>
-    } @else if (!filtered().length) {
-      <p class="empty">No campaigns found for this ad account.</p>
-    } @else {
-      <div class="table-wrap">
-        <table class="data-table">
-          <thead>
-            <tr>
-              <th>Campaign ID</th>
-              <th>Name</th>
-              <th>Objective</th>
-              <th>Status</th>
-              <th>Effective Status</th>
-              <th>Created</th>
-              <th>Updated</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            @for (campaign of filtered(); track campaign.id) {
-              <tr>
-                <td>{{ campaign.id }}</td>
-                <td><strong>{{ campaign.name }}</strong></td>
-                <td>{{ campaign.objective || '—' }}</td>
-                <td><span class="status-pill" [class.paused]="campaign.status === 'PAUSED'" [class.active]="campaign.status === 'ACTIVE'">{{ campaign.status || '—' }}</span></td>
-                <td>{{ campaign.effectiveStatus || '—' }}</td>
-                <td>{{ campaign.createdTime | date: 'medium' }}</td>
-                <td>{{ campaign.updatedTime | date: 'medium' }}</td>
-                <td>
-                  @if (campaign.status !== 'PAUSED') {
-                    <button mat-button type="button" (click)="pause(campaign)">Pause</button>
-                  } @else {
-                    <button mat-button type="button" (click)="resume(campaign)">Resume</button>
-                  }
-                </td>
-              </tr>
-            }
-          </tbody>
-        </table>
+  @if (!state.selectedAdAccount()) {
+    <div class="setup-hint">
+      <mat-icon>account_balance</mat-icon>
+      <div>
+        <strong>Select an ad account first</strong>
+        <p>Open <a routerLink="../ad-accounts">Ad Accounts</a> and choose the account you want to manage.</p>
       </div>
-      <div class="pagination">
-        <button mat-stroked-button type="button" (click)="prevPage()" [disabled]="!cursorStack().length">Previous</button>
-        <span>{{ filtered().length }} shown</span>
-        <button mat-stroked-button type="button" (click)="nextPage()" [disabled]="!nextCursor()">Next</button>
+      <a mat-stroked-button routerLink="../ad-accounts">Go to Ad Accounts</a>
+    </div>
+  } @else {
+    @if (state.selectedAdAccount(); as account) {
+      <div class="context-strip">
+        <span class="label">Active ad account</span>
+        <strong>{{ account.name }}</strong>
+        <span class="mono">{{ account.id }}</span>
+        <a routerLink="../ad-accounts">Change account</a>
       </div>
     }
-  </div>
+
+    <section class="content-panel">
+      <div class="panel-head">
+        <h2>Campaign list</h2>
+        <div class="toolbar">
+          <mat-form-field appearance="outline">
+            <mat-label>Search</mat-label>
+            <input matInput [ngModel]="search()" (ngModelChange)="search.set($event)" placeholder="Name or ID" />
+          </mat-form-field>
+          <mat-form-field appearance="outline">
+            <mat-label>Status</mat-label>
+            <mat-select [ngModel]="status()" (ngModelChange)="status.set($event)">
+              <mat-option value="">All</mat-option>
+              <mat-option value="ACTIVE">Active</mat-option>
+              <mat-option value="PAUSED">Paused</mat-option>
+              <mat-option value="ARCHIVED">Archived</mat-option>
+            </mat-select>
+          </mat-form-field>
+        </div>
+      </div>
+
+      @if (loading()) {
+        <div class="empty-state">
+          <mat-icon>hourglass_top</mat-icon>
+          <strong>Loading campaigns…</strong>
+        </div>
+      } @else if (!filtered().length) {
+        <div class="empty-state">
+          <mat-icon>campaign</mat-icon>
+          <strong>No campaigns found</strong>
+          <span>Create a paused demo campaign or adjust your filters.</span>
+        </div>
+      } @else {
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Campaign ID</th>
+                <th>Name</th>
+                <th>Objective</th>
+                <th>Status</th>
+                <th>Effective Status</th>
+                <th>Created</th>
+                <th>Updated</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (campaign of filtered(); track campaign.id) {
+                <tr>
+                  <td>{{ campaign.id }}</td>
+                  <td><strong>{{ campaign.name }}</strong></td>
+                  <td>{{ campaign.objective || '—' }}</td>
+                  <td><span class="status-pill" [class.paused]="campaign.status === 'PAUSED'" [class.active]="campaign.status === 'ACTIVE'">{{ campaign.status || '—' }}</span></td>
+                  <td>{{ campaign.effectiveStatus || '—' }}</td>
+                  <td>{{ campaign.createdTime | date: 'medium' }}</td>
+                  <td>{{ campaign.updatedTime | date: 'medium' }}</td>
+                  <td>
+                    @if (campaign.status !== 'PAUSED') {
+                      <button mat-button type="button" (click)="pause(campaign)">Pause</button>
+                    } @else {
+                      <button mat-button type="button" (click)="resume(campaign)">Resume</button>
+                    }
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+        <div class="pagination">
+          <button mat-stroked-button type="button" (click)="prevPage()" [disabled]="!cursorStack().length">Previous</button>
+          <span>{{ filtered().length }} shown</span>
+          <button mat-stroked-button type="button" (click)="nextPage()" [disabled]="!nextCursor()">Next</button>
+        </div>
+      }
+    </section>
+  }
 </section>
