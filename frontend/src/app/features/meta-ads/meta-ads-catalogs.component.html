@@ -1,0 +1,61 @@
+<section class="meta-page">
+  <header class="page-header">
+    <div>
+      <p class="eyebrow">Meta Commerce</p>
+      <h1>Catalogs</h1>
+      <p class="lede">List product catalogs available to your connected Meta business.</p>
+      <span class="permission-badge"><mat-icon>verified_user</mat-icon> Permission: catalog_management</span>
+    </div>
+    <div class="header-actions">
+      <a mat-stroked-button routerLink="../connect"><mat-icon>hub</mat-icon> Connect Meta</a>
+      <button mat-stroked-button type="button" (click)="load()" [disabled]="loading()">
+        <mat-icon>refresh</mat-icon> Refresh
+      </button>
+    </div>
+  </header>
+
+  @if (banner()) { <p class="banner">{{ banner() }}</p> }
+  @if (error()) { <p class="error">{{ error() }}</p> }
+
+  <div class="panel">
+    @if (loading()) {
+      <p class="empty">Loading catalogs…</p>
+    } @else if (!catalogs().length) {
+      <p class="empty">No catalogs found. Ensure catalog_management is granted and your Meta business owns catalogs.</p>
+    } @else {
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Catalog ID</th>
+              <th>Catalog Name</th>
+              <th>Vertical</th>
+              <th>Product Count</th>
+              <th>Business ID</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (catalog of catalogs(); track catalog.id) {
+              <tr>
+                <td>{{ catalog.id }}</td>
+                <td><strong>{{ catalog.name }}</strong></td>
+                <td>{{ catalog.vertical || '—' }}</td>
+                <td>{{ catalog.productCount || '—' }}</td>
+                <td>{{ catalog.businessId || '—' }}</td>
+                <td>
+                  <button mat-stroked-button type="button" (click)="select(catalog)" [color]="isSelected(catalog) ? 'primary' : undefined">
+                    {{ isSelected(catalog) ? 'Selected' : 'Select' }}
+                  </button>
+                  @if (isSelected(catalog)) {
+                    <a mat-button routerLink="../products">View Products</a>
+                  }
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    }
+  </div>
+</section>

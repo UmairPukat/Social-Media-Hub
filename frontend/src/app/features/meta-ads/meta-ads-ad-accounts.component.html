@@ -1,0 +1,62 @@
+<section class="meta-page">
+  <header class="page-header">
+    <div>
+      <p class="eyebrow">Meta Ads & Commerce</p>
+      <h1>Ad Accounts</h1>
+      <p class="lede">Select the Meta ad account used for campaigns, ad sets, ads, and insights in this demo flow.</p>
+      <span class="permission-badge"><mat-icon>verified_user</mat-icon> Permission: ads_read</span>
+    </div>
+    <div class="header-actions">
+      <a mat-stroked-button routerLink="../connect"><mat-icon>hub</mat-icon> Connect Meta</a>
+      <button mat-stroked-button type="button" (click)="load()" [disabled]="loading()">
+        <mat-icon>refresh</mat-icon> Refresh
+      </button>
+    </div>
+  </header>
+
+  @if (banner()) { <p class="banner">{{ banner() }}</p> }
+  @if (error()) { <p class="error">{{ error() }}</p> }
+
+  <div class="panel">
+    @if (loading()) {
+      <p class="empty">Loading ad accounts…</p>
+    } @else if (!accounts().length) {
+      <p class="empty">No ad accounts found. Connect Facebook in Integrations and ensure your Meta user has ad account access.</p>
+    } @else {
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Ad Account Name</th>
+              <th>Ad Account ID</th>
+              <th>Currency</th>
+              <th>Account Status</th>
+              <th>Business</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (account of accounts(); track account.id) {
+              <tr>
+                <td><strong>{{ account.name }}</strong></td>
+                <td>{{ account.id }}</td>
+                <td>{{ account.currency || '—' }}</td>
+                <td>{{ account.accountStatus || '—' }}</td>
+                <td>{{ account.businessName || '—' }}</td>
+                <td>
+                  <button
+                    mat-stroked-button
+                    type="button"
+                    [color]="isSelected(account) ? 'primary' : undefined"
+                    (click)="select(account)">
+                    {{ isSelected(account) ? 'Selected' : 'Select' }}
+                  </button>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    }
+  </div>
+</section>

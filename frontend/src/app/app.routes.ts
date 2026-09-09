@@ -31,6 +31,54 @@ const processChildren = (connectComponent: () => Promise<{ default?: never } & i
   }
 ] satisfies Routes;
 
+const integrationMetaAdsRoutes = [
+  {
+    path: 'meta-ads',
+    children: [
+      { path: '', pathMatch: 'full' as const, redirectTo: 'ad-accounts' },
+      {
+        path: 'ad-accounts',
+        loadComponent: () =>
+          import('./features/meta-ads/meta-ads-ad-accounts.component').then(m => m.MetaAdsAdAccountsComponent)
+      },
+      {
+        path: 'campaigns',
+        loadComponent: () =>
+          import('./features/meta-ads/meta-ads-campaigns.component').then(m => m.MetaAdsCampaignsComponent)
+      },
+      {
+        path: 'create-campaign',
+        loadComponent: () =>
+          import('./features/meta-ads/meta-ads-create-campaign.component').then(m => m.MetaAdsCreateCampaignComponent)
+      },
+      {
+        path: 'ad-sets',
+        loadComponent: () =>
+          import('./features/meta-ads/meta-ads-ad-sets.component').then(m => m.MetaAdsAdSetsComponent)
+      },
+      {
+        path: 'ads',
+        loadComponent: () => import('./features/meta-ads/meta-ads-ads.component').then(m => m.MetaAdsAdsComponent)
+      },
+      {
+        path: 'insights',
+        loadComponent: () =>
+          import('./features/meta-ads/meta-ads-insights.component').then(m => m.MetaAdsInsightsComponent)
+      },
+      {
+        path: 'catalogs',
+        loadComponent: () =>
+          import('./features/meta-ads/meta-ads-catalogs.component').then(m => m.MetaAdsCatalogsComponent)
+      },
+      {
+        path: 'products',
+        loadComponent: () =>
+          import('./features/meta-ads/meta-ads-products.component').then(m => m.MetaAdsProductsComponent)
+      }
+    ]
+  }
+] satisfies Routes;
+
 export const routes: Routes = [
   {
     path: 'login',
@@ -53,9 +101,12 @@ export const routes: Routes = [
       },
       {
         path: 'integrations',
-        children: processChildren(() =>
-          import('./features/integrations/integrations.component').then(m => m.IntegrationsComponent)
-        )
+        children: [
+          ...processChildren(() =>
+            import('./features/integrations/integrations.component').then(m => m.IntegrationsComponent)
+          ),
+          ...integrationMetaAdsRoutes
+        ]
       },
       {
         path: 'app-connections',

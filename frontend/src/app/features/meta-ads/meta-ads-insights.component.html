@@ -1,0 +1,137 @@
+<section class="meta-page">
+  <header class="page-header">
+    <div>
+      <p class="eyebrow">Meta Ads</p>
+      <h1>Insights</h1>
+      <p class="lede">Retrieve performance metrics from the Meta Graph API insights endpoint.</p>
+      <span class="permission-badge"><mat-icon>verified_user</mat-icon> Permission: read_insights</span>
+    </div>
+    <button mat-stroked-button type="button" (click)="loadInsights()" [disabled]="loading()">
+      <mat-icon>insights</mat-icon> Load Insights
+    </button>
+  </header>
+
+  @if (state.selectedAdAccount(); as account) {
+    <div class="context-bar">
+      <span>Ad account:</span>
+      <strong>{{ account.name }}</strong>
+      <a routerLink="../ad-accounts">Change</a>
+    </div>
+  } @else {
+    <p class="error">Select an ad account first.</p>
+  }
+
+  @if (error()) { <p class="error">{{ error() }}</p> }
+
+  <div class="toolbar">
+    <mat-form-field appearance="outline">
+      <mat-label>Level</mat-label>
+      <mat-select [ngModel]="level()" (ngModelChange)="level.set($event); onLevelChange()">
+        <mat-option value="campaign">Campaign</mat-option>
+        <mat-option value="adset">Ad Set</mat-option>
+        <mat-option value="ad">Ad</mat-option>
+      </mat-select>
+    </mat-form-field>
+
+    <mat-form-field appearance="outline">
+      <mat-label>Object</mat-label>
+      <mat-select [ngModel]="selectedObjectId()" (ngModelChange)="selectedObjectId.set($event)">
+        @if (level() === 'campaign') {
+          @for (item of campaigns(); track item.id) {
+            <mat-option [value]="item.id">{{ item.name }} ({{ item.id }})</mat-option>
+          }
+        } @else if (level() === 'adset') {
+          @for (item of adSets(); track item.id) {
+            <mat-option [value]="item.id">{{ item.name }} ({{ item.id }})</mat-option>
+          }
+        } @else {
+          @for (item of ads(); track item.id) {
+            <mat-option [value]="item.id">{{ item.name }} ({{ item.id }})</mat-option>
+          }
+        }
+      </mat-select>
+    </mat-form-field>
+
+    <mat-form-field appearance="outline">
+      <mat-label>Date Range</mat-label>
+      <mat-select [ngModel]="datePreset()" (ngModelChange)="datePreset.set($event)">
+        <mat-option value="today">Today</mat-option>
+        <mat-option value="yesterday">Yesterday</mat-option>
+        <mat-option value="last_7d">Last 7 Days</mat-option>
+        <mat-option value="last_30d">Last 30 Days</mat-option>
+        <mat-option value="custom">Custom Range</mat-option>
+      </mat-select>
+    </mat-form-field>
+
+    @if (datePreset() === 'custom') {
+      <mat-form-field appearance="outline">
+        <mat-label>Since (YYYY-MM-DD)</mat-label>
+        <input matInput [ngModel]="since()" (ngModelChange)="since.set($event)" />
+      </mat-form-field>
+      <mat-form-field appearance="outline">
+        <mat-label>Until (YYYY-MM-DD)</mat-label>
+        <input matInput [ngModel]="until()" (ngModelChange)="until.set($event)" />
+      </mat-form-field>
+    }
+  </div>
+
+  @if (summary(); as data) {
+    <div class="summary-grid">
+      <div class="summary-card"><small>Spend</small><strong>{{ data.spend }}</strong></div>
+      <div class="summary-card"><small>Impressions</small><strong>{{ data.impressions }}</strong></div>
+      <div class="summary-card"><small>Reach</small><strong>{{ data.reach }}</strong></div>
+      <div class="summary-card"><small>Clicks</small><strong>{{ data.clicks }}</strong></div>
+      <div class="summary-card"><small>CTR</small><strong>{{ data.ctr }}%</strong></div>
+      <div class="summary-card"><small>CPC</small><strong>{{ data.cpc }}</strong></div>
+    </div>
+
+    <div class="panel">
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Date Start</th>
+              <th>Date Stop</th>
+              <th>Impressions</th>
+              <th>Reach</th>
+              <th>Clicks</th>
+              <th>Spend</th>
+              <th>CTR</th>
+              <th>CPC</th>
+              <th>CPM</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (row of data.rows; track $index) {
+              <tr>
+                <td>{{ row.dateStart || '—' }}</td>
+                <td>{{ row.dateStop || '—' }}</td>
+                <td>{{ row.impressions || '0' }}</td>
+                <td>{{ row.reach || '0' }}</td>
+                <td>{{ row.clicks || '0' }}</td>
+                <td>{{ row.spend || '0' }}</td>
+                <td>{{ row.ctr || '0' }}</td>
+                <td>{{ row.cpc || '0' }}</td>
+                <td>{{ row.cpm || '0' }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    @if (chartPoints().length) {
+      <div class="chart-panel">
+        <h3>Impressions over time</h3>
+        <svg viewBox="0 0 760 220" role="img" aria-label="Impressions chart">
+          <path [attr.d]="linePath()" fill="none" stroke="#2563eb" stroke-width="3"></path>
+          @for (point of chartPoints(); track point.label) {
+            <circle [attr.cx]="point.x" [attr.cy]="point.y" r="4" fill="#2563eb"></circle>
+          }
+        </svg>
+      </div>
+    }
+  } @else if (loading()) {
+    <p class="empty">Loading insights…</p>
+  }
+</section>

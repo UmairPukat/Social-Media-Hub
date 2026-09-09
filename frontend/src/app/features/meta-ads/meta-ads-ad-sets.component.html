@@ -1,0 +1,101 @@
+<section class="meta-page">
+  <header class="page-header">
+    <div>
+      <p class="eyebrow">Meta Ads</p>
+      <h1>Ad Sets</h1>
+      <p class="lede">View and create paused ad sets under an existing campaign.</p>
+      <span class="permission-badge"><mat-icon>verified_user</mat-icon> Permission: ads_read / ads_management</span>
+    </div>
+    <button mat-stroked-button type="button" (click)="loadAdSets()" [disabled]="loading()">
+      <mat-icon>refresh</mat-icon> Refresh
+    </button>
+  </header>
+
+  @if (state.selectedAdAccount(); as account) {
+    <div class="context-bar">
+      <span>Ad account:</span>
+      <strong>{{ account.name }}</strong>
+      <a routerLink="../ad-accounts">Change</a>
+    </div>
+  } @else {
+    <p class="error">Select an ad account first.</p>
+  }
+
+  @if (banner()) { <p class="banner">{{ banner() }}</p> }
+  @if (error()) { <p class="error">{{ error() }}</p> }
+
+  <div class="toolbar">
+    <mat-form-field appearance="outline">
+      <mat-label>Campaign</mat-label>
+      <mat-select [ngModel]="selectedCampaignId()" (ngModelChange)="selectedCampaignId.set($event)" (selectionChange)="loadAdSets()">
+        @for (campaign of campaigns(); track campaign.id) {
+          <mat-option [value]="campaign.id">{{ campaign.name }} ({{ campaign.id }})</mat-option>
+        }
+      </mat-select>
+    </mat-form-field>
+    <mat-form-field appearance="outline">
+      <mat-label>Search</mat-label>
+      <input matInput [ngModel]="search()" (ngModelChange)="search.set($event)" placeholder="Name or ID" />
+    </mat-form-field>
+  </div>
+
+  <div class="panel form-panel">
+    <h3>Create Ad Set (PAUSED)</h3>
+    <mat-form-field appearance="outline">
+      <mat-label>Ad Set Name</mat-label>
+      <input matInput [ngModel]="newName()" (ngModelChange)="newName.set($event)" />
+    </mat-form-field>
+    <mat-form-field appearance="outline">
+      <mat-label>Daily Budget (cents)</mat-label>
+      <input matInput type="number" [ngModel]="newDailyBudget()" (ngModelChange)="newDailyBudget.set(+$event)" />
+    </mat-form-field>
+    <button mat-flat-button color="primary" type="button" (click)="createAdSet()" [disabled]="creating()">
+      Create Ad Set
+    </button>
+  </div>
+
+  <div class="panel" style="margin-top: 14px">
+    @if (loading()) {
+      <p class="empty">Loading ad sets…</p>
+    } @else if (!filtered().length) {
+      <p class="empty">No ad sets found.</p>
+    } @else {
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Ad Set ID</th>
+              <th>Name</th>
+              <th>Campaign</th>
+              <th>Status</th>
+              <th>Budget</th>
+              <th>Start</th>
+              <th>End</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (adSet of filtered(); track adSet.id) {
+              <tr>
+                <td>{{ adSet.id }}</td>
+                <td><strong>{{ adSet.name }}</strong></td>
+                <td>{{ adSet.campaignId || '—' }}</td>
+                <td>{{ adSet.status || '—' }}</td>
+                <td>{{ adSet.dailyBudget || adSet.lifetimeBudget || '—' }}</td>
+                <td>{{ adSet.startTime | date: 'medium' }}</td>
+                <td>{{ adSet.endTime | date: 'medium' }}</td>
+                <td>
+                  @if (adSet.status !== 'PAUSED') {
+                    <button mat-button type="button" (click)="updateStatus(adSet, 'PAUSED')">Pause</button>
+                  } @else {
+                    <button mat-button type="button" (click)="updateStatus(adSet, 'ACTIVE')">Resume</button>
+                  }
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    }
+  </div>
+</section>

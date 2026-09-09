@@ -41,8 +41,20 @@ export class ShellComponent {
     { suffix: 'accounts', icon: 'link', label: 'Connected Accounts' }
   ];
 
+  readonly integrationMetaAdsItems = [
+    { suffix: 'meta-ads/ad-accounts', icon: 'account_balance', label: 'Ad Accounts' },
+    { suffix: 'meta-ads/campaigns', icon: 'campaign', label: 'Campaigns' },
+    { suffix: 'meta-ads/create-campaign', icon: 'add_circle', label: 'Create Campaign' },
+    { suffix: 'meta-ads/ad-sets', icon: 'layers', label: 'Ad Sets' },
+    { suffix: 'meta-ads/ads', icon: 'ads_click', label: 'Ads' },
+    { suffix: 'meta-ads/insights', icon: 'insights', label: 'Insights' },
+    { suffix: 'meta-ads/catalogs', icon: 'inventory_2', label: 'Catalogs' },
+    { suffix: 'meta-ads/products', icon: 'shopping_bag', label: 'Products' }
+  ];
+
   expanded = signal<Record<string, boolean>>({
     integration: true,
+    integration_meta_ads: true,
     app_connection: false,
     developer_app: false
   });
