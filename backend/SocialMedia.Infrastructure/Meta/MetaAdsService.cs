@@ -78,14 +78,29 @@ public class MetaAdsService : IMetaAdsService
         => MetaApiExecutor.RunAsync(async () =>
         {
             var accountId = MetaGraphResponseHelper.NormalizeAdAccountId(request.AdAccountId);
-            var categories = request.SpecialAdCategories?.ToArray() ?? Array.Empty<string>();
+            var categories = request.SpecialAdCategories?
+                .Where(c => !string.IsNullOrWhiteSpace(c))
+                .Select(c => c.Trim().ToUpperInvariant())
+                .ToArray() ?? Array.Empty<string>();
+
             var payload = new Dictionary<string, string>
             {
                 ["name"] = request.Name.Trim(),
                 ["objective"] = request.Objective.Trim(),
                 ["status"] = string.IsNullOrWhiteSpace(request.Status) ? "PAUSED" : request.Status.Trim().ToUpperInvariant(),
-                ["special_ad_categories"] = JsonSerializer.Serialize(categories)
+                ["special_ad_categories"] = JsonSerializer.Serialize(categories),
+                // Required from Graph API v24+ when campaign budget is set at the ad set level.
+                ["is_adset_budget_sharing_enabled"] = "false"
             };
+
+            if (categories.Length > 0)
+            {
+                var countries = request.SpecialAdCategoryCountries?
+                    .Where(c => !string.IsNullOrWhiteSpace(c))
+                    .Select(c => c.Trim().ToUpperInvariant())
+                    .ToArray() ?? new[] { "US" };
+                payload["special_ad_category_country"] = JsonSerializer.Serialize(countries);
+            }
 
             using var doc = await _graph.PostFormAsync(userId, menuType, $"{accountId}/campaigns", payload, cancellationToken);
             var id = MetaGraphResponseHelper.ReadString(doc.RootElement, "id")

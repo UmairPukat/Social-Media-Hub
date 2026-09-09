@@ -67,6 +67,8 @@ public class CreateMetaCampaignRequest
     public string Status { get; set; } = "PAUSED";
 
     public IReadOnlyList<string>? SpecialAdCategories { get; set; }
+
+    public IReadOnlyList<string>? SpecialAdCategoryCountries { get; set; }
 }
 
 public class UpdateMetaCampaignRequest

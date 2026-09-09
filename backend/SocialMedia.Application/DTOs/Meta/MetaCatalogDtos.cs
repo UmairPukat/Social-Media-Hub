@@ -9,6 +9,7 @@ public class MetaCatalogDto
     public string? Vertical { get; set; }
     public string? ProductCount { get; set; }
     public string? BusinessId { get; set; }
+    public string? Source { get; set; }
 }
 
 public class MetaProductDto
