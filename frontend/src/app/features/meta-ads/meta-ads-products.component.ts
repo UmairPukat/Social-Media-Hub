@@ -60,7 +60,14 @@ export class MetaAdsProductsComponent implements OnInit {
 
     this.loading.set(true);
     this.error.set('');
-    this.api.getProducts(this.processRoute.currentMenuType(), catalog.id, this.search(), after).subscribe({
+    this.api.getProducts(
+      this.processRoute.currentMenuType(),
+      catalog.id,
+      this.search(),
+      after,
+      25,
+      catalog.businessId
+    ).subscribe({
       next: (res) => {
         this.loading.set(false);
         if (!res.success) {
@@ -114,6 +121,7 @@ export class MetaAdsProductsComponent implements OnInit {
         })
       : this.api.createProduct(this.processRoute.currentMenuType(), catalog.id, {
           catalogId: catalog.id,
+          businessId: catalog.businessId,
           name: this.name().trim(),
           retailerId: this.retailerId().trim(),
           price: this.price(),

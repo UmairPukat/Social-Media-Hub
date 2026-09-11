@@ -153,6 +153,7 @@ export interface CreateMetaCatalogRequest {
 
 export interface CreateMetaProductRequest {
   catalogId: string;
+  businessId?: string;
   name: string;
   retailerId: string;
   price: string;

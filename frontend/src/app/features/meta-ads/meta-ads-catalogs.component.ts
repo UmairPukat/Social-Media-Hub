@@ -82,7 +82,11 @@ export class MetaAdsCatalogsComponent implements OnInit {
 
   select(catalog: MetaCatalog): void {
     this.selectedId.set(catalog.id);
-    this.state.selectCatalog({ id: catalog.id, name: catalog.name });
+    this.state.selectCatalog({
+      id: catalog.id,
+      name: catalog.name,
+      businessId: catalog.businessId
+    });
     this.banner.set(`Selected catalog: ${catalog.name} (${catalog.id})`);
   }
 

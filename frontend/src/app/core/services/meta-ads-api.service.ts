@@ -117,11 +117,13 @@ export class MetaAdsApiService {
     catalogId: string,
     search?: string,
     after?: string,
-    limit = 25
+    limit = 25,
+    businessId?: string
   ): Observable<MetaApiResponse<MetaPagedResult<MetaProduct>>> {
     let params = new HttpParams().set('catalogId', catalogId).set('limit', limit);
     if (search) params = params.set('search', search);
     if (after) params = params.set('after', after);
+    if (businessId) params = params.set('businessId', businessId);
     return this.http.get<MetaApiResponse<MetaPagedResult<MetaProduct>>>(
       `${this.base(menuType)}/catalogs/${encodeURIComponent(catalogId)}/products`,
       { params }

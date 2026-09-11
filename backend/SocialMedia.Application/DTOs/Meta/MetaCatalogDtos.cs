@@ -46,6 +46,8 @@ public class MetaProductListQuery
     [Required]
     public string CatalogId { get; set; } = string.Empty;
 
+    public string? BusinessId { get; set; }
+
     public string? Search { get; set; }
     public string? After { get; set; }
     public int Limit { get; set; } = 25;
@@ -55,6 +57,8 @@ public class CreateMetaProductRequest
 {
     [Required]
     public string CatalogId { get; set; } = string.Empty;
+
+    public string? BusinessId { get; set; }
 
     [Required, MaxLength(200)]
     public string Name { get; set; } = string.Empty;

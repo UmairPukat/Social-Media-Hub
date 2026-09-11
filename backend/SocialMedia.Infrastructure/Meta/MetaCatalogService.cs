@@ -91,6 +91,8 @@ public class MetaCatalogService : IMetaCatalogService
             var id = MetaGraphResponseHelper.ReadString(doc.RootElement, "id")
                 ?? throw new MetaGraphApiException("Meta did not return a catalog id.");
 
+            await EnsureCatalogManageAccessAsync(userId, menuType, id, businessId, cancellationToken);
+
             using var loaded = await _graph.GetAsync(
                 userId,
                 menuType,
@@ -116,6 +118,7 @@ public class MetaCatalogService : IMetaCatalogService
         CancellationToken cancellationToken = default)
         => MetaApiExecutor.RunAsync(async () =>
         {
+            var catalogId = query.CatalogId.Trim();
             var limit = Math.Clamp(query.Limit, 1, 100).ToString();
             var extra = new List<(string, string)>
             {
@@ -125,12 +128,13 @@ public class MetaCatalogService : IMetaCatalogService
             if (!string.IsNullOrWhiteSpace(query.After))
                 extra.Add(("after", query.After));
 
-            using var doc = await _graph.GetAsync(
+            using var doc = await GetCatalogProductsAsync(
                 userId,
                 menuType,
-                $"{query.CatalogId.Trim()}/products",
-                cancellationToken,
-                extra.ToArray());
+                catalogId,
+                query.BusinessId,
+                extra,
+                cancellationToken);
 
             var items = ReadProducts(doc.RootElement);
             if (!string.IsNullOrWhiteSpace(query.Search))
@@ -156,6 +160,10 @@ public class MetaCatalogService : IMetaCatalogService
         CancellationToken cancellationToken = default)
         => MetaApiExecutor.RunAsync(async () =>
         {
+            var catalogId = request.CatalogId.Trim();
+            await EnsureCatalogManageAccessAsync(
+                userId, menuType, catalogId, request.BusinessId, cancellationToken);
+
             var payload = new Dictionary<string, string>
             {
                 ["name"] = request.Name.Trim(),
@@ -173,10 +181,11 @@ public class MetaCatalogService : IMetaCatalogService
             if (!string.IsNullOrWhiteSpace(request.Description))
                 payload["description"] = request.Description.Trim();
 
-            using var doc = await _graph.PostFormAsync(
+            using var doc = await PostCatalogProductsAsync(
                 userId,
                 menuType,
-                $"{request.CatalogId.Trim()}/products",
+                catalogId,
+                request.BusinessId,
                 payload,
                 cancellationToken);
 
@@ -202,6 +211,8 @@ public class MetaCatalogService : IMetaCatalogService
         CancellationToken cancellationToken = default)
         => MetaApiExecutor.RunAsync(async () =>
         {
+            await EnsureCatalogManageAccessAsync(userId, menuType, catalogId, null, cancellationToken);
+
             var payload = new Dictionary<string, string>();
             if (!string.IsNullOrWhiteSpace(request.Name))
                 payload["name"] = request.Name.Trim();
@@ -242,9 +253,177 @@ public class MetaCatalogService : IMetaCatalogService
         CancellationToken cancellationToken = default)
         => MetaApiExecutor.RunAsync<object>(async () =>
         {
+            await EnsureCatalogManageAccessAsync(userId, menuType, catalogId, null, cancellationToken);
             await _graph.DeleteAsync(userId, menuType, productId, cancellationToken);
             return new { productId, catalogId };
         }, "Product deleted.");
+
+    private async Task<JsonDocument> GetCatalogProductsAsync(
+        Guid userId,
+        string menuType,
+        string catalogId,
+        string? businessId,
+        List<(string Key, string Value)> query,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await _graph.GetAsync(
+                userId,
+                menuType,
+                $"{catalogId}/products",
+                cancellationToken,
+                query.ToArray());
+        }
+        catch (MetaGraphApiException ex) when (IsCatalogPermissionError(ex))
+        {
+            await EnsureCatalogManageAccessAsync(userId, menuType, catalogId, businessId, cancellationToken);
+            return await _graph.GetAsync(
+                userId,
+                menuType,
+                $"{catalogId}/products",
+                cancellationToken,
+                query.ToArray());
+        }
+    }
+
+    private async Task<JsonDocument> PostCatalogProductsAsync(
+        Guid userId,
+        string menuType,
+        string catalogId,
+        string? businessId,
+        IDictionary<string, string> payload,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await _graph.PostFormAsync(
+                userId,
+                menuType,
+                $"{catalogId}/products",
+                payload,
+                cancellationToken);
+        }
+        catch (MetaGraphApiException ex) when (IsCatalogPermissionError(ex))
+        {
+            await EnsureCatalogManageAccessAsync(userId, menuType, catalogId, businessId, cancellationToken);
+            return await _graph.PostFormAsync(
+                userId,
+                menuType,
+                $"{catalogId}/products",
+                payload,
+                cancellationToken);
+        }
+    }
+
+    private async Task EnsureCatalogManageAccessAsync(
+        Guid userId,
+        string menuType,
+        string catalogId,
+        string? businessId,
+        CancellationToken cancellationToken)
+    {
+        businessId = string.IsNullOrWhiteSpace(businessId)
+            ? await ResolveBusinessIdForCatalogAsync(userId, menuType, catalogId, cancellationToken)
+            : businessId.Trim();
+
+        if (string.IsNullOrWhiteSpace(businessId))
+            return;
+
+        var businessUserId = await ResolveBusinessUserIdAsync(userId, menuType, businessId, cancellationToken);
+        if (string.IsNullOrWhiteSpace(businessUserId))
+            return;
+
+        try
+        {
+            await _graph.PostFormAsync(
+                userId,
+                menuType,
+                $"{catalogId.Trim()}/assigned_users",
+                new Dictionary<string, string>
+                {
+                    ["user"] = businessUserId,
+                    ["business"] = businessId,
+                    ["tasks"] = "[\"MANAGE\",\"ADVERTISE\"]"
+                },
+                cancellationToken);
+        }
+        catch (MetaGraphApiException)
+        {
+            // User may already have MANAGE or may not be a business admin.
+        }
+    }
+
+    private async Task<string?> ResolveBusinessIdForCatalogAsync(
+        Guid userId,
+        string menuType,
+        string catalogId,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var doc = await _graph.GetAsync(
+                userId,
+                menuType,
+                catalogId.Trim(),
+                cancellationToken,
+                ("fields", "business{id}"));
+
+            if (doc.RootElement.TryGetProperty("business", out var business) &&
+                business.ValueKind == JsonValueKind.Object)
+            {
+                return MetaGraphResponseHelper.ReadString(business, "id");
+            }
+        }
+        catch (MetaGraphApiException)
+        {
+            // Fall through.
+        }
+
+        return null;
+    }
+
+    private async Task<string?> ResolveBusinessUserIdAsync(
+        Guid userId,
+        string menuType,
+        string businessId,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var doc = await _graph.GetAsync(
+                userId,
+                menuType,
+                "me/business_users",
+                cancellationToken,
+                ("fields", "id,business{id}"),
+                ("limit", "100"));
+
+            if (!doc.RootElement.TryGetProperty("data", out var rows))
+                return null;
+
+            foreach (var row in rows.EnumerateArray())
+            {
+                if (!row.TryGetProperty("business", out var business) || business.ValueKind != JsonValueKind.Object)
+                    continue;
+
+                var id = MetaGraphResponseHelper.ReadString(business, "id");
+                if (!string.Equals(id, businessId, StringComparison.Ordinal))
+                    continue;
+
+                return MetaGraphResponseHelper.ReadString(row, "id");
+            }
+        }
+        catch (MetaGraphApiException)
+        {
+            // Fall through.
+        }
+
+        return null;
+    }
+
+    private static bool IsCatalogPermissionError(MetaGraphApiException ex) =>
+        ex.MetaErrorCode == "200" || ex.HttpStatusCode == 403;
 
     private async Task<string?> ResolveFirstBusinessIdAsync(
         Guid userId,

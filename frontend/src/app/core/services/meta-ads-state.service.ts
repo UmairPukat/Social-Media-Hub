@@ -13,6 +13,7 @@ export interface SelectedMetaAdAccount {
 export interface SelectedMetaCatalog {
   id: string;
   name: string;
+  businessId?: string;
 }
 
 @Injectable({ providedIn: 'root' })
