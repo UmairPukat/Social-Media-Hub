@@ -471,6 +471,12 @@ public class ProcessAppConfigService : IProcessAppConfigService
             return NullIfEmpty(normalized);
         }
 
+        if (platformCode == "facebook")
+        {
+            var normalized = PlatformCatalog.NormalizeFacebookScopes(scopes);
+            return NullIfEmpty(normalized);
+        }
+
         return NullIfEmpty(scopes);
     }
 

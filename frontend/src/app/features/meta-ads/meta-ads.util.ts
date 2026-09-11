@@ -30,6 +30,11 @@ export function metaAdsManagerAdUrl(adAccountId: string, adId: string): string {
   return metaAdsManagerUrl('ads', adAccountId, { selected_ad_ids: adId });
 }
 
+/** Opens the catalog in Meta Commerce Manager. */
+export function metaCommerceCatalogUrl(catalogId: string): string {
+  return `https://business.facebook.com/commerce/catalogs/${catalogId}/products`;
+}
+
 export function metaErrorMessage<T>(response: MetaApiResponse<T>): string {
   if (response.metaErrorMessage) {
     return `${response.message}${response.metaErrorCode ? ` (${response.metaErrorCode})` : ''}: ${response.metaErrorMessage}`;

@@ -3,12 +3,16 @@
     <div>
       <p class="eyebrow">Meta Commerce</p>
       <h1>Catalogs</h1>
-      <p class="lede">Browse product catalogs available to your connected Meta business, then select one to manage products.</p>
+      <p class="lede">Browse product catalogs from your Meta business. Catalogs are discovered via Business Manager, ad accounts, and assigned business users.</p>
       <div class="meta-badges">
         <span class="permission-badge"><mat-icon>verified_user</mat-icon> catalog_management</span>
+        <span class="permission-badge"><mat-icon>verified_user</mat-icon> business_management</span>
       </div>
     </div>
     <div class="hero-actions">
+      <button mat-stroked-button type="button" (click)="createDemoCatalog()" [disabled]="creating() || loading()">
+        <mat-icon>add</mat-icon> Create Demo Catalog
+      </button>
       <button mat-stroked-button type="button" (click)="load()" [disabled]="loading()">
         <mat-icon>refresh</mat-icon> Refresh
       </button>
@@ -39,7 +43,10 @@
       <div class="empty-state">
         <mat-icon>inventory_2</mat-icon>
         <strong>No catalogs found</strong>
-        <span>Reconnect Facebook in Connect (grant catalog_management + business_management), create a catalog in Meta Commerce Manager, then refresh.</span>
+        <span>If Ads works but catalogs are empty, reconnect Facebook in Connect so <strong>catalog_management</strong> is granted, then click <strong>Create Demo Catalog</strong> or create one in Meta Commerce Manager.</span>
+        <button mat-flat-button color="primary" type="button" (click)="createDemoCatalog()" [disabled]="creating()">
+          Create Demo Catalog
+        </button>
       </div>
     } @else {
       <div class="table-wrap">
@@ -51,23 +58,33 @@
               <th>Vertical</th>
               <th>Product Count</th>
               <th>Business ID</th>
-              <th></th>
+              <th>Actions</th>
             </tr>
           </thead>
           <tbody>
             @for (catalog of catalogs(); track catalog.id) {
               <tr>
-                <td>{{ catalog.id }}</td>
-                <td><strong>{{ catalog.name }}</strong></td>
+                <td>
+                  <a class="row-link" [href]="commerceUrl(catalog)" target="_blank" rel="noopener noreferrer">
+                    {{ catalog.id }}
+                    <mat-icon>open_in_new</mat-icon>
+                  </a>
+                </td>
+                <td>
+                  <a class="row-link strong" [href]="commerceUrl(catalog)" target="_blank" rel="noopener noreferrer">
+                    {{ catalog.name }}
+                    <mat-icon>open_in_new</mat-icon>
+                  </a>
+                </td>
                 <td>{{ catalog.vertical || '—' }}</td>
                 <td>{{ catalog.productCount || '—' }}</td>
                 <td>{{ catalog.businessId || '—' }}</td>
-                <td>
+                <td class="actions-cell">
                   <button mat-stroked-button type="button" (click)="select(catalog)" [color]="isSelected(catalog) ? 'primary' : undefined">
                     {{ isSelected(catalog) ? 'Selected' : 'Select' }}
                   </button>
                   @if (isSelected(catalog)) {
-                    <a mat-button routerLink="../products">View products</a>
+                    <a mat-button routerLink="../products">Products</a>
                   }
                 </td>
               </tr>

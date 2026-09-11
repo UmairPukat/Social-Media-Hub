@@ -145,6 +145,12 @@ export interface MetaInsightsQuery {
   level?: string;
 }
 
+export interface CreateMetaCatalogRequest {
+  businessId?: string;
+  name: string;
+  vertical?: string;
+}
+
 export interface CreateMetaProductRequest {
   catalogId: string;
   name: string;

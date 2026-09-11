@@ -9,7 +9,7 @@ public class MetaCatalogService : IMetaCatalogService
 {
     private const string CatalogFields = "id,name,vertical,product_count";
     private const string BusinessCatalogFields =
-        $"id,name,owned_product_catalogs{{{CatalogFields}}},client_product_catalogs{{{CatalogFields}}}";
+        $"id,name,owned_product_catalogs{{{CatalogFields}}},client_product_catalogs{{{CatalogFields}}},product_catalogs{{{CatalogFields}}}";
 
     private readonly IMetaGraphApiClient _graph;
 
@@ -25,38 +25,89 @@ public class MetaCatalogService : IMetaCatalogService
         CancellationToken cancellationToken = default)
         => MetaApiExecutor.RunAsync(async () =>
         {
-            var catalogs = new Dictionary<string, MetaCatalogDto>(StringComparer.Ordinal);
+            var discovery = new CatalogDiscovery();
+            var businessIds = new HashSet<string>(StringComparer.Ordinal);
 
             await TryCollectFromBusinessEdgeAsync(
-                userId,
-                menuType,
+                userId, menuType, discovery, businessIds, cancellationToken,
                 "me/businesses",
-                catalogs,
-                cancellationToken,
                 ("fields", BusinessCatalogFields),
                 ("limit", "50"));
 
-            if (catalogs.Count == 0)
+            await TryCollectFromBusinessUsersAsync(userId, menuType, discovery, businessIds, cancellationToken);
+            await TryCollectFromAdAccountBusinessesAsync(userId, menuType, discovery, businessIds, cancellationToken);
+            await TryCollectFromPageBusinessesAsync(userId, menuType, discovery, businessIds, cancellationToken);
+
+            foreach (var businessId in businessIds)
             {
-                await TryCollectFromUserAssignedAsync(userId, menuType, catalogs, cancellationToken);
+                await TryAddBusinessCatalogEdgeAsync(
+                    userId, menuType, discovery, businessId, "owned_product_catalogs", "owned", query, cancellationToken);
+                await TryAddBusinessCatalogEdgeAsync(
+                    userId, menuType, discovery, businessId, "client_product_catalogs", "client", query, cancellationToken);
+                await TryAddBusinessCatalogEdgeAsync(
+                    userId, menuType, discovery, businessId, "product_catalogs", "product", query, cancellationToken);
             }
 
-            if (catalogs.Count == 0)
+            if (discovery.Catalogs.Count == 0 && discovery.PermissionDenied)
             {
-                await TryCollectFromPageBusinessesAsync(userId, menuType, catalogs, cancellationToken);
-            }
-
-            if (catalogs.Count == 0)
-            {
-                await TryCollectFromBusinessListAsync(userId, menuType, catalogs, query, cancellationToken);
+                throw new MetaGraphApiException(
+                    "Meta denied catalog access. Reconnect Facebook in Connect and grant catalog_management + business_management.");
             }
 
             return new MetaPagedResultDto<MetaCatalogDto>
             {
-                Items = catalogs.Values.ToList(),
+                Items = discovery.Catalogs.Values.ToList(),
                 NextCursor = null
             };
         }, "Catalogs loaded.");
+
+    public Task<Application.DTOs.Common.ApiResponse<MetaCatalogDto>> CreateCatalogAsync(
+        Guid userId,
+        string menuType,
+        CreateMetaCatalogRequest request,
+        CancellationToken cancellationToken = default)
+        => MetaApiExecutor.RunAsync(async () =>
+        {
+            var businessId = request.BusinessId?.Trim();
+            if (string.IsNullOrWhiteSpace(businessId))
+                businessId = await ResolveFirstBusinessIdAsync(userId, menuType, cancellationToken);
+
+            if (string.IsNullOrWhiteSpace(businessId))
+                throw new MetaGraphApiException("No Meta Business found. Create a Business in Meta Business Manager first.");
+
+            var payload = new Dictionary<string, string>
+            {
+                ["name"] = request.Name.Trim(),
+                ["vertical"] = string.IsNullOrWhiteSpace(request.Vertical) ? "commerce" : request.Vertical.Trim()
+            };
+
+            using var doc = await _graph.PostFormAsync(
+                userId,
+                menuType,
+                $"{businessId}/owned_product_catalogs",
+                payload,
+                cancellationToken);
+
+            var id = MetaGraphResponseHelper.ReadString(doc.RootElement, "id")
+                ?? throw new MetaGraphApiException("Meta did not return a catalog id.");
+
+            using var loaded = await _graph.GetAsync(
+                userId,
+                menuType,
+                id,
+                cancellationToken,
+                ("fields", CatalogFields));
+
+            return new MetaCatalogDto
+            {
+                Id = id,
+                Name = MetaGraphResponseHelper.ReadString(loaded.RootElement, "name") ?? request.Name.Trim(),
+                Vertical = MetaGraphResponseHelper.ReadString(loaded.RootElement, "vertical"),
+                ProductCount = MetaGraphResponseHelper.ReadString(loaded.RootElement, "product_count"),
+                BusinessId = businessId,
+                Source = "owned"
+            };
+        }, "Catalog created.");
 
     public Task<Application.DTOs.Common.ApiResponse<MetaPagedResultDto<MetaProductDto>>> GetProductsAsync(
         Guid userId,
@@ -195,12 +246,31 @@ public class MetaCatalogService : IMetaCatalogService
             return new { productId, catalogId };
         }, "Product deleted.");
 
+    private async Task<string?> ResolveFirstBusinessIdAsync(
+        Guid userId,
+        string menuType,
+        CancellationToken cancellationToken)
+    {
+        var businessIds = new HashSet<string>(StringComparer.Ordinal);
+        var discovery = new CatalogDiscovery();
+
+        await TryCollectFromBusinessEdgeAsync(
+            userId, menuType, discovery, businessIds, cancellationToken,
+            "me/businesses",
+            ("fields", "id"),
+            ("limit", "50"));
+        await TryCollectFromAdAccountBusinessesAsync(userId, menuType, discovery, businessIds, cancellationToken);
+
+        return businessIds.FirstOrDefault();
+    }
+
     private async Task TryCollectFromBusinessEdgeAsync(
         Guid userId,
         string menuType,
-        string path,
-        IDictionary<string, MetaCatalogDto> catalogs,
+        CatalogDiscovery discovery,
+        ISet<string> businessIds,
         CancellationToken cancellationToken,
+        string path,
         params (string Key, string Value)[] query)
     {
         try
@@ -212,55 +282,133 @@ public class MetaCatalogService : IMetaCatalogService
             foreach (var business in businesses.EnumerateArray())
             {
                 var businessId = MetaGraphResponseHelper.ReadString(business, "id");
-                AddCatalogNodes(catalogs, business, "owned_product_catalogs", businessId, "owned");
-                AddCatalogNodes(catalogs, business, "client_product_catalogs", businessId, "client");
+                if (!string.IsNullOrWhiteSpace(businessId))
+                    businessIds.Add(businessId);
+
+                AddCatalogNodes(discovery.Catalogs, business, "owned_product_catalogs", businessId, "owned");
+                AddCatalogNodes(discovery.Catalogs, business, "client_product_catalogs", businessId, "client");
+                AddCatalogNodes(discovery.Catalogs, business, "product_catalogs", businessId, "product");
             }
         }
-        catch (MetaGraphApiException)
+        catch (MetaGraphApiException ex)
         {
-            // Try the next discovery strategy.
+            discovery.NoteFailure(ex);
         }
     }
 
-    private async Task TryCollectFromUserAssignedAsync(
+    private async Task TryCollectFromBusinessUsersAsync(
         Guid userId,
         string menuType,
-        IDictionary<string, MetaCatalogDto> catalogs,
+        CatalogDiscovery discovery,
+        ISet<string> businessIds,
         CancellationToken cancellationToken)
     {
         try
         {
-            using var meDoc = await _graph.GetAsync(
+            using var businessUsersDoc = await _graph.GetAsync(
                 userId,
                 menuType,
-                "me",
+                "me/business_users",
                 cancellationToken,
-                ("fields", "id"));
-
-            var userIdValue = MetaGraphResponseHelper.ReadString(meDoc.RootElement, "id");
-            if (string.IsNullOrWhiteSpace(userIdValue))
-                return;
-
-            using var assignedDoc = await _graph.GetAsync(
-                userId,
-                menuType,
-                $"{userIdValue}/assigned_product_catalogs",
-                cancellationToken,
-                ("fields", CatalogFields),
+                ("fields", "id,business{id,name}"),
                 ("limit", "100"));
 
-            AddCatalogNodes(catalogs, assignedDoc.RootElement, "data", null, "assigned");
+            if (!businessUsersDoc.RootElement.TryGetProperty("data", out var businessUsers))
+                return;
+
+            foreach (var businessUser in businessUsers.EnumerateArray())
+            {
+                var businessUserId = MetaGraphResponseHelper.ReadString(businessUser, "id");
+                if (businessUser.TryGetProperty("business", out var business) && business.ValueKind == JsonValueKind.Object)
+                {
+                    var businessId = MetaGraphResponseHelper.ReadString(business, "id");
+                    if (!string.IsNullOrWhiteSpace(businessId))
+                        businessIds.Add(businessId);
+                }
+
+                if (string.IsNullOrWhiteSpace(businessUserId))
+                    continue;
+
+                try
+                {
+                    using var assignedDoc = await _graph.GetAsync(
+                        userId,
+                        menuType,
+                        $"{businessUserId}/assigned_product_catalogs",
+                        cancellationToken,
+                        ("fields", CatalogFields),
+                        ("limit", "100"));
+
+                    string? assignedBusinessId = null;
+                    if (businessUser.TryGetProperty("business", out var businessObj) &&
+                        businessObj.ValueKind == JsonValueKind.Object)
+                    {
+                        assignedBusinessId = MetaGraphResponseHelper.ReadString(businessObj, "id");
+                    }
+
+                    AddCatalogNodes(
+                        discovery.Catalogs,
+                        assignedDoc.RootElement,
+                        "data",
+                        assignedBusinessId,
+                        "assigned");
+                }
+                catch (MetaGraphApiException ex)
+                {
+                    discovery.NoteFailure(ex);
+                }
+            }
         }
-        catch (MetaGraphApiException)
+        catch (MetaGraphApiException ex)
         {
-            // Try the next discovery strategy.
+            discovery.NoteFailure(ex);
+        }
+    }
+
+    private async Task TryCollectFromAdAccountBusinessesAsync(
+        Guid userId,
+        string menuType,
+        CatalogDiscovery discovery,
+        ISet<string> businessIds,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var adAccountsDoc = await _graph.GetAsync(
+                userId,
+                menuType,
+                "me/adaccounts",
+                cancellationToken,
+                ("fields", "id,name,business{id,name}"),
+                ("limit", "100"));
+
+            if (!adAccountsDoc.RootElement.TryGetProperty("data", out var adAccounts))
+                return;
+
+            foreach (var adAccount in adAccounts.EnumerateArray())
+            {
+                if (!adAccount.TryGetProperty("business", out var business) || business.ValueKind != JsonValueKind.Object)
+                    continue;
+
+                var businessId = MetaGraphResponseHelper.ReadString(business, "id");
+                if (string.IsNullOrWhiteSpace(businessId))
+                    continue;
+
+                businessIds.Add(businessId);
+                AddCatalogNodes(discovery.Catalogs, business, "owned_product_catalogs", businessId, "owned");
+            }
+        }
+        catch (MetaGraphApiException ex)
+        {
+            discovery.NoteFailure(ex);
         }
     }
 
     private async Task TryCollectFromPageBusinessesAsync(
         Guid userId,
         string menuType,
-        IDictionary<string, MetaCatalogDto> catalogs,
+        CatalogDiscovery discovery,
+        ISet<string> businessIds,
         CancellationToken cancellationToken)
     {
         try
@@ -282,57 +430,22 @@ public class MetaCatalogService : IMetaCatalogService
                     continue;
 
                 var businessId = MetaGraphResponseHelper.ReadString(business, "id");
-                AddCatalogNodes(catalogs, business, "owned_product_catalogs", businessId, "owned");
+                if (!string.IsNullOrWhiteSpace(businessId))
+                    businessIds.Add(businessId);
+
+                AddCatalogNodes(discovery.Catalogs, business, "owned_product_catalogs", businessId, "owned");
             }
         }
-        catch (MetaGraphApiException)
+        catch (MetaGraphApiException ex)
         {
-            // Try the next discovery strategy.
-        }
-    }
-
-    private async Task TryCollectFromBusinessListAsync(
-        Guid userId,
-        string menuType,
-        IDictionary<string, MetaCatalogDto> catalogs,
-        MetaCatalogListQuery query,
-        CancellationToken cancellationToken)
-    {
-        try
-        {
-            using var businessesDoc = await _graph.GetAsync(
-                userId,
-                menuType,
-                "me/businesses",
-                cancellationToken,
-                ("fields", "id,name"),
-                ("limit", "50"));
-
-            if (!businessesDoc.RootElement.TryGetProperty("data", out var businesses))
-                return;
-
-            foreach (var business in businesses.EnumerateArray())
-            {
-                var businessId = MetaGraphResponseHelper.ReadString(business, "id");
-                if (string.IsNullOrWhiteSpace(businessId))
-                    continue;
-
-                await TryAddBusinessCatalogEdgeAsync(
-                    userId, menuType, catalogs, businessId, "owned_product_catalogs", "owned", query, cancellationToken);
-                await TryAddBusinessCatalogEdgeAsync(
-                    userId, menuType, catalogs, businessId, "client_product_catalogs", "client", query, cancellationToken);
-            }
-        }
-        catch (MetaGraphApiException)
-        {
-            // No catalogs available for this user/token.
+            discovery.NoteFailure(ex);
         }
     }
 
     private async Task TryAddBusinessCatalogEdgeAsync(
         Guid userId,
         string menuType,
-        IDictionary<string, MetaCatalogDto> catalogs,
+        CatalogDiscovery discovery,
         string businessId,
         string edge,
         string source,
@@ -356,11 +469,11 @@ public class MetaCatalogService : IMetaCatalogService
                 cancellationToken,
                 extra.ToArray());
 
-            AddCatalogNodes(catalogs, catalogDoc.RootElement, "data", businessId, source);
+            AddCatalogNodes(discovery.Catalogs, catalogDoc.RootElement, "data", businessId, source);
         }
-        catch (MetaGraphApiException)
+        catch (MetaGraphApiException ex)
         {
-            // Ignore per-business failures and continue.
+            discovery.NoteFailure(ex);
         }
     }
 
@@ -412,4 +525,16 @@ public class MetaCatalogService : IMetaCatalogService
         Url = MetaGraphResponseHelper.ReadString(row, "url"),
         ReviewStatus = MetaGraphResponseHelper.ReadString(row, "review_status")
     };
+
+    private sealed class CatalogDiscovery
+    {
+        public Dictionary<string, MetaCatalogDto> Catalogs { get; } = new(StringComparer.Ordinal);
+        public bool PermissionDenied { get; private set; }
+
+        public void NoteFailure(MetaGraphApiException ex)
+        {
+            if (ex.MetaErrorCode is "200" or "10" or "190")
+                PermissionDenied = true;
+        }
+    }
 }

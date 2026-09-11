@@ -6,6 +6,7 @@ import { PROCESS_MODULE_LIST, ProcessMenuType } from '../config/process.config';
 import {
   CreateMetaAdSetRequest,
   CreateMetaCampaignRequest,
+  CreateMetaCatalogRequest,
   CreateMetaProductRequest,
   MetaAd,
   MetaAdAccount,
@@ -102,6 +103,13 @@ export class MetaAdsApiService {
     let params = new HttpParams().set('limit', limit);
     if (after) params = params.set('after', after);
     return this.http.get<MetaApiResponse<MetaPagedResult<MetaCatalog>>>(`${this.base(menuType)}/catalogs`, { params });
+  }
+
+  createCatalog(
+    menuType: ProcessMenuType,
+    body: CreateMetaCatalogRequest
+  ): Observable<MetaApiResponse<MetaCatalog>> {
+    return this.http.post<MetaApiResponse<MetaCatalog>>(`${this.base(menuType)}/catalogs`, body);
   }
 
   getProducts(

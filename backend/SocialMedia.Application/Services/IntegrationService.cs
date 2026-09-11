@@ -174,6 +174,8 @@ public class IntegrationService : IIntegrationService
             scopes = PlatformCatalog.NormalizeYouTubeScopes(scopes);
         if (platformCode == "tiktok")
             scopes = PlatformCatalog.NormalizeTikTokScopes(scopes);
+        if (platformCode == "facebook")
+            scopes = PlatformCatalog.NormalizeFacebookScopes(scopes);
         var authBase = ResolveAuthBase(platformCode, config.AuthUrl, version);
 
         if (string.IsNullOrWhiteSpace(appId) || appId.StartsWith("YOUR_", StringComparison.OrdinalIgnoreCase))

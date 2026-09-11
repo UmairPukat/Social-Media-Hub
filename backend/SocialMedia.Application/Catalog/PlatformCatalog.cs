@@ -243,8 +243,49 @@ public static class PlatformCatalog
         {
             "youtube" => NormalizeYouTubeScopes(null),
             "tiktok" => NormalizeTikTokScopes(null),
+            "facebook" => NormalizeFacebookScopes(null),
             _ => string.Empty
         };
+
+    public static readonly string[] FacebookOAuthScopes =
+    [
+        "public_profile",
+        "pages_show_list",
+        "pages_read_engagement",
+        "pages_read_user_content",
+        "pages_manage_engagement",
+        "pages_manage_metadata",
+        "pages_messaging",
+        "business_management",
+        "ads_management",
+        "ads_read",
+        "read_insights",
+        "catalog_management"
+    ];
+
+    /// <summary>
+    /// Meta OAuth scopes are comma-separated. Ensures commerce/catalog scopes are always requested.
+    /// </summary>
+    public static string NormalizeFacebookScopes(string? scopes)
+    {
+        var merged = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var token in SplitScopeTokens(scopes))
+            merged.Add(token);
+
+        foreach (var required in FacebookOAuthScopes)
+            merged.Add(required);
+
+        return string.Join(',', merged);
+    }
+
+    private static IEnumerable<string> SplitScopeTokens(string? scopes)
+    {
+        if (string.IsNullOrWhiteSpace(scopes))
+            yield break;
+
+        foreach (var token in scopes.Split([',', ' ', '\n', '\r', '\t'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            yield return token;
+    }
 
     public static readonly string[] TikTokOAuthScopes =
     [

@@ -11,6 +11,12 @@ public interface IMetaCatalogService
         MetaCatalogListQuery query,
         CancellationToken cancellationToken = default);
 
+    Task<ApiResponse<MetaCatalogDto>> CreateCatalogAsync(
+        Guid userId,
+        string menuType,
+        CreateMetaCatalogRequest request,
+        CancellationToken cancellationToken = default);
+
     Task<ApiResponse<MetaPagedResultDto<MetaProductDto>>> GetProductsAsync(
         Guid userId,
         string menuType,

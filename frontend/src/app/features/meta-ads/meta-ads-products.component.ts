@@ -47,6 +47,7 @@ export class MetaAdsProductsComponent implements OnInit {
   });
 
   ngOnInit(): void {
+    this.state.syncForCurrentProcess();
     this.load();
   }
 

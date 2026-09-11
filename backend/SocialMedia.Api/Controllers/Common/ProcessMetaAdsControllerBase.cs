@@ -127,6 +127,16 @@ public abstract class ProcessMetaAdsControllerBase : ControllerBase
         return Ok(response);
     }
 
+    /// <summary>Creates a product catalog on a Meta business. Permission: catalog_management.</summary>
+    [HttpPost("meta-ads/catalogs")]
+    public async Task<IActionResult> CreateCatalog(
+        [FromBody] CreateMetaCatalogRequest request,
+        CancellationToken cancellationToken)
+    {
+        var response = await _catalogService.CreateCatalogAsync(User.GetUserId(), MenuType, request, cancellationToken);
+        return Ok(response);
+    }
+
     /// <summary>Lists products in a catalog. Permission: catalog_management.</summary>
     [HttpGet("meta-ads/catalogs/{catalogId}/products")]
     public async Task<IActionResult> GetProducts(

@@ -6,7 +6,7 @@ import { MetaAdsApiService } from '../../core/services/meta-ads-api.service';
 import { MetaAdsStateService } from '../../core/services/meta-ads-state.service';
 import { ProcessRouteService } from '../../core/services/process-route.service';
 import { MetaCatalog } from '../../core/models/meta-ads.models';
-import { metaErrorMessage } from './meta-ads.util';
+import { metaCommerceCatalogUrl, metaErrorMessage } from './meta-ads.util';
 
 @Component({
   selector: 'app-meta-ads-catalogs',
@@ -22,12 +22,15 @@ export class MetaAdsCatalogsComponent implements OnInit {
 
   readonly catalogs = signal<MetaCatalog[]>([]);
   readonly loading = signal(false);
+  readonly creating = signal(false);
   readonly error = signal('');
   readonly banner = signal('');
   readonly nextCursor = signal<string | null>(null);
-  readonly selectedId = signal<string | null>(this.state.selectedCatalog()?.id ?? null);
+  readonly selectedId = signal<string | null>(null);
 
   ngOnInit(): void {
+    this.state.syncForCurrentProcess();
+    this.selectedId.set(this.state.selectedCatalog()?.id ?? null);
     this.load();
   }
 
@@ -51,6 +54,32 @@ export class MetaAdsCatalogsComponent implements OnInit {
     });
   }
 
+  createDemoCatalog(): void {
+    this.creating.set(true);
+    this.error.set('');
+    this.api
+      .createCatalog(this.processRoute.currentMenuType(), {
+        name: 'App Review Demo Catalog',
+        vertical: 'commerce'
+      })
+      .subscribe({
+        next: (res) => {
+          this.creating.set(false);
+          if (!res.success || !res.data) {
+            this.error.set(metaErrorMessage(res));
+            return;
+          }
+          this.banner.set(`Catalog created: ${res.data.name} (${res.data.id})`);
+          this.select(res.data);
+          this.load();
+        },
+        error: () => {
+          this.creating.set(false);
+          this.error.set('Unable to create catalog.');
+        }
+      });
+  }
+
   select(catalog: MetaCatalog): void {
     this.selectedId.set(catalog.id);
     this.state.selectCatalog({ id: catalog.id, name: catalog.name });
@@ -59,5 +88,9 @@ export class MetaAdsCatalogsComponent implements OnInit {
 
   isSelected(catalog: MetaCatalog): boolean {
     return this.selectedId() === catalog.id;
+  }
+
+  commerceUrl(catalog: MetaCatalog): string {
+    return metaCommerceCatalogUrl(catalog.id);
   }
 }

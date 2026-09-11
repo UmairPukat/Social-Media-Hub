@@ -31,6 +31,16 @@ public class MetaCatalogListQuery
     public int Limit { get; set; } = 25;
 }
 
+public class CreateMetaCatalogRequest
+{
+    public string? BusinessId { get; set; }
+
+    [Required, MaxLength(200)]
+    public string Name { get; set; } = "App Review Demo Catalog";
+
+    public string Vertical { get; set; } = "commerce";
+}
+
 public class MetaProductListQuery
 {
     [Required]
