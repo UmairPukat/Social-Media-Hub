@@ -1,6 +1,6 @@
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { RouterLink } from '@angular/router';
+import { ActivatedRoute, RouterLink } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
@@ -10,7 +10,7 @@ import { MetaAdsApiService } from '../../core/services/meta-ads-api.service';
 import { MetaAdsStateService } from '../../core/services/meta-ads-state.service';
 import { ProcessRouteService } from '../../core/services/process-route.service';
 import { MetaAd, MetaAdSet } from '../../core/models/meta-ads.models';
-import { metaErrorMessage } from './meta-ads.util';
+import { metaAdsManagerAdSetUrl, metaAdsManagerAdUrl, metaAdsManagerCampaignUrl, metaErrorMessage } from './meta-ads.util';
 
 @Component({
   selector: 'app-meta-ads-ads',
@@ -23,6 +23,7 @@ export class MetaAdsAdsComponent implements OnInit {
   private readonly api = inject(MetaAdsApiService);
   readonly state = inject(MetaAdsStateService);
   private readonly processRoute = inject(ProcessRouteService);
+  private readonly route = inject(ActivatedRoute);
 
   readonly adSets = signal<MetaAdSet[]>([]);
   readonly ads = signal<MetaAd[]>([]);
@@ -38,6 +39,11 @@ export class MetaAdsAdsComponent implements OnInit {
   });
 
   ngOnInit(): void {
+    this.state.syncForCurrentProcess();
+    const adSetId = this.route.snapshot.queryParamMap.get('adSetId');
+    if (adSetId) {
+      this.selectedAdSetId.set(adSetId);
+    }
     this.loadAdSets();
     this.loadAds();
   }
@@ -50,7 +56,10 @@ export class MetaAdsAdsComponent implements OnInit {
       next: (res) => {
         if (res.success) {
           this.adSets.set(res.data?.items ?? []);
-          if (!this.selectedAdSetId() && this.adSets().length) {
+          const requested = this.route.snapshot.queryParamMap.get('adSetId');
+          if (requested) {
+            this.selectedAdSetId.set(requested);
+          } else if (!this.selectedAdSetId() && this.adSets().length) {
             this.selectedAdSetId.set(this.adSets()[0].id);
           }
         }
@@ -87,6 +96,21 @@ export class MetaAdsAdsComponent implements OnInit {
           this.error.set('Unable to load ads.');
         }
       });
+  }
+
+  metaManagerUrl(ad: MetaAd): string {
+    const accountId = this.state.selectedAdAccount()?.id ?? '';
+    return metaAdsManagerAdUrl(accountId, ad.id);
+  }
+
+  metaAdSetUrl(adSetId: string): string {
+    const accountId = this.state.selectedAdAccount()?.id ?? '';
+    return metaAdsManagerAdSetUrl(accountId, adSetId);
+  }
+
+  metaCampaignUrl(campaignId: string): string {
+    const accountId = this.state.selectedAdAccount()?.id ?? '';
+    return metaAdsManagerCampaignUrl(accountId, campaignId);
   }
 
   updateStatus(ad: MetaAd, status: string): void {

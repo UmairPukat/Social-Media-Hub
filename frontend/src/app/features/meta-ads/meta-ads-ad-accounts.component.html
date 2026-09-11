@@ -51,18 +51,30 @@
               <th>Currency</th>
               <th>Account Status</th>
               <th>Business</th>
-              <th></th>
+              <th>Actions</th>
             </tr>
           </thead>
           <tbody>
             @for (account of accounts(); track account.id) {
               <tr>
-                <td><strong>{{ account.name }}</strong></td>
-                <td>{{ account.id }}</td>
+                <td>
+                  <a class="row-link strong" [href]="metaManagerUrl(account)" target="_blank" rel="noopener noreferrer">
+                    {{ account.name }}
+                    <mat-icon>open_in_new</mat-icon>
+                  </a>
+                </td>
+                <td>
+                  <a class="row-link" [href]="metaManagerUrl(account)" target="_blank" rel="noopener noreferrer">
+                    {{ account.id }}
+                    <mat-icon>open_in_new</mat-icon>
+                  </a>
+                </td>
                 <td>{{ account.currency || '—' }}</td>
                 <td>{{ account.accountStatus || '—' }}</td>
                 <td>{{ account.businessName || '—' }}</td>
-                <td>
+                <td class="actions-cell">
+                  <a mat-button routerLink="../campaigns">Campaigns</a>
+                  <a mat-button routerLink="../insights">Insights</a>
                   <button
                     mat-stroked-button
                     type="button"

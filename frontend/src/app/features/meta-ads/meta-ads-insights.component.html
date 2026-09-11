@@ -3,13 +3,13 @@
     <div>
       <p class="eyebrow">Meta Ads</p>
       <h1>Insights</h1>
-      <p class="lede">Retrieve performance metrics from the Meta Graph API insights endpoint.</p>
+      <p class="lede">Performance metrics from the Meta Graph API — last 30 days load automatically when you open this page.</p>
       <div class="meta-badges">
         <span class="permission-badge"><mat-icon>verified_user</mat-icon> read_insights</span>
       </div>
     </div>
     <button mat-stroked-button type="button" (click)="loadInsights()" [disabled]="loading() || !state.selectedAdAccount()">
-      <mat-icon>insights</mat-icon> Load Insights
+      <mat-icon>refresh</mat-icon> Refresh
     </button>
   </header>
 
@@ -54,7 +54,7 @@
 
           <mat-form-field appearance="outline">
             <mat-label>Object</mat-label>
-            <mat-select [ngModel]="selectedObjectId()" (ngModelChange)="selectedObjectId.set($event)">
+            <mat-select [ngModel]="selectedObjectId()" (ngModelChange)="onObjectChange($event)">
               @if (level() === 'campaign') {
                 @for (item of campaigns(); track item.id) {
                   <mat-option [value]="item.id">{{ item.name }} ({{ item.id }})</mat-option>
@@ -73,7 +73,7 @@
 
           <mat-form-field appearance="outline">
             <mat-label>Date Range</mat-label>
-            <mat-select [ngModel]="datePreset()" (ngModelChange)="datePreset.set($event)">
+            <mat-select [ngModel]="datePreset()" (ngModelChange)="onDatePresetChange($event)">
               <mat-option value="today">Today</mat-option>
               <mat-option value="yesterday">Yesterday</mat-option>
               <mat-option value="last_7d">Last 7 Days</mat-option>
@@ -157,8 +157,8 @@
       } @else {
         <div class="empty-state">
           <mat-icon>insights</mat-icon>
-          <strong>No insights loaded yet</strong>
-          <span>Choose an object and date range, then click Load Insights.</span>
+          <strong>No insights available</strong>
+          <span>Select a campaign, ad set, or ad with performance data for the last 30 days.</span>
         </div>
       }
     </section>

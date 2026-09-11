@@ -8,7 +8,7 @@ import { MetaAdsStateService } from '../../core/services/meta-ads-state.service'
 import { ProcessRouteService } from '../../core/services/process-route.service';
 import { PROCESS_MODULE_LIST } from '../../core/config/process.config';
 import { MetaAdAccount } from '../../core/models/meta-ads.models';
-import { metaErrorMessage } from './meta-ads.util';
+import { metaAdsManagerAdAccountUrl, metaErrorMessage } from './meta-ads.util';
 
 @Component({
   selector: 'app-meta-ads-ad-accounts',
@@ -64,5 +64,9 @@ export class MetaAdsAdAccountsComponent implements OnInit {
 
   isSelected(account: MetaAdAccount): boolean {
     return this.selectedId() === account.id;
+  }
+
+  metaManagerUrl(account: MetaAdAccount): string {
+    return metaAdsManagerAdAccountUrl(account.id);
   }
 }

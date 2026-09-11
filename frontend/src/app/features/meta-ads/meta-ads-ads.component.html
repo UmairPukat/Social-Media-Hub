@@ -94,13 +94,42 @@
             <tbody>
               @for (ad of filtered(); track ad.id) {
                 <tr>
-                  <td>{{ ad.id }}</td>
-                  <td><strong>{{ ad.name }}</strong></td>
-                  <td>{{ ad.adSetId || '—' }}</td>
-                  <td>{{ ad.campaignId || '—' }}</td>
+                  <td>
+                    <a class="row-link" [href]="metaManagerUrl(ad)" target="_blank" rel="noopener noreferrer">
+                      {{ ad.id }}
+                      <mat-icon>open_in_new</mat-icon>
+                    </a>
+                  </td>
+                  <td>
+                    <a class="row-link strong" [href]="metaManagerUrl(ad)" target="_blank" rel="noopener noreferrer">
+                      {{ ad.name }}
+                      <mat-icon>open_in_new</mat-icon>
+                    </a>
+                  </td>
+                  <td>
+                    @if (ad.adSetId) {
+                      <a class="row-link" [href]="metaAdSetUrl(ad.adSetId)" target="_blank" rel="noopener noreferrer">
+                        {{ ad.adSetId }}
+                        <mat-icon>open_in_new</mat-icon>
+                      </a>
+                    } @else {
+                      —
+                    }
+                  </td>
+                  <td>
+                    @if (ad.campaignId) {
+                      <a class="row-link" [href]="metaCampaignUrl(ad.campaignId)" target="_blank" rel="noopener noreferrer">
+                        {{ ad.campaignId }}
+                        <mat-icon>open_in_new</mat-icon>
+                      </a>
+                    } @else {
+                      —
+                    }
+                  </td>
                   <td>{{ ad.status || '—' }}</td>
                   <td>{{ ad.creativeId || '—' }}</td>
-                  <td>
+                  <td class="actions-cell">
+                    <a mat-button [routerLink]="['../insights']" [queryParams]="{ adId: ad.id, level: 'ad' }">Insights</a>
                     @if (ad.status !== 'PAUSED') {
                       <button mat-button type="button" (click)="updateStatus(ad, 'PAUSED')">Pause</button>
                     } @else {

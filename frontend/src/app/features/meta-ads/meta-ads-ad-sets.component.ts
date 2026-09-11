@@ -11,7 +11,7 @@ import { MetaAdsApiService } from '../../core/services/meta-ads-api.service';
 import { MetaAdsStateService } from '../../core/services/meta-ads-state.service';
 import { ProcessRouteService } from '../../core/services/process-route.service';
 import { MetaAdSet, MetaCampaign } from '../../core/models/meta-ads.models';
-import { metaErrorMessage } from './meta-ads.util';
+import { metaAdsManagerAdSetUrl, metaAdsManagerCampaignUrl, metaErrorMessage } from './meta-ads.util';
 
 @Component({
   selector: 'app-meta-ads-ad-sets',
@@ -144,6 +144,16 @@ export class MetaAdsAdSetsComponent implements OnInit {
           this.error.set('Unable to create ad set.');
         }
       });
+  }
+
+  metaManagerUrl(adSet: MetaAdSet): string {
+    const accountId = this.state.selectedAdAccount()?.id ?? '';
+    return metaAdsManagerAdSetUrl(accountId, adSet.id);
+  }
+
+  metaCampaignUrl(campaignId: string): string {
+    const accountId = this.state.selectedAdAccount()?.id ?? '';
+    return metaAdsManagerCampaignUrl(accountId, campaignId);
   }
 
   updateStatus(adSet: MetaAdSet, status: string): void {

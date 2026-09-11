@@ -50,7 +50,7 @@ export class MetaAdsInsightsComponent implements OnInit {
   readonly adSets = signal<MetaAdSet[]>([]);
   readonly ads = signal<MetaAd[]>([]);
   readonly selectedObjectId = signal('');
-  readonly datePreset = signal<DatePreset>('last_7d');
+  readonly datePreset = signal<DatePreset>('last_30d');
   readonly since = signal('');
   readonly until = signal('');
   readonly summary = signal<MetaInsightsSummary | null>(null);
@@ -81,53 +81,98 @@ export class MetaAdsInsightsComponent implements OnInit {
 
   ngOnInit(): void {
     this.state.syncForCurrentProcess();
-    const campaignId = this.route.snapshot.queryParamMap.get('campaignId');
-    const level = this.route.snapshot.queryParamMap.get('level');
+    const params = this.route.snapshot.queryParamMap;
+    const level = params.get('level');
+    const campaignId = params.get('campaignId');
+    const adSetId = params.get('adSetId');
+    const adId = params.get('adId');
+
     if (level === 'campaign' || level === 'adset' || level === 'ad') {
       this.level.set(level);
     }
-    if (campaignId) {
+    if (adId) {
+      this.level.set('ad');
+      this.selectedObjectId.set(adId);
+    } else if (adSetId) {
+      this.level.set('adset');
+      this.selectedObjectId.set(adSetId);
+    } else if (campaignId) {
       this.level.set('campaign');
       this.selectedObjectId.set(campaignId);
     }
-    this.loadObjects(campaignId ?? undefined);
+
+    this.loadObjects({
+      campaignId: campaignId ?? undefined,
+      adSetId: adSetId ?? undefined,
+      adId: adId ?? undefined
+    });
   }
 
-  loadObjects(preferredCampaignId?: string): void {
+  loadObjects(preferred?: { campaignId?: string; adSetId?: string; adId?: string }): void {
     const adAccount = this.state.selectedAdAccount();
     if (!adAccount) return;
 
     const menu = this.processRoute.currentMenuType();
-    this.api.getCampaigns(menu, { adAccountId: adAccount.id, limit: 50, includeCampaignId: preferredCampaignId }).subscribe({
-      next: (res) => {
-        if (res.success) {
-          this.campaigns.set(res.data?.items ?? []);
-          if (preferredCampaignId) {
-            this.selectedObjectId.set(preferredCampaignId);
-          } else if (!this.selectedObjectId() && this.campaigns().length) {
-            this.selectedObjectId.set(this.campaigns()[0].id);
-          }
-          if (preferredCampaignId && this.level() === 'campaign') {
-            this.loadInsights();
-          }
-        }
+    let pending = 3;
+
+    const tryAutoLoad = () => {
+      pending -= 1;
+      if (pending > 0) return;
+      this.ensureSelectedObject();
+      if (this.selectedObjectId()) {
+        this.loadInsights();
       }
+    };
+
+    this.api.getCampaigns(menu, {
+      adAccountId: adAccount.id,
+      limit: 50,
+      includeCampaignId: preferred?.campaignId
+    }).subscribe({
+      next: (res) => {
+        if (res.success) this.campaigns.set(res.data?.items ?? []);
+        tryAutoLoad();
+      },
+      error: () => tryAutoLoad()
     });
 
     this.api.getAdSets(menu, { adAccountId: adAccount.id, limit: 50 }).subscribe({
       next: (res) => {
         if (res.success) this.adSets.set(res.data?.items ?? []);
-      }
+        tryAutoLoad();
+      },
+      error: () => tryAutoLoad()
     });
 
     this.api.getAds(menu, { adAccountId: adAccount.id, limit: 50 }).subscribe({
       next: (res) => {
         if (res.success) this.ads.set(res.data?.items ?? []);
-      }
+        tryAutoLoad();
+      },
+      error: () => tryAutoLoad()
     });
   }
 
   onLevelChange(): void {
+    this.ensureSelectedObject();
+    this.loadInsights();
+  }
+
+  onObjectChange(objectId: string): void {
+    this.selectedObjectId.set(objectId);
+    this.loadInsights();
+  }
+
+  onDatePresetChange(preset: DatePreset): void {
+    this.datePreset.set(preset);
+    if (preset !== 'custom') {
+      this.loadInsights();
+    }
+  }
+
+  private ensureSelectedObject(): void {
+    if (this.selectedObjectId()) return;
+
     const level = this.level();
     const first =
       level === 'campaign' ? this.campaigns()[0]?.id :

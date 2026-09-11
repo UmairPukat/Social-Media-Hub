@@ -112,14 +112,35 @@
             <tbody>
               @for (adSet of filtered(); track adSet.id) {
                 <tr>
-                  <td>{{ adSet.id }}</td>
-                  <td><strong>{{ adSet.name }}</strong></td>
-                  <td>{{ adSet.campaignId || '—' }}</td>
+                  <td>
+                    <a class="row-link" [href]="metaManagerUrl(adSet)" target="_blank" rel="noopener noreferrer">
+                      {{ adSet.id }}
+                      <mat-icon>open_in_new</mat-icon>
+                    </a>
+                  </td>
+                  <td>
+                    <a class="row-link strong" [href]="metaManagerUrl(adSet)" target="_blank" rel="noopener noreferrer">
+                      {{ adSet.name }}
+                      <mat-icon>open_in_new</mat-icon>
+                    </a>
+                  </td>
+                  <td>
+                    @if (adSet.campaignId) {
+                      <a class="row-link" [href]="metaCampaignUrl(adSet.campaignId)" target="_blank" rel="noopener noreferrer">
+                        {{ adSet.campaignId }}
+                        <mat-icon>open_in_new</mat-icon>
+                      </a>
+                    } @else {
+                      —
+                    }
+                  </td>
                   <td>{{ adSet.status || '—' }}</td>
                   <td>{{ adSet.dailyBudget || adSet.lifetimeBudget || '—' }}</td>
                   <td>{{ adSet.startTime | date: 'medium' }}</td>
                   <td>{{ adSet.endTime | date: 'medium' }}</td>
-                  <td>
+                  <td class="actions-cell">
+                    <a mat-button [routerLink]="['../ads']" [queryParams]="{ adSetId: adSet.id }">Ads</a>
+                    <a mat-button [routerLink]="['../insights']" [queryParams]="{ adSetId: adSet.id, level: 'adset' }">Insights</a>
                     @if (adSet.status !== 'PAUSED') {
                       <button mat-button type="button" (click)="updateStatus(adSet, 'PAUSED')">Pause</button>
                     } @else {
