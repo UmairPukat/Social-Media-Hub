@@ -409,6 +409,39 @@
   border: 1px solid var(--line);
 }
 
+.row-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--chrome-accent);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.row-link.strong {
+  color: var(--ink);
+}
+
+.row-link:hover {
+  text-decoration: underline;
+}
+
+.row-link mat-icon {
+  width: 14px;
+  height: 14px;
+  font-size: 14px;
+  opacity: 0.7;
+}
+
+.actions-cell {
+  white-space: nowrap;
+}
+
+.actions-cell a,
+.actions-cell button {
+  margin-right: 2px;
+}
+
 @media (max-width: 768px) {
   .meta-hero {
     padding: 18px;

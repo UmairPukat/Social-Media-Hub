@@ -97,6 +97,7 @@ export interface MetaListQuery {
   status?: string;
   search?: string;
   after?: string;
+  includeCampaignId?: string;
   limit?: number;
 }
 

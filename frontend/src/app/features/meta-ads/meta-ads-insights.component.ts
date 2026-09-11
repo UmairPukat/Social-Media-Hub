@@ -1,7 +1,7 @@
 import { DecimalPipe } from '@angular/common';
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { RouterLink } from '@angular/router';
+import { ActivatedRoute, RouterLink } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
@@ -43,6 +43,7 @@ export class MetaAdsInsightsComponent implements OnInit {
   private readonly api = inject(MetaAdsApiService);
   readonly state = inject(MetaAdsStateService);
   private readonly processRoute = inject(ProcessRouteService);
+  private readonly route = inject(ActivatedRoute);
 
   readonly level = signal<InsightLevel>('campaign');
   readonly campaigns = signal<MetaCampaign[]>([]);
@@ -79,20 +80,35 @@ export class MetaAdsInsightsComponent implements OnInit {
   );
 
   ngOnInit(): void {
-    this.loadObjects();
+    this.state.syncForCurrentProcess();
+    const campaignId = this.route.snapshot.queryParamMap.get('campaignId');
+    const level = this.route.snapshot.queryParamMap.get('level');
+    if (level === 'campaign' || level === 'adset' || level === 'ad') {
+      this.level.set(level);
+    }
+    if (campaignId) {
+      this.level.set('campaign');
+      this.selectedObjectId.set(campaignId);
+    }
+    this.loadObjects(campaignId ?? undefined);
   }
 
-  loadObjects(): void {
+  loadObjects(preferredCampaignId?: string): void {
     const adAccount = this.state.selectedAdAccount();
     if (!adAccount) return;
 
     const menu = this.processRoute.currentMenuType();
-    this.api.getCampaigns(menu, { adAccountId: adAccount.id, limit: 50 }).subscribe({
+    this.api.getCampaigns(menu, { adAccountId: adAccount.id, limit: 50, includeCampaignId: preferredCampaignId }).subscribe({
       next: (res) => {
         if (res.success) {
           this.campaigns.set(res.data?.items ?? []);
-          if (!this.selectedObjectId() && this.campaigns().length) {
+          if (preferredCampaignId) {
+            this.selectedObjectId.set(preferredCampaignId);
+          } else if (!this.selectedObjectId() && this.campaigns().length) {
             this.selectedObjectId.set(this.campaigns()[0].id);
+          }
+          if (preferredCampaignId && this.level() === 'campaign') {
+            this.loadInsights();
           }
         }
       }

@@ -1,7 +1,7 @@
 import { DatePipe } from '@angular/common';
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { RouterLink } from '@angular/router';
+import { ActivatedRoute, RouterLink } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
@@ -33,6 +33,7 @@ export class MetaAdsAdSetsComponent implements OnInit {
   private readonly api = inject(MetaAdsApiService);
   readonly state = inject(MetaAdsStateService);
   private readonly processRoute = inject(ProcessRouteService);
+  private readonly route = inject(ActivatedRoute);
 
   readonly campaigns = signal<MetaCampaign[]>([]);
   readonly adSets = signal<MetaAdSet[]>([]);
@@ -53,6 +54,11 @@ export class MetaAdsAdSetsComponent implements OnInit {
   });
 
   ngOnInit(): void {
+    this.state.syncForCurrentProcess();
+    const campaignId = this.route.snapshot.queryParamMap.get('campaignId');
+    if (campaignId) {
+      this.selectedCampaignId.set(campaignId);
+    }
     this.loadCampaigns();
     this.loadAdSets();
   }
@@ -65,7 +71,10 @@ export class MetaAdsAdSetsComponent implements OnInit {
       next: (res) => {
         if (res.success) {
           this.campaigns.set(res.data?.items ?? []);
-          if (!this.selectedCampaignId() && this.campaigns().length) {
+          const requested = this.route.snapshot.queryParamMap.get('campaignId');
+          if (requested) {
+            this.selectedCampaignId.set(requested);
+          } else if (!this.selectedCampaignId() && this.campaigns().length) {
             this.selectedCampaignId.set(this.campaigns()[0].id);
           }
         }

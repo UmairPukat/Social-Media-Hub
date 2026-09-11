@@ -1,6 +1,6 @@
 import { Component, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { RouterLink } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
@@ -22,6 +22,8 @@ export class MetaAdsCreateCampaignComponent {
   private readonly api = inject(MetaAdsApiService);
   readonly state = inject(MetaAdsStateService);
   private readonly processRoute = inject(ProcessRouteService);
+  private readonly router = inject(Router);
+  private readonly route = inject(ActivatedRoute);
 
   readonly name = signal('App Review Demo Campaign');
   readonly objective = signal('OUTCOME_AWARENESS');
@@ -65,8 +67,13 @@ export class MetaAdsCreateCampaignComponent {
             this.error.set(metaErrorMessage(res));
             return;
           }
-          this.createdId.set(res.data?.id ?? '');
-          this.banner.set(`Campaign created successfully. Campaign ID: ${res.data?.id}`);
+
+          const campaignId = res.data?.id ?? '';
+          this.createdId.set(campaignId);
+          void this.router.navigate(['../campaigns'], {
+            relativeTo: this.route,
+            queryParams: { created: campaignId }
+          });
         },
         error: () => {
           this.loading.set(false);

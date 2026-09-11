@@ -127,5 +127,6 @@ public class MetaListQuery
     public string? Status { get; set; }
     public string? Search { get; set; }
     public string? After { get; set; }
-    public int Limit { get; set; } = 25;
+    public string? IncludeCampaignId { get; set; }
+    public int Limit { get; set; } = 100;
 }

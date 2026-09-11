@@ -1,17 +1,19 @@
 import { DatePipe } from '@angular/common';
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
-import { RouterLink } from '@angular/router';
+import { ActivatedRoute, NavigationEnd, Router, RouterLink } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
+import { filter } from 'rxjs/operators';
 import { MetaAdsApiService } from '../../core/services/meta-ads-api.service';
 import { MetaAdsStateService } from '../../core/services/meta-ads-state.service';
 import { ProcessRouteService } from '../../core/services/process-route.service';
 import { MetaCampaign } from '../../core/models/meta-ads.models';
-import { metaErrorMessage } from './meta-ads.util';
+import { metaAdsManagerCampaignUrl, metaErrorMessage } from './meta-ads.util';
 
 @Component({
   selector: 'app-meta-ads-campaigns',
@@ -33,6 +35,8 @@ export class MetaAdsCampaignsComponent implements OnInit {
   private readonly api = inject(MetaAdsApiService);
   readonly state = inject(MetaAdsStateService);
   private readonly processRoute = inject(ProcessRouteService);
+  private readonly route = inject(ActivatedRoute);
+  private readonly router = inject(Router);
 
   readonly campaigns = signal<MetaCampaign[]>([]);
   readonly loading = signal(false);
@@ -42,18 +46,42 @@ export class MetaAdsCampaignsComponent implements OnInit {
   readonly status = signal('');
   readonly nextCursor = signal<string | null>(null);
   readonly cursorStack = signal<string[]>([]);
+  readonly includeCampaignId = signal<string | null>(null);
 
   readonly filtered = computed(() => {
     const term = this.search().trim().toLowerCase();
+    const statusFilter = this.status().trim().toUpperCase();
     return this.campaigns().filter(c => {
-      if (this.status() && (c.status || '').toUpperCase() !== this.status()) return false;
+      if (statusFilter) {
+        const campaignStatus = (c.status || '').toUpperCase();
+        const effectiveStatus = (c.effectiveStatus || '').toUpperCase();
+        if (campaignStatus !== statusFilter && effectiveStatus !== statusFilter) {
+          return false;
+        }
+      }
       if (!term) return true;
       return c.name.toLowerCase().includes(term) || c.id.includes(term);
     });
   });
 
+  constructor() {
+    this.router.events
+      .pipe(
+        filter((event): event is NavigationEnd => event instanceof NavigationEnd),
+        takeUntilDestroyed()
+      )
+      .subscribe(() => {
+        if (!this.router.url.includes('/meta-ads/campaigns')) return;
+        this.state.syncForCurrentProcess();
+        this.readCreatedQueryParam();
+        this.refresh();
+      });
+  }
+
   ngOnInit(): void {
-    this.load();
+    this.state.syncForCurrentProcess();
+    this.readCreatedQueryParam();
+    this.refresh();
   }
 
   load(after?: string): void {
@@ -69,7 +97,8 @@ export class MetaAdsCampaignsComponent implements OnInit {
       .getCampaigns(this.processRoute.currentMenuType(), {
         adAccountId: adAccount.id,
         after,
-        limit: 25
+        includeCampaignId: this.includeCampaignId() || undefined,
+        limit: 100
       })
       .subscribe({
         next: (res) => {
@@ -114,6 +143,28 @@ export class MetaAdsCampaignsComponent implements OnInit {
 
   resume(campaign: MetaCampaign): void {
     this.updateStatus(campaign, 'ACTIVE');
+  }
+
+  private readCreatedQueryParam(): void {
+    const created = this.route.snapshot.queryParamMap.get('created');
+    if (!created) return;
+
+    this.includeCampaignId.set(created);
+    this.banner.set(`Campaign created successfully. Showing campaign ID ${created}.`);
+    this.status.set('');
+    this.search.set('');
+
+    void this.router.navigate([], {
+      relativeTo: this.route,
+      queryParams: { created: null },
+      queryParamsHandling: 'merge',
+      replaceUrl: true
+    });
+  }
+
+  metaManagerUrl(campaign: MetaCampaign): string {
+    const accountId = this.state.selectedAdAccount()?.id ?? '';
+    return metaAdsManagerCampaignUrl(accountId, campaign.id);
   }
 
   private updateStatus(campaign: MetaCampaign, status: string): void {

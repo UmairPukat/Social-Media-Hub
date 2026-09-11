@@ -78,7 +78,7 @@
         <div class="empty-state">
           <mat-icon>campaign</mat-icon>
           <strong>No campaigns found</strong>
-          <span>Create a paused demo campaign or adjust your filters.</span>
+          <span>@if (campaigns().length) { Adjust your search or status filters. } @else { Create a paused demo campaign, then refresh this list. }</span>
         </div>
       } @else {
         <div class="table-wrap">
@@ -98,14 +98,26 @@
             <tbody>
               @for (campaign of filtered(); track campaign.id) {
                 <tr>
-                  <td>{{ campaign.id }}</td>
-                  <td><strong>{{ campaign.name }}</strong></td>
+                  <td>
+                    <a class="row-link" [href]="metaManagerUrl(campaign)" target="_blank" rel="noopener noreferrer">
+                      {{ campaign.id }}
+                      <mat-icon>open_in_new</mat-icon>
+                    </a>
+                  </td>
+                  <td>
+                    <a class="row-link strong" [href]="metaManagerUrl(campaign)" target="_blank" rel="noopener noreferrer">
+                      {{ campaign.name }}
+                      <mat-icon>open_in_new</mat-icon>
+                    </a>
+                  </td>
                   <td>{{ campaign.objective || '—' }}</td>
                   <td><span class="status-pill" [class.paused]="campaign.status === 'PAUSED'" [class.active]="campaign.status === 'ACTIVE'">{{ campaign.status || '—' }}</span></td>
                   <td>{{ campaign.effectiveStatus || '—' }}</td>
                   <td>{{ campaign.createdTime | date: 'medium' }}</td>
                   <td>{{ campaign.updatedTime | date: 'medium' }}</td>
-                  <td>
+                  <td class="actions-cell">
+                    <a mat-button [routerLink]="['../ad-sets']" [queryParams]="{ campaignId: campaign.id }">Ad Sets</a>
+                    <a mat-button [routerLink]="['../insights']" [queryParams]="{ campaignId: campaign.id, level: 'campaign' }">Insights</a>
                     @if (campaign.status !== 'PAUSED') {
                       <button mat-button type="button" (click)="pause(campaign)">Pause</button>
                     } @else {
@@ -119,7 +131,7 @@
         </div>
         <div class="pagination">
           <button mat-stroked-button type="button" (click)="prevPage()" [disabled]="!cursorStack().length">Previous</button>
-          <span>{{ filtered().length }} shown</span>
+          <span>{{ filtered().length }} shown · {{ campaigns().length }} loaded</span>
           <button mat-stroked-button type="button" (click)="nextPage()" [disabled]="!nextCursor()">Next</button>
         </div>
       }

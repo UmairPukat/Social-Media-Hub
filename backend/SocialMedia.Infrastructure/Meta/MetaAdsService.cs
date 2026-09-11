@@ -53,7 +53,16 @@ public class MetaAdsService : IMetaAdsService
                     ("after", query.After),
                     ("effective_status", string.IsNullOrWhiteSpace(query.Status) ? null : $"['{query.Status}']")));
 
-            var items = ReadArray(doc.RootElement, MapCampaign);
+            var items = SortCampaigns(ReadArray(doc.RootElement, MapCampaign));
+
+            if (!string.IsNullOrWhiteSpace(query.IncludeCampaignId) &&
+                items.All(c => c.Id != query.IncludeCampaignId.Trim()))
+            {
+                var included = await TryLoadCampaignAsync(userId, menuType, query.IncludeCampaignId.Trim(), cancellationToken);
+                if (included is not null)
+                    items.Insert(0, included);
+            }
+
             if (!string.IsNullOrWhiteSpace(query.Search))
             {
                 var term = query.Search.Trim();
@@ -106,14 +115,7 @@ public class MetaAdsService : IMetaAdsService
             var id = MetaGraphResponseHelper.ReadString(doc.RootElement, "id")
                 ?? throw new MetaGraphApiException("Meta did not return a campaign id.");
 
-            using var loaded = await _graph.GetAsync(
-                userId,
-                menuType,
-                id,
-                cancellationToken,
-                ("fields", "id,name,objective,status,effective_status,created_time,updated_time"));
-
-            return MapCampaign(loaded.RootElement);
+            return await LoadCampaignAsync(userId, menuType, id, cancellationToken);
         }, "Campaign created.");
 
     public Task<Application.DTOs.Common.ApiResponse<MetaCampaignDto>> UpdateCampaignAsync(
@@ -136,14 +138,7 @@ public class MetaAdsService : IMetaAdsService
             using var doc = await _graph.PostFormAsync(userId, menuType, campaignId, payload, cancellationToken);
             var id = MetaGraphResponseHelper.ReadString(doc.RootElement, "id") ?? campaignId;
 
-            using var loaded = await _graph.GetAsync(
-                userId,
-                menuType,
-                id,
-                cancellationToken,
-                ("fields", "id,name,objective,status,effective_status,created_time,updated_time"));
-
-            return MapCampaign(loaded.RootElement);
+            return await LoadCampaignAsync(userId, menuType, id, cancellationToken);
         }, "Campaign updated.");
 
     public Task<Application.DTOs.Common.ApiResponse<MetaPagedResultDto<MetaAdSetDto>>> GetAdSetsAsync(
@@ -361,6 +356,48 @@ public class MetaAdsService : IMetaAdsService
 
         return data.EnumerateArray().Select(map).ToList();
     }
+
+    private async Task<MetaCampaignDto> LoadCampaignAsync(
+        Guid userId,
+        string menuType,
+        string campaignId,
+        CancellationToken cancellationToken)
+    {
+        using var loaded = await _graph.GetAsync(
+            userId,
+            menuType,
+            campaignId,
+            cancellationToken,
+            ("fields", "id,name,objective,status,effective_status,created_time,updated_time"));
+
+        return MapCampaign(loaded.RootElement);
+    }
+
+    private async Task<MetaCampaignDto?> TryLoadCampaignAsync(
+        Guid userId,
+        string menuType,
+        string campaignId,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await LoadCampaignAsync(userId, menuType, campaignId, cancellationToken);
+        }
+        catch (MetaGraphApiException)
+        {
+            return null;
+        }
+    }
+
+    private static List<MetaCampaignDto> SortCampaigns(IReadOnlyList<MetaCampaignDto> items) =>
+        items
+            .OrderByDescending(c => ParseMetaDate(c.UpdatedTime))
+            .ThenByDescending(c => ParseMetaDate(c.CreatedTime))
+            .ThenByDescending(c => c.Id, StringComparer.Ordinal)
+            .ToList();
+
+    private static DateTimeOffset ParseMetaDate(string? value) =>
+        DateTimeOffset.TryParse(value, out var parsed) ? parsed : DateTimeOffset.MinValue;
 
     private static MetaAdAccountDto MapAdAccount(JsonElement row) => new()
     {

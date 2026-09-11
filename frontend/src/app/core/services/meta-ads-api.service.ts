@@ -161,6 +161,7 @@ export class MetaAdsApiService {
     if (query.status) params = params.set('status', query.status);
     if (query.search) params = params.set('search', query.search);
     if (query.after) params = params.set('after', query.after);
+    if (query.includeCampaignId) params = params.set('includeCampaignId', query.includeCampaignId);
     if (query.limit) params = params.set('limit', query.limit);
     return params;
   }
