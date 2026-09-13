@@ -1,0 +1,143 @@
+.legal-page {
+  min-height: 100vh;
+  padding: 24px;
+  background:
+    radial-gradient(circle at 15% 20%, rgba(56, 189, 248, 0.25), transparent 35%),
+    radial-gradient(circle at 85% 15%, rgba(29, 111, 232, 0.35), transparent 40%),
+    linear-gradient(145deg, #0b1220 0%, #12203a 48%, #0f274d 100%);
+}
+
+.legal-panel {
+  width: min(820px, 100%);
+  margin: 0 auto;
+  padding: 32px 36px 40px;
+  border-radius: 28px;
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(18px);
+  box-shadow:
+    0 30px 80px rgba(0, 0, 0, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  animation: legal-rise 420ms ease both;
+}
+
+.legal-header {
+  margin-bottom: 28px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+}
+
+.back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 16px;
+  color: #1d6fe8;
+  text-decoration: none;
+  font-size: 0.9rem;
+  font-weight: 600;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
+.eyebrow {
+  font-family: "Sora", "Space Grotesk", sans-serif;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #1d6fe8;
+  margin: 0 0 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+h1 {
+  font-family: "Sora", "Space Grotesk", sans-serif;
+  font-size: clamp(1.75rem, 3vw, 2.25rem);
+  line-height: 1.15;
+  letter-spacing: -0.03em;
+  margin: 0 0 8px;
+  color: #0b1220;
+}
+
+.updated {
+  color: #64748b;
+  font-size: 0.9rem;
+  margin: 0;
+}
+
+.legal-content {
+  color: #334155;
+  line-height: 1.65;
+  font-size: 0.95rem;
+
+  h2 {
+    font-family: "Sora", "Space Grotesk", sans-serif;
+    font-size: 1.15rem;
+    color: #0b1220;
+    margin: 28px 0 10px;
+
+    &:first-child {
+      margin-top: 0;
+    }
+  }
+
+  p {
+    margin: 0 0 14px;
+  }
+
+  ul {
+    margin: 0 0 14px;
+    padding-left: 1.25rem;
+
+    li {
+      margin-bottom: 6px;
+    }
+  }
+
+  a {
+    color: #1d6fe8;
+    text-decoration: none;
+
+    &:hover {
+      text-decoration: underline;
+    }
+  }
+}
+
+.legal-footer {
+  margin-top: 32px;
+  padding-top: 20px;
+  border-top: 1px solid rgba(15, 23, 42, 0.08);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 20px;
+  font-size: 0.9rem;
+
+  a {
+    color: #1d6fe8;
+    text-decoration: none;
+    font-weight: 600;
+
+    &:hover {
+      text-decoration: underline;
+    }
+  }
+}
+
+@keyframes legal-rise {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (max-width: 640px) {
+  .legal-panel {
+    padding: 24px 20px 32px;
+  }
+}

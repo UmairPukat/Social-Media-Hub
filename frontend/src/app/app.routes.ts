@@ -90,6 +90,14 @@ export const routes: Routes = [
       import('./features/oauth-complete/oauth-complete.component').then(m => m.OAuthCompleteComponent)
   },
   {
+    path: 'terms',
+    loadComponent: () => import('./features/legal/terms/terms.component').then(m => m.TermsComponent)
+  },
+  {
+    path: 'privacy',
+    loadComponent: () => import('./features/legal/privacy/privacy.component').then(m => m.PrivacyComponent)
+  },
+  {
     path: 'app',
     canActivate: [authGuard],
     loadComponent: () => import('./layout/shell/shell.component').then(m => m.ShellComponent),

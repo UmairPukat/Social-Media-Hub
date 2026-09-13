@@ -91,10 +91,34 @@ h2 {
 .invite-link {
   margin-top: 10px;
   text-align: center;
-  color: #0b3d91;
-  text-decoration: none;
+  color: #64748b;
   font-size: 0.9rem;
-  font-weight: 600;
+}
+
+.legal-links {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(15, 23, 42, 0.08);
+  font-size: 0.85rem;
+
+  a {
+    color: #1d6fe8;
+    text-decoration: none;
+    font-weight: 600;
+
+    &:hover {
+      text-decoration: underline;
+    }
+  }
+
+  .divider {
+    color: #94a3b8;
+  }
 }
 
 @keyframes rise {
