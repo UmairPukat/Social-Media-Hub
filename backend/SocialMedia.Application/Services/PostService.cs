@@ -76,7 +76,24 @@ public class PostService : IPostService
                 {
                     case "facebook":
                     {
-                        var context = BuildMetaContext(profile, accessToken, InstagramConnectionType.FacebookLogin);
+                        var (pageId, pageToken) = await MetaPagePublishHelper.ResolveFacebookPublishCredentialsAsync(
+                            _facebookService, account, profile, auth, cancellationToken);
+                        MetaPagePublishHelper.AlignFacebookProfile(
+                            profile,
+                            pageId,
+                            ReadJsonString(account.MetadataJson, "selectedPageName") ?? profile.Name);
+                        auth.AccessToken = pageToken;
+                        auth.UpdatedAt = DateTime.UtcNow;
+                        store.UpdateSocialAuth(auth);
+                        store.UpdateSocialProfile(profile);
+
+                        var context = new MetaCallContext
+                        {
+                            AccessToken = pageToken,
+                            ProfileExternalId = pageId,
+                            PageExternalId = pageId,
+                            InstagramConnectionType = InstagramConnectionType.FacebookLogin
+                        };
                         var result = await _facebookService.CreatePostAsync(
                             context,
                             request.Content,

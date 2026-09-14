@@ -25,7 +25,7 @@ public class IntegrationService : IIntegrationService
 {
     private static readonly Dictionary<string, string> PlatformScopes = new(StringComparer.OrdinalIgnoreCase)
     {
-        ["facebook"] = "public_profile,pages_show_list,pages_read_engagement,pages_read_user_content,pages_manage_engagement,pages_manage_metadata,pages_messaging,business_management,ads_management,ads_read,read_insights,catalog_management",
+        ["facebook"] = "public_profile,pages_show_list,pages_read_engagement,pages_read_user_content,pages_manage_posts,pages_manage_engagement,pages_manage_metadata,pages_messaging,business_management,ads_management,ads_read,read_insights,catalog_management",
         ["instagram"] = "pages_read_user_content,pages_show_list,pages_manage_metadata,pages_messaging,business_management,read_insights,pages_read_engagement,public_profile,instagram_manage_insights,instagram_basic,email,instagram_manage_comments,instagram_manage_messages",
         ["instagram_login"] = "instagram_business_basic,instagram_business_content_publish,instagram_business_manage_messages,instagram_business_manage_comments",
         ["whatsapp"] = "whatsapp_business_management,whatsapp_business_messaging,business_management",
@@ -976,7 +976,8 @@ public class IntegrationService : IIntegrationService
                     PageAccessToken = page.PageAccessToken
                 };
 
-            await UpsertProfileAsync(store, account, draft, cancellationToken);
+            var profile = await UpsertProfileAsync(store, account, draft, cancellationToken);
+            await RemoveStaleProfilesExceptAsync(store, account, [page.PageId], cancellationToken);
 
             if (!string.IsNullOrWhiteSpace(page.PageAccessToken) && auth is not null)
             {
@@ -1053,9 +1054,38 @@ public class IntegrationService : IIntegrationService
 
             var profile = code == "instagram_login"
                 ? PickInstagramLoginProfile(profiles, account.ExternalAccountId)
-                : profiles.FirstOrDefault();
+                : ProcessProfileResolver.PickConnectedProfile(
+                    profiles,
+                    ReadJsonString(account.MetadataJson, "selectedPageId"),
+                    code == "facebook" ? ProfileType.FacebookPage : ProfileType.InstagramBusiness);
             var pageId = ResolveSelectedPageId(account, code);
             var isInstagram = code is "instagram" or "instagram_login";
+            var pageAccessToken = effectiveToken;
+
+            if (code == "facebook" && profile is not null && auth is not null && !string.IsNullOrWhiteSpace(pageId))
+            {
+                try
+                {
+                    var resolved = await MetaPagePublishHelper.ResolveFacebookPublishCredentialsAsync(
+                        _facebookService, account, profile, auth, cancellationToken);
+                    pageId = resolved.PageId;
+                    pageAccessToken = resolved.PageAccessToken;
+                    auth.AccessToken = resolved.PageAccessToken;
+                    auth.UpdatedAt = DateTime.UtcNow;
+                    store.UpdateSocialAuth(auth);
+                    MetaPagePublishHelper.AlignFacebookProfile(
+                        profile,
+                        resolved.PageId,
+                        ReadJsonString(account.MetadataJson, "selectedPageName") ?? profile.Name);
+                    profile.UpdatedAt = DateTime.UtcNow;
+                    store.UpdateSocialProfile(profile);
+                    await store.SaveChangesAsync(cancellationToken);
+                }
+                catch
+                {
+                    // Fall back to stored token for the details popup.
+                }
+            }
 
             var details = new ConnectionDetailsDto
             {
@@ -1079,7 +1109,7 @@ public class IntegrationService : IIntegrationService
                 InstagramUsername = isInstagram
                     ? (profile?.Username ?? account.Username)
                     : null,
-                AccessToken = string.IsNullOrWhiteSpace(effectiveToken) ? null : effectiveToken,
+                AccessToken = string.IsNullOrWhiteSpace(pageAccessToken) ? null : pageAccessToken,
                 Profiles = profiles.Select(p => new SocialProfileDto
                 {
                     Id = p.Id,
@@ -1140,7 +1170,7 @@ public class IntegrationService : IIntegrationService
                 details.WhatsAppWabaId = appConfig?.WabaId;
             }
 
-            if (string.IsNullOrWhiteSpace(effectiveToken))
+            if (string.IsNullOrWhiteSpace(pageAccessToken))
             {
                 details.WebhookError = code == "whatsapp"
                     ? "No access token is stored for this connection. Disconnect WhatsApp, then connect again to refresh the token."
@@ -1148,7 +1178,7 @@ public class IntegrationService : IIntegrationService
             }
             else
             {
-                await ApplyWebhookStatusAsync(details, code, pageId, effectiveToken, cancellationToken);
+                await ApplyWebhookStatusAsync(details, code, pageId, pageAccessToken, cancellationToken);
             }
             return ApiResponse<ConnectionDetailsDto>.Ok(details);
         }
@@ -1446,6 +1476,8 @@ public class IntegrationService : IIntegrationService
         var metadata = new Dictionary<string, object>();
         if (!string.IsNullOrWhiteSpace(draft.PageId))
             metadata["pageId"] = draft.PageId!;
+        if (!string.IsNullOrWhiteSpace(draft.PageAccessToken))
+            metadata["pageAccessToken"] = draft.PageAccessToken!;
         if (draft.AlternateExternalIds.Count > 0)
             metadata["alternateIds"] = draft.AlternateExternalIds;
         if (metadata.Count > 0)
