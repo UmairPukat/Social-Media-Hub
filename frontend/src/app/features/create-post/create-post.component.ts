@@ -5,8 +5,8 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
-import { finalize } from 'rxjs/operators';
-import { Subscription } from 'rxjs';
+import { catchError, finalize, map } from 'rxjs/operators';
+import { Subscription, forkJoin, of } from 'rxjs';
 import { ProcessApiService } from '../../core/services/process-api.service';
 import { ProcessRouteService } from '../../core/services/process-route.service';
 import {
@@ -16,8 +16,12 @@ import {
   DEMO_COMPOSER_PROFILES,
   TIKTOK_SANDBOX_MODE
 } from '../../core/data/create-post.data';
-import { ApiResponse, PublishPostResponse, SocialAccount } from '../../core/models/api.models';
-import { resolveSocialAccountLabel } from '../../core/utils/connection-details.util';
+import { ApiResponse, ConnectionDetails, PublishPostResponse, SocialAccount } from '../../core/models/api.models';
+import {
+  META_PAGE_PLATFORM_CODES,
+  pageNameMapFromConnectionDetails,
+  resolveConnectedPageLabel
+} from '../../core/utils/connection-details.util';
 
 @Component({
   selector: 'app-create-post',
@@ -149,32 +153,50 @@ export class CreatePostComponent implements OnInit, OnDestroy {
       this.formTick.update((n) => n + 1);
     });
 
-    this.processApi
-      .getAccounts(this.processRoute.currentMenuType())
+    const menuType = this.processRoute.currentMenuType();
+
+    forkJoin({
+      accounts: this.processApi.getAccounts(menuType),
+      connectionDetails: forkJoin(
+        META_PAGE_PLATFORM_CODES.map((platformCode) =>
+          this.processApi.getConnectionDetails(menuType, platformCode).pipe(
+            map((res) => res.data ?? null),
+            catchError(() => of<ConnectionDetails | null>(null))
+          )
+        )
+      )
+    })
       .pipe(finalize(() => this.loadingAccounts.set(false)))
       .subscribe({
-      next: (res: ApiResponse<SocialAccount[]>) => {
-        const live: ComposerProfile[] = (res.data || []).flatMap((account) =>
-          (account.profiles || []).map((p) => ({
-            id: p.id,
-            platformCode: this.toComposerPlatform(account.platformCode),
-            name: resolveSocialAccountLabel(account, p),
-            username: p.username,
-            profileType: p.profileType,
-            isDemo: false
-          }))
-        );
+        next: ({ accounts, connectionDetails }) => {
+          const pageNameByPlatform = pageNameMapFromConnectionDetails(
+            META_PAGE_PLATFORM_CODES.map((platformCode, index) => ({
+              platformCode,
+              details: connectionDetails[index]
+            }))
+          );
 
-        const livePlatforms = new Set(live.map((p) => p.platformCode));
-        const demos = DEMO_COMPOSER_PROFILES.filter((d) => !livePlatforms.has(d.platformCode));
-        this.profiles.set([...live, ...demos]);
-        this.applyPlatform('facebook');
-      },
-      error: () => {
-        this.profiles.set([...DEMO_COMPOSER_PROFILES]);
-        this.applyPlatform('facebook');
-      }
-    });
+          const live: ComposerProfile[] = (accounts.data || []).flatMap((account) =>
+            (account.profiles || []).map((p) => ({
+              id: p.id,
+              platformCode: this.toComposerPlatform(account.platformCode),
+              name: resolveConnectedPageLabel(account, p, pageNameByPlatform),
+              username: p.username,
+              profileType: p.profileType,
+              isDemo: false
+            }))
+          );
+
+          const livePlatforms = new Set(live.map((p) => p.platformCode));
+          const demos = DEMO_COMPOSER_PROFILES.filter((d) => !livePlatforms.has(d.platformCode));
+          this.profiles.set([...live, ...demos]);
+          this.applyPlatform('facebook');
+        },
+        error: () => {
+          this.profiles.set([...DEMO_COMPOSER_PROFILES]);
+          this.applyPlatform('facebook');
+        }
+      });
   }
 
   ngOnDestroy(): void {

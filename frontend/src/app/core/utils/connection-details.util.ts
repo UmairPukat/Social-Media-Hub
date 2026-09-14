@@ -36,6 +36,34 @@ export function instagramDisplayName(info: ConnectionDetails): string {
   return profile?.name || info.accountName || '—';
 }
 
+export const META_PAGE_PLATFORM_CODES = ['facebook', 'instagram', 'instagram_login'] as const;
+
+/** Build a lookup of connected page names from connection-details responses. */
+export function pageNameMapFromConnectionDetails(
+  entries: Array<{ platformCode: string; details?: ConnectionDetails | null }>
+): Map<string, string> {
+  const map = new Map<string, string>();
+
+  for (const entry of entries) {
+    const code = entry.platformCode.toLowerCase();
+    const details = entry.details;
+    if (!details) continue;
+
+    const pageName =
+      details.pageName?.trim() ||
+      (code === 'instagram_login' ? instagramDisplayName(details) : undefined);
+
+    if (!pageName) continue;
+
+    map.set(code, pageName);
+    if (code === 'instagram' || code === 'instagram_login') {
+      map.set('instagram', pageName);
+    }
+  }
+
+  return map;
+}
+
 /** Connected page/profile label for account lists and composers. */
 export function resolveSocialAccountLabel(account: SocialAccount, profile?: SocialProfile): string {
   const profileName = profile?.name?.trim();
@@ -45,4 +73,27 @@ export function resolveSocialAccountLabel(account: SocialAccount, profile?: Soci
   if (accountName) return accountName;
 
   return '—';
+}
+
+/** Prefer the selected page name over stale Meta login labels. */
+export function resolveConnectedPageLabel(
+  account: SocialAccount,
+  profile: SocialProfile | undefined,
+  pageNameByPlatform: ReadonlyMap<string, string>
+): string {
+  const code = account.platformCode.toLowerCase();
+  const pageName = pageNameByPlatform.get(code)?.trim();
+  if (pageName) return pageName;
+
+  const profileName = profile?.name?.trim();
+  const loginName = account.displayName?.trim();
+  const isMetaPagePlatform = META_PAGE_PLATFORM_CODES.includes(
+    code as (typeof META_PAGE_PLATFORM_CODES)[number]
+  );
+
+  if (isMetaPagePlatform && profileName && loginName && profileName.localeCompare(loginName, undefined, { sensitivity: 'accent' }) === 0) {
+    return 'Connected page';
+  }
+
+  return resolveSocialAccountLabel(account, profile);
 }

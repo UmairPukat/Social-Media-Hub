@@ -1822,9 +1822,6 @@ public class IntegrationService : IIntegrationService
         IReadOnlyList<SocialProfileEntityBase> profiles,
         SocialProfileEntityBase profile)
     {
-        if (!string.IsNullOrWhiteSpace(profile.Name))
-            return profile.Name;
-
         if (platformCode.Equals("facebook", StringComparison.OrdinalIgnoreCase)
             || platformCode.Equals("instagram", StringComparison.OrdinalIgnoreCase))
         {

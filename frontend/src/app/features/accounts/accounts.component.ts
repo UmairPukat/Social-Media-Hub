@@ -1,10 +1,17 @@
 import { Component, OnInit, inject, signal } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { MatButtonModule } from '@angular/material/button';
+import { catchError, map } from 'rxjs/operators';
+import { forkJoin, of } from 'rxjs';
 import { ProcessApiService } from '../../core/services/process-api.service';
 import { ProcessRouteService } from '../../core/services/process-route.service';
 import { PROCESS_MODULE_LIST } from '../../core/config/process.config';
-import { SocialAccount } from '../../core/models/api.models';
+import { ConnectionDetails, SocialAccount } from '../../core/models/api.models';
+import {
+  META_PAGE_PLATFORM_CODES,
+  pageNameMapFromConnectionDetails,
+  resolveConnectedPageLabel
+} from '../../core/utils/connection-details.util';
 
 @Component({
   selector: 'app-accounts',
@@ -18,7 +25,7 @@ import { SocialAccount } from '../../core/models/api.models';
         @for (account of accounts(); track account.id) {
           <article>
             <strong>{{ account.platformName }}</strong>
-            <span>{{ account.displayName }}</span>
+            <span>{{ accountLabel(account) }}</span>
             <small>{{ account.connectedAt | date: 'medium' }}</small>
             <button mat-stroked-button type="button" (click)="disconnect(account.platformCode)">Disconnect</button>
           </article>
@@ -46,13 +53,38 @@ export class AccountsComponent implements OnInit {
   readonly processLabel = () =>
     PROCESS_MODULE_LIST.find(m => m.id === this.processRoute.currentMenuType())?.label ?? 'Process';
   readonly accounts = signal<SocialAccount[]>([]);
+  private pageNameByPlatform = new Map<string, string>();
 
   ngOnInit(): void {
     this.reload();
   }
 
+  accountLabel(account: SocialAccount): string {
+    return resolveConnectedPageLabel(account, account.profiles?.[0], this.pageNameByPlatform);
+  }
+
   reload(): void {
-    this.processApi.getAccounts(this.processRoute.currentMenuType()).subscribe(res => this.accounts.set(res.data || []));
+    const menuType = this.processRoute.currentMenuType();
+
+    forkJoin({
+      accounts: this.processApi.getAccounts(menuType),
+      connectionDetails: forkJoin(
+        META_PAGE_PLATFORM_CODES.map((platformCode) =>
+          this.processApi.getConnectionDetails(menuType, platformCode).pipe(
+            map((res) => res.data ?? null),
+            catchError(() => of<ConnectionDetails | null>(null))
+          )
+        )
+      )
+    }).subscribe(({ accounts, connectionDetails }) => {
+      this.pageNameByPlatform = pageNameMapFromConnectionDetails(
+        META_PAGE_PLATFORM_CODES.map((platformCode, index) => ({
+          platformCode,
+          details: connectionDetails[index]
+        }))
+      );
+      this.accounts.set(accounts.data || []);
+    });
   }
 
   disconnect(platformCode: string): void {
