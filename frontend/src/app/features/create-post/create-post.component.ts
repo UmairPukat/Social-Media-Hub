@@ -17,6 +17,7 @@ import {
   TIKTOK_SANDBOX_MODE
 } from '../../core/data/create-post.data';
 import { ApiResponse, PublishPostResponse, SocialAccount } from '../../core/models/api.models';
+import { resolveSocialAccountLabel } from '../../core/utils/connection-details.util';
 
 @Component({
   selector: 'app-create-post',
@@ -157,7 +158,7 @@ export class CreatePostComponent implements OnInit, OnDestroy {
           (account.profiles || []).map((p) => ({
             id: p.id,
             platformCode: this.toComposerPlatform(account.platformCode),
-            name: p.name || account.displayName,
+            name: resolveSocialAccountLabel(account, p),
             username: p.username,
             profileType: p.profileType,
             isDemo: false

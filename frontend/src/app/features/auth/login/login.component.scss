@@ -28,12 +28,24 @@
   padding: 18px 8px;
 }
 
-.eyebrow {
+.brand-lockup {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.brand-logo {
+  display: block;
+  flex-shrink: 0;
+}
+
+.brand-name {
   font-family: "Sora", "Space Grotesk", sans-serif;
   font-size: 1.35rem;
   font-weight: 700;
-  color: #1d6fe8;
-  margin: 0 0 12px;
+  color: #0b1220;
+  letter-spacing: -0.02em;
 }
 
 h1 {

@@ -1390,10 +1390,19 @@ public class IntegrationService : IIntegrationService
         if (account is null)
             return null;
 
+        if (platformCode.Equals("facebook", StringComparison.OrdinalIgnoreCase)
+            || platformCode.Equals("instagram", StringComparison.OrdinalIgnoreCase))
+        {
+            return ResolveMetaPageDisplayName(account, ProcessEntityNav.Profiles(account));
+        }
+
         if (!platformCode.Equals("instagram_login", StringComparison.OrdinalIgnoreCase))
             return account.DisplayName;
 
         var profile = PickInstagramLoginProfile(ProcessEntityNav.Profiles(account), account.ExternalAccountId);
+        if (!string.IsNullOrWhiteSpace(profile?.Name))
+            return profile.Name;
+
         if (!string.IsNullOrWhiteSpace(profile?.Username))
             return FormatInstagramUsername(profile.Username);
 
@@ -1761,9 +1770,12 @@ public class IntegrationService : IIntegrationService
         string menuType)
     {
         var profiles = ProcessEntityNav.Profiles(account);
-        var displayName = platform.Code.Equals("instagram_login", StringComparison.OrdinalIgnoreCase)
-            ? ResolveInstagramLoginDisplayName(account, profiles)
-            : account.DisplayName;
+        var displayName = platform.Code.ToLowerInvariant() switch
+        {
+            "instagram_login" => ResolveInstagramLoginDisplayName(account, profiles),
+            "facebook" or "instagram" => ResolveMetaPageDisplayName(account, profiles),
+            _ => account.DisplayName
+        };
 
         return new SocialAccountDto
         {
@@ -1783,10 +1795,48 @@ public class IntegrationService : IIntegrationService
                 Id = p.Id,
                 ExternalProfileId = p.ExternalProfileId,
                 ProfileType = p.ProfileType.ToString(),
-                Name = p.Name,
+                Name = ResolveProfileDisplayName(platform.Code, account, profiles, p),
                 Username = p.Username
             }).ToList()
         };
+    }
+
+    private static string ResolveMetaPageDisplayName(
+        SocialAccountEntityBase account,
+        IReadOnlyList<SocialProfileEntityBase> profiles)
+    {
+        var pageName = ReadJsonString(account.MetadataJson, "selectedPageName");
+        if (!string.IsNullOrWhiteSpace(pageName))
+            return pageName;
+
+        var profile = profiles.FirstOrDefault();
+        if (!string.IsNullOrWhiteSpace(profile?.Name))
+            return profile.Name;
+
+        return account.DisplayName;
+    }
+
+    private static string? ResolveProfileDisplayName(
+        string platformCode,
+        SocialAccountEntityBase account,
+        IReadOnlyList<SocialProfileEntityBase> profiles,
+        SocialProfileEntityBase profile)
+    {
+        if (!string.IsNullOrWhiteSpace(profile.Name))
+            return profile.Name;
+
+        if (platformCode.Equals("facebook", StringComparison.OrdinalIgnoreCase)
+            || platformCode.Equals("instagram", StringComparison.OrdinalIgnoreCase))
+        {
+            return ResolveMetaPageDisplayName(account, profiles);
+        }
+
+        if (platformCode.Equals("instagram_login", StringComparison.OrdinalIgnoreCase))
+        {
+            return ResolveInstagramLoginDisplayName(account, profiles);
+        }
+
+        return profile.Name;
     }
 
     private static string ResolveInstagramLoginDisplayName(
@@ -1794,6 +1844,9 @@ public class IntegrationService : IIntegrationService
         IReadOnlyList<SocialProfileEntityBase> profiles)
     {
         var profile = PickInstagramLoginProfile(profiles, account.ExternalAccountId);
+        if (!string.IsNullOrWhiteSpace(profile?.Name))
+            return profile.Name;
+
         if (!string.IsNullOrWhiteSpace(profile?.Username))
             return FormatInstagramUsername(profile.Username);
 

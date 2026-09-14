@@ -1,4 +1,4 @@
-import { ConnectionDetails } from '../models/api.models';
+import { ConnectionDetails, SocialAccount, SocialProfile } from '../models/api.models';
 
 export function formatInstagramUsername(username: string | null | undefined): string {
   if (!username?.trim()) return '—';
@@ -34,4 +34,15 @@ export function instagramAccountName(info: ConnectionDetails): string {
 export function instagramDisplayName(info: ConnectionDetails): string {
   const profile = instagramLoginProfile(info);
   return profile?.name || info.accountName || '—';
+}
+
+/** Connected page/profile label for account lists and composers. */
+export function resolveSocialAccountLabel(account: SocialAccount, profile?: SocialProfile): string {
+  const profileName = profile?.name?.trim();
+  if (profileName) return profileName;
+
+  const accountName = account.displayName?.trim();
+  if (accountName) return accountName;
+
+  return '—';
 }
