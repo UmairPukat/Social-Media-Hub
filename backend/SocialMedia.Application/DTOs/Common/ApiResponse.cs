@@ -1,3 +1,5 @@
+using SocialMedia.Application.DTOs.Meta;
+
 namespace SocialMedia.Application.DTOs.Common;
 
 /// <summary>
@@ -11,6 +13,8 @@ public class ApiResponse<T>
     public T? Data { get; set; }
     public string? MetaErrorCode { get; set; }
     public string? MetaErrorMessage { get; set; }
+    public MetaUsageSnapshotDto? MetaUsage { get; set; }
+    public int? GraphApiCallCount { get; set; }
 
     public static ApiResponse<T> Ok(T data, string message = "Success") =>
         new() { Success = true, Message = message, Data = data };

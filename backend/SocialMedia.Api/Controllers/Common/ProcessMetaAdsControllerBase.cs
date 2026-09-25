@@ -13,18 +13,29 @@ public abstract class ProcessMetaAdsControllerBase : ControllerBase
     private readonly IMetaAdsService _adsService;
     private readonly IMetaInsightsService _insightsService;
     private readonly IMetaCatalogService _catalogService;
+    private readonly IMetaApiCallTracker _apiCallTracker;
 
     protected ProcessMetaAdsControllerBase(
         IMetaAdsService adsService,
         IMetaInsightsService insightsService,
-        IMetaCatalogService catalogService)
+        IMetaCatalogService catalogService,
+        IMetaApiCallTracker apiCallTracker)
     {
         _adsService = adsService;
         _insightsService = insightsService;
         _catalogService = catalogService;
+        _apiCallTracker = apiCallTracker;
     }
 
     protected abstract string MenuType { get; }
+
+    /// <summary>Marketing API health metrics for Advanced Access review. Permission: ads_read.</summary>
+    [HttpGet("meta-ads/api-health")]
+    public IActionResult GetApiHealth()
+    {
+        var health = _apiCallTracker.GetHealth(User.GetUserId());
+        return Ok(Application.DTOs.Common.ApiResponse<MetaApiHealthDto>.Ok(health, "API health loaded."));
+    }
 
     /// <summary>Lists ad accounts for the connected Meta user. Permission: ads_read.</summary>
     [HttpGet("meta-ads/ad-accounts")]

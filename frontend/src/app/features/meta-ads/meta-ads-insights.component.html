@@ -3,14 +3,19 @@
     <div>
       <p class="eyebrow">Meta Ads</p>
       <h1>Insights</h1>
-      <p class="lede">Performance metrics from the Meta Graph API — last 30 days load automatically when you open this page.</p>
+      <p class="lede">Live performance metrics fetched directly from Meta on each refresh — nothing is stored in a database.</p>
       <div class="meta-badges">
         <span class="permission-badge"><mat-icon>verified_user</mat-icon> read_insights</span>
       </div>
     </div>
-    <button mat-stroked-button type="button" (click)="loadInsights()" [disabled]="loading() || !state.selectedAdAccount()">
-      <mat-icon>refresh</mat-icon> Refresh
-    </button>
+    <div class="hero-actions">
+      <button mat-stroked-button type="button" (click)="exportCsv()" [disabled]="!tableRows().length">
+        <mat-icon>download</mat-icon> Export CSV
+      </button>
+      <button mat-flat-button color="primary" type="button" (click)="refreshInsights()" [disabled]="loading() || !state.selectedAdAccount()">
+        <mat-icon>refresh</mat-icon> Refresh Insights
+      </button>
+    </div>
   </header>
 
   @if (error()) {
@@ -44,55 +49,49 @@
         <h2>Insight filters</h2>
         <div class="toolbar">
           <mat-form-field appearance="outline">
+            <mat-label>Date Preset</mat-label>
+            <mat-select [ngModel]="datePreset()" (ngModelChange)="onDatePresetChange($event)">
+              <mat-option value="last_7d">Last 7 days</mat-option>
+              <mat-option value="last_30d">Last 30 days</mat-option>
+            </mat-select>
+          </mat-form-field>
+
+          <mat-form-field appearance="outline">
             <mat-label>Level</mat-label>
             <mat-select [ngModel]="level()" (ngModelChange)="level.set($event); onLevelChange()">
+              <mat-option value="account">Account</mat-option>
               <mat-option value="campaign">Campaign</mat-option>
               <mat-option value="adset">Ad Set</mat-option>
               <mat-option value="ad">Ad</mat-option>
             </mat-select>
           </mat-form-field>
 
-          <mat-form-field appearance="outline">
-            <mat-label>Object</mat-label>
-            <mat-select [ngModel]="selectedObjectId()" (ngModelChange)="onObjectChange($event)">
-              @if (level() === 'campaign') {
-                @for (item of campaigns(); track item.id) {
-                  <mat-option [value]="item.id">{{ item.name }} ({{ item.id }})</mat-option>
-                }
-              } @else if (level() === 'adset') {
-                @for (item of adSets(); track item.id) {
-                  <mat-option [value]="item.id">{{ item.name }} ({{ item.id }})</mat-option>
-                }
-              } @else {
-                @for (item of ads(); track item.id) {
-                  <mat-option [value]="item.id">{{ item.name }} ({{ item.id }})</mat-option>
-                }
-              }
-            </mat-select>
-          </mat-form-field>
+        </div>
+      </div>
 
-          <mat-form-field appearance="outline">
-            <mat-label>Date Range</mat-label>
-            <mat-select [ngModel]="datePreset()" (ngModelChange)="onDatePresetChange($event)">
-              <mat-option value="today">Today</mat-option>
-              <mat-option value="yesterday">Yesterday</mat-option>
-              <mat-option value="last_7d">Last 7 Days</mat-option>
-              <mat-option value="last_30d">Last 30 Days</mat-option>
-              <mat-option value="custom">Custom Range</mat-option>
-            </mat-select>
-          </mat-form-field>
+      <p class="live-note">
+        <mat-icon>cloud_sync</mat-icon>
+        Click <strong>Refresh Insights</strong> to call Meta Graph API (<code>act_…/insights</code>) — table rows come straight from Meta's response.
+      </p>
 
-          @if (datePreset() === 'custom') {
-            <mat-form-field appearance="outline">
-              <mat-label>Since (YYYY-MM-DD)</mat-label>
-              <input matInput [ngModel]="since()" (ngModelChange)="since.set($event)" />
-            </mat-form-field>
-            <mat-form-field appearance="outline">
-              <mat-label>Until (YYYY-MM-DD)</mat-label>
-              <input matInput [ngModel]="until()" (ngModelChange)="until.set($event)" />
-            </mat-form-field>
+      <div class="fields-panel">
+        <strong>Fields</strong>
+        <div class="field-checkboxes">
+          @for (field of fieldOptions; track field.id) {
+            <mat-checkbox
+              [checked]="selectedFields().includes(field.id)"
+              (change)="onFieldsChange(field.id, $event.checked)">
+              {{ field.label }}
+            </mat-checkbox>
           }
         </div>
+      </div>
+
+      <div class="insights-meta">
+        @if (lastUpdated()) {
+          <span>Last updated: {{ lastUpdated() | date: 'medium' }}</span>
+        }
+        <span>This page made {{ pageApiCallCount() }} API call{{ pageApiCallCount() === 1 ? '' : 's' }}</span>
       </div>
 
       @if (loading()) {
@@ -104,63 +103,52 @@
         <div class="summary-grid">
           <div class="summary-card"><small>Spend</small><strong>{{ summary()!.spend }}</strong></div>
           <div class="summary-card"><small>Impressions</small><strong>{{ summary()!.impressions }}</strong></div>
-          <div class="summary-card"><small>Reach</small><strong>{{ summary()!.reach }}</strong></div>
           <div class="summary-card"><small>Clicks</small><strong>{{ summary()!.clicks }}</strong></div>
           <div class="summary-card"><small>CTR</small><strong>{{ summary()!.ctr }}%</strong></div>
-          <div class="summary-card"><small>CPC</small><strong>{{ summary()!.cpc }}</strong></div>
+          <div class="summary-card"><small>CPM</small><strong>{{ summary()!.cpm }}</strong></div>
+          <div class="summary-card"><small>Results</small><strong>{{ summary()!.results }}</strong></div>
         </div>
 
         <div class="table-wrap">
           <table class="data-table">
             <thead>
               <tr>
-                <th>Date Start</th>
-                <th>Date Stop</th>
-                <th>Impressions</th>
-                <th>Reach</th>
-                <th>Clicks</th>
+                <th>{{ nameColumnLabel() }}</th>
                 <th>Spend</th>
+                <th>Impressions</th>
+                <th>Clicks</th>
                 <th>CTR</th>
-                <th>CPC</th>
                 <th>CPM</th>
+                <th>Results</th>
               </tr>
             </thead>
             <tbody>
-              @for (row of summary()!.rows; track $index) {
+              @for (row of tableRows(); track $index) {
                 <tr>
-                  <td>{{ row.dateStart || '—' }}</td>
-                  <td>{{ row.dateStop || '—' }}</td>
-                  <td>{{ row.impressions || '0' }}</td>
-                  <td>{{ row.reach || '0' }}</td>
-                  <td>{{ row.clicks || '0' }}</td>
-                  <td>{{ row.spend || '0' }}</td>
-                  <td>{{ row.ctr || '0' }}</td>
-                  <td>{{ row.cpc || '0' }}</td>
-                  <td>{{ row.cpm || '0' }}</td>
+                  <td>{{ row.name }}</td>
+                  <td>{{ row.spend }}</td>
+                  <td>{{ row.impressions }}</td>
+                  <td>{{ row.clicks }}</td>
+                  <td>{{ row.ctr }}</td>
+                  <td>{{ row.cpm }}</td>
+                  <td>{{ row.results }}</td>
                 </tr>
               }
             </tbody>
           </table>
         </div>
-
-        @if (chartPoints().length) {
-          <div class="chart-panel">
-            <h3>Impressions over time</h3>
-            <svg viewBox="0 0 760 220" role="img" aria-label="Impressions chart">
-              <path [attr.d]="linePath()" fill="none" stroke="#2563eb" stroke-width="3"></path>
-              @for (point of chartPoints(); track point.label) {
-                <circle [attr.cx]="point.x" [attr.cy]="point.y" r="4" fill="#2563eb"></circle>
-              }
-            </svg>
-          </div>
-        }
       } @else {
         <div class="empty-state">
           <mat-icon>insights</mat-icon>
           <strong>No insights available</strong>
-          <span>Select a campaign, ad set, or ad with performance data for the last 30 days.</span>
+          <span>Set filters, then click Refresh Insights to load live data from Meta.</span>
         </div>
       }
     </section>
+
+    <footer class="meta-api-footer">
+      <span>API Usage: {{ usagePercent() }}%</span>
+      <span class="muted">Business Use Case rate limits monitored on every Graph API call</span>
+    </footer>
   }
 </section>

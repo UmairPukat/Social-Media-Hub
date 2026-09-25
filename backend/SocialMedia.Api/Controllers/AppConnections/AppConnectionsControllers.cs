@@ -100,8 +100,9 @@ public class MetaAdsController : ProcessMetaAdsControllerBase
     public MetaAdsController(
         IMetaAdsService adsService,
         IMetaInsightsService insightsService,
-        IMetaCatalogService catalogService)
-        : base(adsService, insightsService, catalogService) { }
+        IMetaCatalogService catalogService,
+        IMetaApiCallTracker apiCallTracker)
+        : base(adsService, insightsService, catalogService, apiCallTracker) { }
 
     protected override string MenuType => ProcessModules.AppConnections.MenuType;
 }

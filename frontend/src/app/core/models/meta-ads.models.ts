@@ -10,6 +10,8 @@ export interface MetaAdAccount {
   currency?: string;
   accountStatus?: string;
   businessName?: string;
+  amountSpent?: string;
+  balance?: string;
 }
 
 export interface MetaCampaign {
@@ -18,6 +20,7 @@ export interface MetaCampaign {
   objective?: string;
   status?: string;
   effectiveStatus?: string;
+  dailyBudget?: string;
   createdTime?: string;
   updatedTime?: string;
 }
@@ -45,6 +48,9 @@ export interface MetaAd {
 }
 
 export interface MetaInsightRow {
+  campaignName?: string;
+  adSetName?: string;
+  adName?: string;
   dateStart?: string;
   dateStop?: string;
   impressions?: string;
@@ -54,12 +60,16 @@ export interface MetaInsightRow {
   ctr?: string;
   cpc?: string;
   cpm?: string;
+  cpp?: string;
   actions?: string;
+  purchaseRoas?: string;
+  results?: string;
 }
 
 export interface MetaInsightsSummary {
   objectId: string;
   datePreset: string;
+  level: string;
   spend: string;
   impressions: string;
   reach: string;
@@ -67,7 +77,32 @@ export interface MetaInsightsSummary {
   ctr: string;
   cpc: string;
   cpm: string;
+  cpp: string;
+  results: string;
   rows: MetaInsightRow[];
+}
+
+export interface MetaUsageSnapshot {
+  businessUseCasePercent: number;
+  adAccountPercent: number;
+  appPercent: number;
+  overallPercent: number;
+  isApproachingLimit: boolean;
+}
+
+export interface MetaApiHealthDailyPoint {
+  date: string;
+  calls: number;
+  errors: number;
+}
+
+export interface MetaApiHealth {
+  totalCalls15Days: number;
+  errorRatePercent: number;
+  tierLabel: string;
+  tierStatus: string;
+  currentUsage: MetaUsageSnapshot;
+  dailyCalls: MetaApiHealthDailyPoint[];
 }
 
 export interface MetaCatalog {
@@ -143,6 +178,7 @@ export interface MetaInsightsQuery {
   since?: string;
   until?: string;
   level?: string;
+  fields?: string;
 }
 
 export interface CreateMetaCatalogRequest {
@@ -180,4 +216,6 @@ export interface MetaApiResponse<T> {
   data: T;
   metaErrorCode?: string;
   metaErrorMessage?: string;
+  metaUsage?: MetaUsageSnapshot;
+  graphApiCallCount?: number;
 }

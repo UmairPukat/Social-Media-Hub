@@ -59,11 +59,11 @@
           </mat-form-field>
           <mat-form-field appearance="outline">
             <mat-label>Status</mat-label>
-            <mat-select [ngModel]="status()" (ngModelChange)="status.set($event)">
+            <mat-select [ngModel]="status()" (ngModelChange)="status.set($event); refresh()">
               <mat-option value="">All</mat-option>
               <mat-option value="ACTIVE">Active</mat-option>
               <mat-option value="PAUSED">Paused</mat-option>
-              <mat-option value="ARCHIVED">Archived</mat-option>
+              <mat-option value="DELETED">Deleted</mat-option>
             </mat-select>
           </mat-form-field>
         </div>
@@ -85,13 +85,12 @@
           <table class="data-table">
             <thead>
               <tr>
-                <th>Campaign ID</th>
+                <th>ID</th>
                 <th>Name</th>
                 <th>Objective</th>
                 <th>Status</th>
-                <th>Effective Status</th>
+                <th>Daily Budget</th>
                 <th>Created</th>
-                <th>Updated</th>
                 <th>Actions</th>
               </tr>
             </thead>
@@ -112,9 +111,8 @@
                   </td>
                   <td>{{ campaign.objective || '—' }}</td>
                   <td><span class="status-pill" [class.paused]="campaign.status === 'PAUSED'" [class.active]="campaign.status === 'ACTIVE'">{{ campaign.status || '—' }}</span></td>
-                  <td>{{ campaign.effectiveStatus || '—' }}</td>
+                  <td>{{ campaign.dailyBudget || '—' }}</td>
                   <td>{{ campaign.createdTime | date: 'medium' }}</td>
-                  <td>{{ campaign.updatedTime | date: 'medium' }}</td>
                   <td class="actions-cell">
                     <a mat-button [routerLink]="['../ad-sets']" [queryParams]="{ campaignId: campaign.id }">Ad Sets</a>
                     <a mat-button [routerLink]="['../insights']" [queryParams]="{ campaignId: campaign.id, level: 'campaign' }">Insights</a>
@@ -131,7 +129,7 @@
         </div>
         <div class="pagination">
           <button mat-stroked-button type="button" (click)="prevPage()" [disabled]="!cursorStack().length">Previous</button>
-          <span>{{ filtered().length }} shown · {{ campaigns().length }} loaded</span>
+          <span>{{ totalLabel() }}</span>
           <button mat-stroked-button type="button" (click)="nextPage()" [disabled]="!nextCursor()">Next</button>
         </div>
       }

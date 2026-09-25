@@ -14,10 +14,15 @@ public class MetaInsightsQuery
     public string? Until { get; set; }
 
     public string Level { get; set; } = "campaign";
+
+    public string? Fields { get; set; }
 }
 
 public class MetaInsightRowDto
 {
+    public string? CampaignName { get; set; }
+    public string? AdSetName { get; set; }
+    public string? AdName { get; set; }
     public string? DateStart { get; set; }
     public string? DateStop { get; set; }
     public string? Impressions { get; set; }
@@ -27,13 +32,17 @@ public class MetaInsightRowDto
     public string? Ctr { get; set; }
     public string? Cpc { get; set; }
     public string? Cpm { get; set; }
+    public string? Cpp { get; set; }
     public string? Actions { get; set; }
+    public string? PurchaseRoas { get; set; }
+    public string? Results { get; set; }
 }
 
 public class MetaInsightsSummaryDto
 {
     public string ObjectId { get; set; } = string.Empty;
     public string DatePreset { get; set; } = string.Empty;
+    public string Level { get; set; } = "campaign";
     public string Spend { get; set; } = "0";
     public string Impressions { get; set; } = "0";
     public string Reach { get; set; } = "0";
@@ -41,5 +50,7 @@ public class MetaInsightsSummaryDto
     public string Ctr { get; set; } = "0";
     public string Cpc { get; set; } = "0";
     public string Cpm { get; set; } = "0";
+    public string Cpp { get; set; } = "0";
+    public string Results { get; set; } = "0";
     public IReadOnlyList<MetaInsightRowDto> Rows { get; set; } = Array.Empty<MetaInsightRowDto>();
 }

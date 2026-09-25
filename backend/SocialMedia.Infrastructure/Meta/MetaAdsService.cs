@@ -25,7 +25,7 @@ public class MetaAdsService : IMetaAdsService
                 menuType,
                 "me/adaccounts",
                 cancellationToken,
-                ("fields", "id,name,currency,account_status,business_name"),
+                ("fields", "id,name,currency,account_status,business_name,amount_spent,balance"),
                 ("limit", "100"));
 
             return (IReadOnlyList<MetaAdAccountDto>)ReadArray(doc.RootElement, MapAdAccount);
@@ -40,7 +40,7 @@ public class MetaAdsService : IMetaAdsService
         {
             var accountId = MetaGraphResponseHelper.NormalizeAdAccountId(query.AdAccountId!);
             var limit = Math.Clamp(query.Limit, 1, 100).ToString();
-            var fields = "id,name,objective,status,effective_status,created_time,updated_time";
+            var fields = "id,name,objective,status,effective_status,daily_budget,created_time,updated_time";
 
             using var doc = await _graph.GetAsync(
                 userId,
@@ -368,7 +368,7 @@ public class MetaAdsService : IMetaAdsService
             menuType,
             campaignId,
             cancellationToken,
-            ("fields", "id,name,objective,status,effective_status,created_time,updated_time"));
+            ("fields", "id,name,objective,status,effective_status,daily_budget,created_time,updated_time"));
 
         return MapCampaign(loaded.RootElement);
     }
@@ -404,9 +404,36 @@ public class MetaAdsService : IMetaAdsService
         Id = MetaGraphResponseHelper.ReadString(row, "id") ?? string.Empty,
         Name = MetaGraphResponseHelper.ReadString(row, "name") ?? "Ad Account",
         Currency = MetaGraphResponseHelper.ReadString(row, "currency"),
-        AccountStatus = MetaGraphResponseHelper.ReadString(row, "account_status"),
-        BusinessName = MetaGraphResponseHelper.ReadString(row, "business_name")
+        AccountStatus = FormatAccountStatus(MetaGraphResponseHelper.ReadString(row, "account_status")),
+        BusinessName = MetaGraphResponseHelper.ReadString(row, "business_name"),
+        AmountSpent = FormatMinorCurrency(MetaGraphResponseHelper.ReadString(row, "amount_spent")),
+        Balance = FormatMinorCurrency(MetaGraphResponseHelper.ReadString(row, "balance"))
     };
+
+    private static string? FormatAccountStatus(string? raw) =>
+        raw switch
+        {
+            "1" => "ACTIVE",
+            "2" => "DISABLED",
+            "3" => "UNSETTLED",
+            "7" => "PENDING_RISK_REVIEW",
+            "8" => "PENDING_SETTLEMENT",
+            "9" => "IN_GRACE_PERIOD",
+            "100" => "PENDING_CLOSURE",
+            "101" => "CLOSED",
+            _ => raw
+        };
+
+    private static string? FormatMinorCurrency(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+            return raw;
+
+        if (!decimal.TryParse(raw, out var value))
+            return raw;
+
+        return (value / 100m).ToString("0.##");
+    }
 
     private static MetaCampaignDto MapCampaign(JsonElement row) => new()
     {
@@ -415,6 +442,7 @@ public class MetaAdsService : IMetaAdsService
         Objective = MetaGraphResponseHelper.ReadString(row, "objective"),
         Status = MetaGraphResponseHelper.ReadString(row, "status"),
         EffectiveStatus = MetaGraphResponseHelper.ReadString(row, "effective_status"),
+        DailyBudget = FormatMinorCurrency(MetaGraphResponseHelper.ReadString(row, "daily_budget")),
         CreatedTime = MetaGraphResponseHelper.ReadString(row, "created_time"),
         UpdatedTime = MetaGraphResponseHelper.ReadString(row, "updated_time")
     };

@@ -16,6 +16,8 @@ public class MetaAdAccountDto
     public string? Currency { get; set; }
     public string? AccountStatus { get; set; }
     public string? BusinessName { get; set; }
+    public string? AmountSpent { get; set; }
+    public string? Balance { get; set; }
 }
 
 public class MetaCampaignDto
@@ -25,6 +27,7 @@ public class MetaCampaignDto
     public string? Objective { get; set; }
     public string? Status { get; set; }
     public string? EffectiveStatus { get; set; }
+    public string? DailyBudget { get; set; }
     public string? CreatedTime { get; set; }
     public string? UpdatedTime { get; set; }
 }

@@ -1,20 +1,74 @@
-import { Component, inject } from '@angular/core';
+import { Component, OnInit, computed, inject, signal } from '@angular/core';
+import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
+import { MetaAdsApiService } from '../../core/services/meta-ads-api.service';
+import { MetaRateLimitService } from '../../core/services/meta-rate-limit.service';
+import { ProcessRouteService } from '../../core/services/process-route.service';
 import { ThemeService } from '../../core/services/theme.service';
+import { MetaApiHealth } from '../../core/models/meta-ads.models';
 import { ChromeThemeId } from '../../core/theme/chrome-themes';
 
 @Component({
   selector: 'app-settings',
   standalone: true,
-  imports: [MatIconModule],
+  imports: [MatIconModule, MatButtonModule],
   template: `
     <section class="page settings">
       <header class="page-header">
         <div>
           <h1>Settings</h1>
-          <p>Manage workspace preferences, including navbar and sidebar chrome themes.</p>
+          <p>Manage workspace preferences, API health, and chrome themes.</p>
         </div>
       </header>
+
+      <section class="panel theme-panel">
+        <div class="panel-head">
+          <div>
+            <h2>API Health</h2>
+            <p>Marketing API usage metrics for Meta Advanced Access review.</p>
+          </div>
+          <button mat-stroked-button type="button" (click)="loadHealth()" [disabled]="healthLoading()">
+            <mat-icon>refresh</mat-icon> Refresh
+          </button>
+        </div>
+
+        @if (healthLoading()) {
+          <p class="muted">Loading API health…</p>
+        } @else if (health()) {
+          <div class="health-grid">
+            <div class="health-stat">
+              <small>15-day API calls</small>
+              <strong>{{ health()!.totalCalls15Days }}</strong>
+            </div>
+            <div class="health-stat">
+              <small>Error rate</small>
+              <strong>{{ health()!.errorRatePercent }}%</strong>
+            </div>
+            <div class="health-stat wide">
+              <small>Current tier</small>
+              <strong>{{ health()!.tierLabel }} — {{ health()!.tierStatus }}</strong>
+            </div>
+            <div class="health-stat">
+              <small>Current BUC usage</small>
+              <strong>{{ currentUsage() }}%</strong>
+            </div>
+          </div>
+
+          <div class="health-chart" aria-label="API calls per day chart">
+            @for (point of chartBars(); track point.date) {
+              <div class="bar-col" [title]="point.date + ': ' + point.calls + ' calls'">
+                <div class="bar" [style.height.%]="point.height"></div>
+                <small>{{ point.label }}</small>
+              </div>
+            }
+          </div>
+
+          <p class="muted log-note">
+            {{ localLogCount() }} Graph API calls logged locally for debugging.
+            <button mat-button type="button" (click)="clearLocalLog()">Clear log</button>
+          </p>
+        }
+      </section>
 
       <section class="panel theme-panel">
         <div class="panel-head">
@@ -110,6 +164,10 @@ import { ChromeThemeId } from '../../core/theme/chrome-themes';
       line-height: 1.5;
     }
 
+    .muted {
+      color: #64748b;
+    }
+
     code {
       background: #f1f5f9;
       padding: 2px 6px;
@@ -138,6 +196,84 @@ import { ChromeThemeId } from '../../core/theme/chrome-themes';
       border: 1px solid rgba(37, 99, 235, 0.16);
       border-radius: 999px;
       padding: 6px 12px;
+    }
+
+    .health-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 12px;
+      margin-bottom: 18px;
+    }
+
+    .health-stat {
+      padding: 14px;
+      border-radius: 14px;
+      border: 1px solid rgba(15, 23, 42, 0.08);
+      background: #f8fafc;
+    }
+
+    .health-stat.wide {
+      grid-column: span 2;
+    }
+
+    .health-stat small {
+      display: block;
+      color: #64748b;
+      margin-bottom: 4px;
+      font-size: 0.78rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      font-weight: 700;
+    }
+
+    .health-stat strong {
+      color: #0f172a;
+      font-family: "Sora", sans-serif;
+      font-size: 1.2rem;
+    }
+
+    .health-chart {
+      display: grid;
+      grid-template-columns: repeat(15, minmax(0, 1fr));
+      gap: 6px;
+      align-items: end;
+      min-height: 160px;
+      padding: 12px;
+      border-radius: 14px;
+      border: 1px solid rgba(15, 23, 42, 0.08);
+      background: #fff;
+      overflow-x: auto;
+    }
+
+    .bar-col {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      min-width: 28px;
+    }
+
+    .bar {
+      width: 100%;
+      max-width: 28px;
+      border-radius: 6px 6px 2px 2px;
+      background: linear-gradient(180deg, #2563eb, #93c5fd);
+      min-height: 4px;
+    }
+
+    .bar-col small {
+      font-size: 0.62rem;
+      color: #64748b;
+      writing-mode: vertical-rl;
+      transform: rotate(180deg);
+    }
+
+    .log-note {
+      margin-top: 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
     }
 
     .theme-grid {
@@ -245,8 +381,53 @@ import { ChromeThemeId } from '../../core/theme/chrome-themes';
     }
   `]
 })
-export class SettingsComponent {
+export class SettingsComponent implements OnInit {
   readonly theme = inject(ThemeService);
+  private readonly api = inject(MetaAdsApiService);
+  private readonly processRoute = inject(ProcessRouteService);
+  private readonly rateLimit = inject(MetaRateLimitService);
+
+  readonly health = signal<MetaApiHealth | null>(null);
+  readonly healthLoading = signal(false);
+
+  readonly currentUsage = computed(() =>
+    Math.max(
+      this.rateLimit.bucUsagePercent(),
+      this.health()?.currentUsage?.overallPercent ?? 0
+    )
+  );
+
+  readonly localLogCount = computed(() => this.rateLimit.readLog().length);
+
+  readonly chartBars = computed(() => {
+    const points = this.health()?.dailyCalls ?? [];
+    const max = Math.max(...points.map(p => p.calls), 1);
+    return points.map(p => ({
+      date: p.date,
+      calls: p.calls,
+      label: p.date.slice(5),
+      height: Math.max(8, (p.calls / max) * 100)
+    }));
+  });
+
+  ngOnInit(): void {
+    this.loadHealth();
+  }
+
+  loadHealth(): void {
+    this.healthLoading.set(true);
+    this.api.getApiHealth(this.processRoute.currentMenuType()).subscribe({
+      next: (res) => {
+        this.healthLoading.set(false);
+        if (res.success) this.health.set(res.data);
+      },
+      error: () => this.healthLoading.set(false)
+    });
+  }
+
+  clearLocalLog(): void {
+    this.rateLimit.clearLog();
+  }
 
   select(id: ChromeThemeId): void {
     this.theme.setTheme(id);

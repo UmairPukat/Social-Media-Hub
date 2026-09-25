@@ -8,17 +8,26 @@ namespace SocialMedia.Infrastructure.Meta;
 
 public class MetaGraphApiClient : IMetaGraphApiClient
 {
+    private static readonly int[] RetryDelaysMs = [60_000, 120_000, 240_000];
+    private static readonly HashSet<string> RateLimitErrorCodes = new(StringComparer.Ordinal)
+    {
+        "4", "17", "32", "80004", "80005"
+    };
+
     private readonly MetaGraphClient _graph;
     private readonly IMetaMarketingContextFactory _contextFactory;
+    private readonly IMetaApiCallTracker _callTracker;
     private readonly ILogger<MetaGraphApiClient> _logger;
 
     public MetaGraphApiClient(
         MetaGraphClient graph,
         IMetaMarketingContextFactory contextFactory,
+        IMetaApiCallTracker callTracker,
         ILogger<MetaGraphApiClient> logger)
     {
         _graph = graph;
         _contextFactory = contextFactory;
+        _callTracker = callTracker;
         _logger = logger;
     }
 
@@ -34,7 +43,8 @@ public class MetaGraphApiClient : IMetaGraphApiClient
             "GET",
             path,
             cancellationToken,
-            async (version, token) => await _graph.GetAsync(version, path, token, cancellationToken, query));
+            async (version, token) =>
+                await _graph.GetDetailedAsync(version, path, token, cancellationToken, query));
 
     public Task<JsonDocument> PostFormAsync(
         Guid userId,
@@ -48,7 +58,8 @@ public class MetaGraphApiClient : IMetaGraphApiClient
             "POST",
             path,
             cancellationToken,
-            async (version, token) => await _graph.PostAsync(version, path, token, formFields, cancellationToken));
+            async (version, token) =>
+                await _graph.PostFormDetailedAsync(version, path, token, formFields, cancellationToken));
 
     public Task<JsonDocument> PostJsonAsync(
         Guid userId,
@@ -62,7 +73,8 @@ public class MetaGraphApiClient : IMetaGraphApiClient
             "POST",
             path,
             cancellationToken,
-            async (version, token) => await _graph.PostJsonAsync(version, path, token, payload, cancellationToken));
+            async (version, token) =>
+                await _graph.PostJsonDetailedAsync(version, path, token, payload, cancellationToken));
 
     public async Task DeleteAsync(
         Guid userId,
@@ -72,14 +84,29 @@ public class MetaGraphApiClient : IMetaGraphApiClient
     {
         var context = await _contextFactory.CreateAsync(userId, menuType, cancellationToken);
         var sw = Stopwatch.StartNew();
-        try
+        var attempt = 0;
+
+        while (true)
         {
-            await _graph.DeleteAsync(context.GraphApiVersion, path, context.AccessToken, cancellationToken);
-            LogSuccess(userId, "DELETE", path, 204, sw.ElapsedMilliseconds, null);
-        }
-        catch (InvalidOperationException ex)
-        {
-            throw MapException(ex, userId, "DELETE", path, sw.ElapsedMilliseconds);
+            try
+            {
+                await _graph.DeleteAsync(context.GraphApiVersion, path, context.AccessToken, cancellationToken);
+                RecordSuccess(userId, "DELETE", path, 204, sw.ElapsedMilliseconds, null);
+                return;
+            }
+            catch (InvalidOperationException ex)
+            {
+                var mapped = MapException(ex, userId, "DELETE", path, sw.ElapsedMilliseconds);
+                if (mapped is MetaGraphApiException rateLimit && ShouldRetry(rateLimit, attempt))
+                {
+                    await DelayForRetry(attempt, cancellationToken);
+                    attempt += 1;
+                    sw.Restart();
+                    continue;
+                }
+
+                throw mapped;
+            }
         }
     }
 
@@ -89,20 +116,46 @@ public class MetaGraphApiClient : IMetaGraphApiClient
         string method,
         string path,
         CancellationToken cancellationToken,
-        Func<string, string, Task<JsonDocument>> action)
+        Func<string, string, Task<MetaGraphHttpResult>> action)
     {
         var context = await _contextFactory.CreateAsync(userId, menuType, cancellationToken);
-        var sw = Stopwatch.StartNew();
-        try
+        var attempt = 0;
+
+        while (true)
         {
-            var doc = await action(context.GraphApiVersion, context.AccessToken);
-            LogSuccess(userId, method, path, 200, sw.ElapsedMilliseconds, null);
-            return doc;
+            var sw = Stopwatch.StartNew();
+            try
+            {
+                var result = await action(context.GraphApiVersion, context.AccessToken);
+                RecordSuccess(userId, method, path, result.StatusCode, sw.ElapsedMilliseconds, result.Usage);
+                return result.Document;
+            }
+            catch (InvalidOperationException ex)
+            {
+                var mapped = MapException(ex, userId, method, path, sw.ElapsedMilliseconds);
+                if (mapped is MetaGraphApiException rateLimit && ShouldRetry(rateLimit, attempt))
+                {
+                    await DelayForRetry(attempt, cancellationToken);
+                    attempt += 1;
+                    continue;
+                }
+
+                throw mapped;
+            }
         }
-        catch (InvalidOperationException ex)
-        {
-            throw MapException(ex, userId, method, path, sw.ElapsedMilliseconds);
-        }
+    }
+
+    private void RecordSuccess(
+        Guid userId,
+        string method,
+        string path,
+        int status,
+        long durationMs,
+        Application.DTOs.Meta.MetaUsageSnapshotDto? usage)
+    {
+        MetaGraphCallScope.Current?.RecordCall(usage);
+        _callTracker.Record(userId, method, path, true, status, null, usage);
+        LogSuccess(userId, method, path, status, durationMs, null);
     }
 
     private Exception MapException(InvalidOperationException ex, Guid userId, string method, string path, long durationMs)
@@ -113,8 +166,35 @@ public class MetaGraphApiClient : IMetaGraphApiClient
             ? MetaGraphResponseHelper.ParseError(statusCode.Value, ExtractBody(message))
             : new MetaGraphApiException(message);
 
+        _callTracker.Record(
+            userId,
+            method,
+            path,
+            false,
+            mapped.HttpStatusCode,
+            mapped.MetaErrorCode,
+            MetaGraphCallScope.Current?.LatestUsage);
+
         LogFailure(userId, method, path, mapped.HttpStatusCode, durationMs, mapped.MetaErrorCode, mapped.MetaErrorMessage);
         return mapped;
+    }
+
+    private static bool ShouldRetry(MetaGraphApiException ex, int attempt) =>
+        attempt < RetryDelaysMs.Length && IsRateLimitError(ex);
+
+    private static bool IsRateLimitError(MetaGraphApiException ex)
+    {
+        if (string.IsNullOrWhiteSpace(ex.MetaErrorCode))
+            return false;
+
+        var code = ex.MetaErrorCode.Split(':')[0];
+        return RateLimitErrorCodes.Contains(code);
+    }
+
+    private static async Task DelayForRetry(int attempt, CancellationToken cancellationToken)
+    {
+        var delay = RetryDelaysMs[attempt];
+        await Task.Delay(delay, cancellationToken);
     }
 
     private static int? TryReadStatusCode(string message)

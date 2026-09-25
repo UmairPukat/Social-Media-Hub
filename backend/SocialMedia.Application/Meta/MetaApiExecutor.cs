@@ -9,7 +9,14 @@ public static class MetaApiExecutor
         try
         {
             var data = await action();
-            return ApiResponse<T>.Ok(data, successMessage);
+            var response = ApiResponse<T>.Ok(data, successMessage);
+            if (MetaGraphCallScope.Current is { } scope)
+            {
+                response.MetaUsage = scope.LatestUsage;
+                response.GraphApiCallCount = scope.CallCount;
+            }
+
+            return response;
         }
         catch (MetaGraphApiException ex)
         {

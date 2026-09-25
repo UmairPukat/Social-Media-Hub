@@ -9,11 +9,21 @@
       </div>
     </div>
     <div class="hero-actions">
-      <button mat-stroked-button type="button" (click)="load()" [disabled]="loading()">
-        <mat-icon>refresh</mat-icon> Refresh
+      <button mat-flat-button color="primary" type="button" (click)="syncAdAccounts()" [disabled]="loading()">
+        <mat-icon>sync</mat-icon> Sync Ad Accounts
       </button>
     </div>
   </header>
+
+  <div class="rate-limit-bar" [class.warning]="usagePercent() >= 80" [class.caution]="usagePercent() >= 50 && usagePercent() < 80">
+    <div class="rate-limit-copy">
+      <strong>BUC Rate Limit</strong>
+      <span>{{ usagePercent() }}% of Business Use Case quota used</span>
+    </div>
+    <div class="rate-limit-track">
+      <div class="rate-limit-fill" [style.width.%]="usagePercent()"></div>
+    </div>
+  </div>
 
   @if (banner()) {
     <div class="notice success">
@@ -46,11 +56,12 @@
         <table class="data-table">
           <thead>
             <tr>
-              <th>Ad Account Name</th>
               <th>Ad Account ID</th>
+              <th>Name</th>
+              <th>Status</th>
+              <th>Amount Spent</th>
+              <th>Balance</th>
               <th>Currency</th>
-              <th>Account Status</th>
-              <th>Business</th>
               <th>Actions</th>
             </tr>
           </thead>
@@ -58,20 +69,21 @@
             @for (account of accounts(); track account.id) {
               <tr>
                 <td>
-                  <a class="row-link strong" [href]="metaManagerUrl(account)" target="_blank" rel="noopener noreferrer">
-                    {{ account.name }}
-                    <mat-icon>open_in_new</mat-icon>
-                  </a>
-                </td>
-                <td>
                   <a class="row-link" [href]="metaManagerUrl(account)" target="_blank" rel="noopener noreferrer">
                     {{ account.id }}
                     <mat-icon>open_in_new</mat-icon>
                   </a>
                 </td>
-                <td>{{ account.currency || '—' }}</td>
+                <td>
+                  <a class="row-link strong" [href]="metaManagerUrl(account)" target="_blank" rel="noopener noreferrer">
+                    {{ account.name }}
+                    <mat-icon>open_in_new</mat-icon>
+                  </a>
+                </td>
                 <td>{{ account.accountStatus || '—' }}</td>
-                <td>{{ account.businessName || '—' }}</td>
+                <td>{{ account.amountSpent || '—' }}</td>
+                <td>{{ account.balance || '—' }}</td>
+                <td>{{ account.currency || '—' }}</td>
                 <td class="actions-cell">
                   <a mat-button routerLink="../campaigns">Campaigns</a>
                   <a mat-button routerLink="../insights">Insights</a>

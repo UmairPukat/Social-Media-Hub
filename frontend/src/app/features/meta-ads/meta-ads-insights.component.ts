@@ -1,39 +1,44 @@
-import { DecimalPipe } from '@angular/common';
+import { DatePipe } from '@angular/common';
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
+import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
-import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
 import { MetaAdsApiService } from '../../core/services/meta-ads-api.service';
 import { MetaAdsStateService } from '../../core/services/meta-ads-state.service';
+import { MetaRateLimitService } from '../../core/services/meta-rate-limit.service';
 import { ProcessRouteService } from '../../core/services/process-route.service';
-import { MetaAd, MetaAdSet, MetaCampaign, MetaInsightsSummary } from '../../core/models/meta-ads.models';
+import { MetaInsightRow, MetaInsightsSummary } from '../../core/models/meta-ads.models';
 import { metaErrorMessage } from './meta-ads.util';
 
-type InsightLevel = 'campaign' | 'adset' | 'ad';
-type DatePreset = 'today' | 'yesterday' | 'last_7d' | 'last_30d' | 'custom';
+type InsightLevel = 'account' | 'campaign' | 'adset' | 'ad';
+type DatePreset = 'last_7d' | 'last_30d';
 
-interface ChartPoint {
-  x: number;
-  y: number;
-  label: string;
-  value: number;
-}
+const FIELD_OPTIONS = [
+  { id: 'spend', label: 'Spend' },
+  { id: 'impressions', label: 'Impressions' },
+  { id: 'clicks', label: 'Clicks' },
+  { id: 'ctr', label: 'CTR' },
+  { id: 'cpm', label: 'CPM' },
+  { id: 'cpp', label: 'CPP' },
+  { id: 'actions', label: 'Actions' },
+  { id: 'purchase_roas', label: 'Purchase ROAS' }
+] as const;
 
 @Component({
   selector: 'app-meta-ads-insights',
   standalone: true,
   imports: [
-    DecimalPipe,
+    DatePipe,
     FormsModule,
     RouterLink,
     MatButtonModule,
+    MatCheckboxModule,
     MatFormFieldModule,
     MatIconModule,
-    MatInputModule,
     MatSelectModule
   ],
   templateUrl: './meta-ads-insights.component.html',
@@ -42,41 +47,46 @@ interface ChartPoint {
 export class MetaAdsInsightsComponent implements OnInit {
   private readonly api = inject(MetaAdsApiService);
   readonly state = inject(MetaAdsStateService);
+  readonly rateLimit = inject(MetaRateLimitService);
   private readonly processRoute = inject(ProcessRouteService);
   private readonly route = inject(ActivatedRoute);
 
+  readonly fieldOptions = FIELD_OPTIONS;
   readonly level = signal<InsightLevel>('campaign');
-  readonly campaigns = signal<MetaCampaign[]>([]);
-  readonly adSets = signal<MetaAdSet[]>([]);
-  readonly ads = signal<MetaAd[]>([]);
-  readonly selectedObjectId = signal('');
-  readonly datePreset = signal<DatePreset>('last_30d');
-  readonly since = signal('');
-  readonly until = signal('');
+  readonly specificObjectId = signal('');
+  readonly datePreset = signal<DatePreset>('last_7d');
+  readonly selectedFields = signal<string[]>(FIELD_OPTIONS.map(f => f.id));
   readonly summary = signal<MetaInsightsSummary | null>(null);
   readonly loading = signal(false);
   readonly error = signal('');
+  readonly lastUpdated = signal<Date | null>(null);
+  readonly pageApiCallCount = signal(0);
 
-  readonly chartPoints = computed<ChartPoint[]>(() => {
-    const rows = this.summary()?.rows ?? [];
-    if (!rows.length) return [];
-    const values = rows.map(r => Number(r.impressions || 0));
-    const max = Math.max(...values, 1) * 1.1;
-    const width = 760;
-    const height = 200;
-    return rows.map((row, index) => {
-      const value = Number(row.impressions || 0);
-      return {
-        x: rows.length === 1 ? 0 : (index / (rows.length - 1)) * width,
-        y: height - (value / max) * height,
-        label: row.dateStart || `#${index + 1}`,
-        value
-      };
-    });
+  readonly nameColumnLabel = computed(() => {
+    switch (this.level()) {
+      case 'adset': return 'Ad Set Name';
+      case 'ad': return 'Ad Name';
+      case 'account': return 'Period';
+      default: return 'Campaign Name';
+    }
   });
 
-  readonly linePath = computed(() =>
-    this.chartPoints().map((p, i) => `${i ? 'L' : 'M'} ${p.x} ${p.y}`).join(' ')
+  readonly tableRows = computed(() => {
+    const rows = this.summary()?.rows ?? [];
+    const level = this.level();
+    return rows.map(row => ({
+      name: this.rowLabel(row, level),
+      spend: row.spend || '0',
+      impressions: row.impressions || '0',
+      clicks: row.clicks || '0',
+      ctr: row.ctr || '0',
+      cpm: row.cpm || '0',
+      results: row.results || '0'
+    }));
+  });
+
+  readonly usagePercent = computed(() =>
+    this.rateLimit.bucUsagePercent() || this.rateLimit.adAccountUsagePercent() || this.rateLimit.appUsagePercent()
   );
 
   ngOnInit(): void {
@@ -87,120 +97,90 @@ export class MetaAdsInsightsComponent implements OnInit {
     const adSetId = params.get('adSetId');
     const adId = params.get('adId');
 
-    if (level === 'campaign' || level === 'adset' || level === 'ad') {
+    if (level === 'account' || level === 'campaign' || level === 'adset' || level === 'ad') {
       this.level.set(level);
     }
     if (adId) {
       this.level.set('ad');
-      this.selectedObjectId.set(adId);
+      this.specificObjectId.set(adId);
     } else if (adSetId) {
       this.level.set('adset');
-      this.selectedObjectId.set(adSetId);
+      this.specificObjectId.set(adSetId);
     } else if (campaignId) {
       this.level.set('campaign');
-      this.selectedObjectId.set(campaignId);
+      this.specificObjectId.set(campaignId);
     }
-
-    this.loadObjects({
-      campaignId: campaignId ?? undefined,
-      adSetId: adSetId ?? undefined,
-      adId: adId ?? undefined
-    });
-  }
-
-  loadObjects(preferred?: { campaignId?: string; adSetId?: string; adId?: string }): void {
-    const adAccount = this.state.selectedAdAccount();
-    if (!adAccount) return;
-
-    const menu = this.processRoute.currentMenuType();
-    let pending = 3;
-
-    const tryAutoLoad = () => {
-      pending -= 1;
-      if (pending > 0) return;
-      this.ensureSelectedObject();
-      if (this.selectedObjectId()) {
-        this.loadInsights();
-      }
-    };
-
-    this.api.getCampaigns(menu, {
-      adAccountId: adAccount.id,
-      limit: 50,
-      includeCampaignId: preferred?.campaignId
-    }).subscribe({
-      next: (res) => {
-        if (res.success) this.campaigns.set(res.data?.items ?? []);
-        tryAutoLoad();
-      },
-      error: () => tryAutoLoad()
-    });
-
-    this.api.getAdSets(menu, { adAccountId: adAccount.id, limit: 50 }).subscribe({
-      next: (res) => {
-        if (res.success) this.adSets.set(res.data?.items ?? []);
-        tryAutoLoad();
-      },
-      error: () => tryAutoLoad()
-    });
-
-    this.api.getAds(menu, { adAccountId: adAccount.id, limit: 50 }).subscribe({
-      next: (res) => {
-        if (res.success) this.ads.set(res.data?.items ?? []);
-        tryAutoLoad();
-      },
-      error: () => tryAutoLoad()
-    });
   }
 
   onLevelChange(): void {
-    this.ensureSelectedObject();
-    this.loadInsights();
-  }
-
-  onObjectChange(objectId: string): void {
-    this.selectedObjectId.set(objectId);
-    this.loadInsights();
+    this.specificObjectId.set('');
+    this.summary.set(null);
+    this.lastUpdated.set(null);
   }
 
   onDatePresetChange(preset: DatePreset): void {
     this.datePreset.set(preset);
-    if (preset !== 'custom') {
-      this.loadInsights();
-    }
+    this.summary.set(null);
+    this.lastUpdated.set(null);
   }
 
-  private ensureSelectedObject(): void {
-    if (this.selectedObjectId()) return;
+  onFieldsChange(fieldId: string, checked: boolean): void {
+    this.selectedFields.update(fields => {
+      if (checked) return fields.includes(fieldId) ? fields : [...fields, fieldId];
+      const next = fields.filter(f => f !== fieldId);
+      return next.length ? next : fields;
+    });
+    this.summary.set(null);
+    this.lastUpdated.set(null);
+  }
 
-    const level = this.level();
-    const first =
-      level === 'campaign' ? this.campaigns()[0]?.id :
-      level === 'adset' ? this.adSets()[0]?.id :
-      this.ads()[0]?.id;
-    this.selectedObjectId.set(first || '');
+  refreshInsights(): void {
+    this.loadInsights();
+  }
+
+  exportCsv(): void {
+    const rows = this.tableRows();
+    if (!rows.length) return;
+
+    const header = [this.nameColumnLabel(), 'Spend', 'Impressions', 'Clicks', 'CTR', 'CPM', 'Results'];
+    const lines = [
+      header.join(','),
+      ...rows.map(r =>
+        [r.name, r.spend, r.impressions, r.clicks, r.ctr, r.cpm, r.results]
+          .map(v => `"${String(v).replace(/"/g, '""')}"`)
+          .join(',')
+      )
+    ];
+
+    const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `meta-insights-${new Date().toISOString().slice(0, 10)}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
   }
 
   loadInsights(): void {
-    const objectId = this.selectedObjectId().trim();
+    const objectId = this.resolveInsightsObjectId();
     if (!objectId) {
-      this.error.set('Select an object to load insights.');
+      this.error.set('Select an ad account before loading insights.');
       return;
     }
 
     this.loading.set(true);
     this.error.set('');
+    this.pageApiCallCount.update(n => n + 1);
 
-    const preset = this.datePreset();
-    const query = {
+    const baseFields = ['campaign_name', 'adset_name', 'ad_name', 'date_start', 'date_stop'];
+    const fields = [...new Set([...baseFields, ...this.selectedFields()])].join(',');
+
+    this.api.getInsights(this.processRoute.currentMenuType(), {
       objectId,
       level: this.level(),
-      datePreset: preset === 'custom' ? undefined : preset,
-      since: preset === 'custom' ? this.since() : undefined,
-      until: preset === 'custom' ? this.until() : undefined
-    };
-
-    this.api.getInsights(this.processRoute.currentMenuType(), query).subscribe({
+      datePreset: this.datePreset(),
+      fields
+    }).subscribe({
       next: (res) => {
         this.loading.set(false);
         if (!res.success) {
@@ -209,11 +189,33 @@ export class MetaAdsInsightsComponent implements OnInit {
           return;
         }
         this.summary.set(res.data);
+        this.lastUpdated.set(new Date());
       },
       error: () => {
         this.loading.set(false);
-        this.error.set('Unable to load insights.');
+        this.error.set('Unable to load insights from Meta.');
       }
     });
+  }
+
+  /** Uses ad account for breakdown levels; specific ID only when deep-linked from another page. */
+  private resolveInsightsObjectId(): string {
+    const specific = this.specificObjectId().trim();
+    if (specific) return specific;
+
+    const account = this.state.selectedAdAccount();
+    return account?.id?.trim() ?? '';
+  }
+
+  private rowLabel(row: MetaInsightRow, level: InsightLevel): string {
+    if (level === 'ad' && row.adName) return row.adName;
+    if (level === 'adset' && row.adSetName) return row.adSetName;
+    if (level === 'campaign' && row.campaignName) return row.campaignName;
+    if (level === 'account' && row.dateStart) {
+      return row.dateStop && row.dateStop !== row.dateStart
+        ? `${row.dateStart} – ${row.dateStop}`
+        : row.dateStart;
+    }
+    return row.campaignName || row.adSetName || row.adName || '—';
   }
 }

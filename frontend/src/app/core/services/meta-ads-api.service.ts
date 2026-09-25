@@ -1,6 +1,6 @@
-import { Injectable } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
-import { Observable } from 'rxjs';
+import { Observable, tap } from 'rxjs';
 import { environment } from '../../../environments/environment';
 import { PROCESS_MODULE_LIST, ProcessMenuType } from '../config/process.config';
 import {
@@ -11,6 +11,7 @@ import {
   MetaAd,
   MetaAdAccount,
   MetaAdSet,
+  MetaApiHealth,
   MetaApiResponse,
   MetaCampaign,
   MetaCatalog,
@@ -24,10 +25,12 @@ import {
   UpdateMetaCampaignRequest,
   UpdateMetaProductRequest
 } from '../models/meta-ads.models';
+import { MetaRateLimitService } from './meta-rate-limit.service';
 
 @Injectable({ providedIn: 'root' })
 export class MetaAdsApiService {
   private readonly root = environment.apiUrl;
+  private readonly rateLimit = inject(MetaRateLimitService);
 
   constructor(private http: HttpClient) {}
 
@@ -36,18 +39,29 @@ export class MetaAdsApiService {
     return `${this.root}/${module.apiBase}/meta-ads`;
   }
 
+  private track<T>(path: string, method: string, source: Observable<MetaApiResponse<T>>): Observable<MetaApiResponse<T>> {
+    return source.pipe(
+      tap(res => this.rateLimit.handleResponse(res, { method, path, success: res.success }))
+    );
+  }
+
+  getApiHealth(menuType: ProcessMenuType): Observable<MetaApiResponse<MetaApiHealth>> {
+    const path = `${this.base(menuType)}/api-health`;
+    return this.track('api-health', 'GET', this.http.get<MetaApiResponse<MetaApiHealth>>(path));
+  }
+
   getAdAccounts(menuType: ProcessMenuType): Observable<MetaApiResponse<MetaAdAccount[]>> {
-    return this.http.get<MetaApiResponse<MetaAdAccount[]>>(`${this.base(menuType)}/ad-accounts`);
+    return this.track('ad-accounts', 'GET', this.http.get<MetaApiResponse<MetaAdAccount[]>>(`${this.base(menuType)}/ad-accounts`));
   }
 
   getCampaigns(menuType: ProcessMenuType, query: MetaListQuery): Observable<MetaApiResponse<MetaPagedResult<MetaCampaign>>> {
-    return this.http.get<MetaApiResponse<MetaPagedResult<MetaCampaign>>>(`${this.base(menuType)}/campaigns`, {
+    return this.track('campaigns', 'GET', this.http.get<MetaApiResponse<MetaPagedResult<MetaCampaign>>>(`${this.base(menuType)}/campaigns`, {
       params: this.listParams(query)
-    });
+    }));
   }
 
   createCampaign(menuType: ProcessMenuType, body: CreateMetaCampaignRequest): Observable<MetaApiResponse<MetaCampaign>> {
-    return this.http.post<MetaApiResponse<MetaCampaign>>(`${this.base(menuType)}/campaigns`, body);
+    return this.track('campaigns', 'POST', this.http.post<MetaApiResponse<MetaCampaign>>(`${this.base(menuType)}/campaigns`, body));
   }
 
   updateCampaign(
@@ -55,17 +69,17 @@ export class MetaAdsApiService {
     campaignId: string,
     body: UpdateMetaCampaignRequest
   ): Observable<MetaApiResponse<MetaCampaign>> {
-    return this.http.put<MetaApiResponse<MetaCampaign>>(`${this.base(menuType)}/campaigns/${campaignId}`, body);
+    return this.track(`campaigns/${campaignId}`, 'PUT', this.http.put<MetaApiResponse<MetaCampaign>>(`${this.base(menuType)}/campaigns/${campaignId}`, body));
   }
 
   getAdSets(menuType: ProcessMenuType, query: MetaListQuery): Observable<MetaApiResponse<MetaPagedResult<MetaAdSet>>> {
-    return this.http.get<MetaApiResponse<MetaPagedResult<MetaAdSet>>>(`${this.base(menuType)}/adsets`, {
+    return this.track('adsets', 'GET', this.http.get<MetaApiResponse<MetaPagedResult<MetaAdSet>>>(`${this.base(menuType)}/adsets`, {
       params: this.listParams(query)
-    });
+    }));
   }
 
   createAdSet(menuType: ProcessMenuType, body: CreateMetaAdSetRequest): Observable<MetaApiResponse<MetaAdSet>> {
-    return this.http.post<MetaApiResponse<MetaAdSet>>(`${this.base(menuType)}/adsets`, body);
+    return this.track('adsets', 'POST', this.http.post<MetaApiResponse<MetaAdSet>>(`${this.base(menuType)}/adsets`, body));
   }
 
   updateAdSet(
@@ -73,17 +87,17 @@ export class MetaAdsApiService {
     adSetId: string,
     body: UpdateMetaAdSetRequest
   ): Observable<MetaApiResponse<MetaAdSet>> {
-    return this.http.put<MetaApiResponse<MetaAdSet>>(`${this.base(menuType)}/adsets/${adSetId}`, body);
+    return this.track(`adsets/${adSetId}`, 'PUT', this.http.put<MetaApiResponse<MetaAdSet>>(`${this.base(menuType)}/adsets/${adSetId}`, body));
   }
 
   getAds(menuType: ProcessMenuType, query: MetaListQuery): Observable<MetaApiResponse<MetaPagedResult<MetaAd>>> {
-    return this.http.get<MetaApiResponse<MetaPagedResult<MetaAd>>>(`${this.base(menuType)}/ads`, {
+    return this.track('ads', 'GET', this.http.get<MetaApiResponse<MetaPagedResult<MetaAd>>>(`${this.base(menuType)}/ads`, {
       params: this.listParams(query)
-    });
+    }));
   }
 
   updateAd(menuType: ProcessMenuType, adId: string, body: UpdateMetaAdRequest): Observable<MetaApiResponse<MetaAd>> {
-    return this.http.put<MetaApiResponse<MetaAd>>(`${this.base(menuType)}/ads/${adId}`, body);
+    return this.track(`ads/${adId}`, 'PUT', this.http.put<MetaApiResponse<MetaAd>>(`${this.base(menuType)}/ads/${adId}`, body));
   }
 
   getInsights(menuType: ProcessMenuType, query: MetaInsightsQuery): Observable<MetaApiResponse<MetaInsightsSummary>> {
@@ -92,7 +106,8 @@ export class MetaAdsApiService {
     if (query.since) params = params.set('since', query.since);
     if (query.until) params = params.set('until', query.until);
     if (query.level) params = params.set('level', query.level);
-    return this.http.get<MetaApiResponse<MetaInsightsSummary>>(`${this.base(menuType)}/insights`, { params });
+    if (query.fields) params = params.set('fields', query.fields);
+    return this.track('insights', 'GET', this.http.get<MetaApiResponse<MetaInsightsSummary>>(`${this.base(menuType)}/insights`, { params }));
   }
 
   getCatalogs(
@@ -102,14 +117,14 @@ export class MetaAdsApiService {
   ): Observable<MetaApiResponse<MetaPagedResult<MetaCatalog>>> {
     let params = new HttpParams().set('limit', limit);
     if (after) params = params.set('after', after);
-    return this.http.get<MetaApiResponse<MetaPagedResult<MetaCatalog>>>(`${this.base(menuType)}/catalogs`, { params });
+    return this.track('catalogs', 'GET', this.http.get<MetaApiResponse<MetaPagedResult<MetaCatalog>>>(`${this.base(menuType)}/catalogs`, { params }));
   }
 
   createCatalog(
     menuType: ProcessMenuType,
     body: CreateMetaCatalogRequest
   ): Observable<MetaApiResponse<MetaCatalog>> {
-    return this.http.post<MetaApiResponse<MetaCatalog>>(`${this.base(menuType)}/catalogs`, body);
+    return this.track('catalogs', 'POST', this.http.post<MetaApiResponse<MetaCatalog>>(`${this.base(menuType)}/catalogs`, body));
   }
 
   getProducts(
@@ -124,10 +139,10 @@ export class MetaAdsApiService {
     if (search) params = params.set('search', search);
     if (after) params = params.set('after', after);
     if (businessId) params = params.set('businessId', businessId);
-    return this.http.get<MetaApiResponse<MetaPagedResult<MetaProduct>>>(
+    return this.track(`catalogs/${catalogId}/products`, 'GET', this.http.get<MetaApiResponse<MetaPagedResult<MetaProduct>>>(
       `${this.base(menuType)}/catalogs/${encodeURIComponent(catalogId)}/products`,
       { params }
-    );
+    ));
   }
 
   createProduct(
@@ -135,10 +150,10 @@ export class MetaAdsApiService {
     catalogId: string,
     body: CreateMetaProductRequest
   ): Observable<MetaApiResponse<MetaProduct>> {
-    return this.http.post<MetaApiResponse<MetaProduct>>(
+    return this.track(`catalogs/${catalogId}/products`, 'POST', this.http.post<MetaApiResponse<MetaProduct>>(
       `${this.base(menuType)}/catalogs/${encodeURIComponent(catalogId)}/products`,
       body
-    );
+    ));
   }
 
   updateProduct(
@@ -147,10 +162,10 @@ export class MetaAdsApiService {
     productId: string,
     body: UpdateMetaProductRequest
   ): Observable<MetaApiResponse<MetaProduct>> {
-    return this.http.put<MetaApiResponse<MetaProduct>>(
+    return this.track(`catalogs/${catalogId}/products/${productId}`, 'PUT', this.http.put<MetaApiResponse<MetaProduct>>(
       `${this.base(menuType)}/catalogs/${encodeURIComponent(catalogId)}/products/${encodeURIComponent(productId)}`,
       body
-    );
+    ));
   }
 
   deleteProduct(
@@ -158,9 +173,9 @@ export class MetaAdsApiService {
     catalogId: string,
     productId: string
   ): Observable<MetaApiResponse<object>> {
-    return this.http.delete<MetaApiResponse<object>>(
+    return this.track(`catalogs/${catalogId}/products/${productId}`, 'DELETE', this.http.delete<MetaApiResponse<object>>(
       `${this.base(menuType)}/catalogs/${encodeURIComponent(catalogId)}/products/${encodeURIComponent(productId)}`
-    );
+    ));
   }
 
   private listParams(query: MetaListQuery): HttpParams {

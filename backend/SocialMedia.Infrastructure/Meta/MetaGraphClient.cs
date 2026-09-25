@@ -1,7 +1,9 @@
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
+using SocialMedia.Application.DTOs.Meta;
 using SocialMedia.Application.Interfaces;
+using SocialMedia.Application.Meta;
 
 namespace SocialMedia.Infrastructure.Meta;
 
@@ -53,6 +55,26 @@ public class MetaGraphClient
             throw new InvalidOperationException($"Meta Graph GET failed ({(int)response.StatusCode}): {body}");
 
         return JsonDocument.Parse(body);
+    }
+
+    public async Task<MetaGraphHttpResult> GetDetailedAsync(
+        string version,
+        string path,
+        string accessToken,
+        CancellationToken cancellationToken,
+        params (string Key, string Value)[] query)
+    {
+        var url = BuildUrl(FacebookGraphHost, version, path, accessToken, query);
+        using var response = await _httpClient.GetAsync(url, cancellationToken);
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+
+        if (!response.IsSuccessStatusCode)
+            throw new InvalidOperationException($"Meta Graph GET failed ({(int)response.StatusCode}): {body}");
+
+        return new MetaGraphHttpResult(
+            JsonDocument.Parse(body),
+            ReadUsage(response),
+            (int)response.StatusCode);
     }
 
     /// <summary>
@@ -162,6 +184,27 @@ public class MetaGraphClient
         return JsonDocument.Parse(body);
     }
 
+    public async Task<MetaGraphHttpResult> PostFormDetailedAsync(
+        string version,
+        string path,
+        string accessToken,
+        IDictionary<string, string> formFields,
+        CancellationToken cancellationToken)
+    {
+        var url = BuildUrl(FacebookGraphHost, version, path, accessToken);
+        using var content = new FormUrlEncodedContent(formFields);
+        using var response = await _httpClient.PostAsync(url, content, cancellationToken);
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+
+        if (!response.IsSuccessStatusCode)
+            throw new InvalidOperationException($"Meta Graph POST failed ({(int)response.StatusCode}): {body}");
+
+        return new MetaGraphHttpResult(
+            JsonDocument.Parse(body),
+            ReadUsage(response),
+            (int)response.StatusCode);
+    }
+
     public async Task<JsonDocument> PostMultipartAsync(
         string version,
         string path,
@@ -213,6 +256,28 @@ public class MetaGraphClient
             throw new InvalidOperationException($"Meta Graph POST JSON failed ({(int)response.StatusCode}): {body}");
 
         return JsonDocument.Parse(body);
+    }
+
+    public async Task<MetaGraphHttpResult> PostJsonDetailedAsync(
+        string version,
+        string path,
+        string accessToken,
+        object payload,
+        CancellationToken cancellationToken)
+    {
+        var url = BuildUrl(FacebookGraphHost, version, path, accessToken);
+        var json = JsonSerializer.Serialize(payload);
+        using var content = new StringContent(json, Encoding.UTF8, "application/json");
+        using var response = await _httpClient.PostAsync(url, content, cancellationToken);
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+
+        if (!response.IsSuccessStatusCode)
+            throw new InvalidOperationException($"Meta Graph POST JSON failed ({(int)response.StatusCode}): {body}");
+
+        return new MetaGraphHttpResult(
+            JsonDocument.Parse(body),
+            ReadUsage(response),
+            (int)response.StatusCode);
     }
 
     public async Task<JsonDocument> PostInstagramJsonAsync(
@@ -410,4 +475,16 @@ public class MetaGraphClient
 
     public static T? Deserialize<T>(JsonDocument document)
         => JsonSerializer.Deserialize<T>(document.RootElement.GetRawText(), JsonOptions);
+
+    private static MetaUsageSnapshotDto ReadUsage(HttpResponseMessage response)
+    {
+        response.Headers.TryGetValues("x-business-use-case-usage", out var bucValues);
+        response.Headers.TryGetValues("x-ad-account-usage", out var adValues);
+        response.Headers.TryGetValues("x-app-usage", out var appValues);
+
+        return MetaUsageHeaderParser.Parse(
+            bucValues?.FirstOrDefault(),
+            adValues?.FirstOrDefault(),
+            appValues?.FirstOrDefault());
+    }
 }

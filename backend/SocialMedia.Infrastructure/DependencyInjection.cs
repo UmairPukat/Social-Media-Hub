@@ -53,6 +53,7 @@ public static class DependencyInjection
         services.AddScoped<IInstagramService, InstagramService>();
         services.AddScoped<IWhatsAppService, WhatsAppService>();
         services.AddScoped<IMetaMarketingContextFactory, MetaMarketingContextFactory>();
+        services.AddSingleton<IMetaApiCallTracker, MetaApiCallTracker>();
         services.AddScoped<IMetaGraphApiClient, MetaGraphApiClient>();
         services.AddScoped<IMetaAdsService, MetaAdsService>();
         services.AddScoped<IMetaInsightsService, MetaInsightsService>();

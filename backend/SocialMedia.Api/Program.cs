@@ -1,5 +1,6 @@
 using Microsoft.OpenApi.Models;
 using SocialMedia.Api.Configuration;
+using SocialMedia.Api.Middleware;
 using SocialMedia.Api.Hubs;
 using SocialMedia.Application;
 using SocialMedia.Application.Interfaces;
@@ -138,6 +139,7 @@ app.UseStaticFiles(new StaticFileOptions
 
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseMiddleware<MetaGraphCallScopeMiddleware>();
 app.MapControllers();
 app.MapHub<InboxHub>("/hubs/inbox");
 app.Run();

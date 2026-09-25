@@ -50,18 +50,15 @@ export class MetaAdsCampaignsComponent implements OnInit {
 
   readonly filtered = computed(() => {
     const term = this.search().trim().toLowerCase();
-    const statusFilter = this.status().trim().toUpperCase();
     return this.campaigns().filter(c => {
-      if (statusFilter) {
-        const campaignStatus = (c.status || '').toUpperCase();
-        const effectiveStatus = (c.effectiveStatus || '').toUpperCase();
-        if (campaignStatus !== statusFilter && effectiveStatus !== statusFilter) {
-          return false;
-        }
-      }
       if (!term) return true;
       return c.name.toLowerCase().includes(term) || c.id.includes(term);
     });
+  });
+
+  readonly totalLabel = computed(() => {
+    const count = this.filtered().length;
+    return `Showing ${count} campaign${count === 1 ? '' : 's'}`;
   });
 
   constructor() {
@@ -98,7 +95,8 @@ export class MetaAdsCampaignsComponent implements OnInit {
         adAccountId: adAccount.id,
         after,
         includeCampaignId: this.includeCampaignId() || undefined,
-        limit: 100
+        limit: 25,
+        status: this.status() || undefined
       })
       .subscribe({
         next: (res) => {
