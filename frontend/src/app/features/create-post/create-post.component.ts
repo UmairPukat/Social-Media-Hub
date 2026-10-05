@@ -1,4 +1,4 @@
-import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
+import { Component, ElementRef, HostListener, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
@@ -34,6 +34,7 @@ export class CreatePostComponent implements OnInit, OnDestroy {
   private readonly fb = inject(FormBuilder);
   private readonly processApi = inject(ProcessApiService);
   private readonly processRoute = inject(ProcessRouteService);
+  private readonly host = inject(ElementRef<HTMLElement>);
   private formSub?: Subscription;
   private objectUrl: string | null = null;
   private selectedFile: File | null = null;
@@ -234,6 +235,29 @@ export class CreatePostComponent implements OnInit, OnDestroy {
       },
       { emitEvent: true }
     );
+    this.scheduleTextareaFit();
+  }
+
+  @HostListener('input', ['$event'])
+  onComposerInput(event: Event): void {
+    const target = event.target;
+    if (target instanceof HTMLTextAreaElement) {
+      this.fitTextarea(target);
+    }
+  }
+
+  private scheduleTextareaFit(): void {
+    requestAnimationFrame(() => this.fitComposerTextareas());
+  }
+
+  private fitComposerTextareas(): void {
+    const areas = this.host.nativeElement.querySelectorAll('textarea');
+    areas.forEach((el: HTMLTextAreaElement) => this.fitTextarea(el));
+  }
+
+  private fitTextarea(el: HTMLTextAreaElement): void {
+    el.style.height = 'auto';
+    el.style.height = `${el.scrollHeight}px`;
   }
 
   selectProfile(id: string): void {

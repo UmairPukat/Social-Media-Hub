@@ -1,7 +1,6 @@
 :host {
   display: block;
-  height: 100%;
-  min-height: 0;
+  min-height: 100%;
 }
 
 .studio {
@@ -12,8 +11,7 @@
   --canvas: var(--app-surface-soft, #f3f5f8);
   --accent: #1877f2;
 
-  height: 100%;
-  min-height: 0;
+  min-height: 100%;
   display: flex;
   flex-direction: column;
   color: var(--ink);
@@ -21,7 +19,7 @@
   background:
     radial-gradient(circle at 0% 0%, color-mix(in srgb, var(--accent) 10%, transparent), transparent 42%),
     var(--app-page-bg, linear-gradient(180deg, #f8fafc 0%, #eef2f7 100%));
-  overflow: auto;
+  overflow: visible;
 }
 
 .studio-top {
@@ -80,19 +78,18 @@
 }
 
 .studio-body {
-  flex: 1;
+  flex: 1 0 auto;
   display: grid;
   grid-template-columns: 320px 1fr;
   gap: 18px;
   padding: 18px 24px 24px;
-  min-height: 0;
+  align-items: start;
 }
 
 .rail {
   display: flex;
   flex-direction: column;
   gap: 14px;
-  min-height: 0;
 }
 
 .rail-block,
@@ -265,8 +262,7 @@
   display: flex;
   flex-direction: column;
   min-width: 0;
-  min-height: 0;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .canvas-head {
@@ -303,8 +299,8 @@
 }
 
 .canvas-frame {
-  flex: 1;
-  overflow: auto;
+  flex: 1 0 auto;
+  overflow: visible;
   padding: 16px 18px 20px;
   background:
     linear-gradient(180deg, transparent, color-mix(in srgb, var(--ink) 3%, transparent)),
@@ -423,11 +419,16 @@ input {
   outline: none;
 }
 
+textarea {
+  overflow: hidden;
+  resize: none;
+  field-sizing: content;
+}
+
 .fb textarea,
 .li textarea {
   width: 100%;
   border: 0;
-  resize: vertical;
   padding: 12px 16px;
   font-size: 1.25rem;
   min-height: 120px;
@@ -749,7 +750,6 @@ input {
   color: #0f1419;
   font-size: 1.28rem;
   line-height: 1.35;
-  resize: none;
 }
 
 .x-editor textarea::placeholder {
@@ -965,8 +965,7 @@ input {
 
 .ig-side textarea {
   border: 0;
-  resize: none;
-  flex: 1;
+  min-height: 140px;
   font-size: 0.95rem;
   background: transparent;
 }
@@ -1065,7 +1064,7 @@ input {
   border: 0;
   border-radius: 24px;
   padding: 10px 14px;
-  resize: none;
+  min-height: 44px;
   background: #fff;
 }
 
@@ -1160,7 +1159,9 @@ input {
   background: #fff;
 }
 
-.yt-fields textarea { resize: vertical; }
+.yt-fields textarea {
+  min-height: 140px;
+}
 
 .seg {
   display: flex;
@@ -1442,7 +1443,6 @@ input {
   background: #fff;
   color: #161823;
   padding: 12px 12px 28px;
-  resize: vertical;
   font-size: 0.92rem;
   line-height: 1.45;
 }
