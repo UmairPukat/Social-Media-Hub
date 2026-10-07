@@ -68,6 +68,35 @@ internal static class MetaWebhookProfileResolver
         return await store.PickBestProfileForAccountAsync(accounts[0].Id, cancellationToken);
     }
 
+    /// <summary>
+    /// Instagram Login webhooks often key <c>entry.id</c> on a professional user_id or Meta's
+    /// test id <c>0</c>. When this module has exactly one Instagram profile, use it.
+    /// </summary>
+    public static async Task<SocialProfileEntityBase?> TryResolveSoleInstagramAsync(
+        IProcessDataStore store,
+        CancellationToken cancellationToken)
+    {
+        var accounts = await store.FindConnectedSocialAccountsAsync(cancellationToken);
+        SocialProfileEntityBase? match = null;
+        var count = 0;
+
+        foreach (var account in accounts)
+        {
+            var profiles = await store.GetProfilesByAccountAsync(account.Id, cancellationToken);
+            foreach (var snapshot in profiles)
+            {
+                if (snapshot.ProfileType is not (ProfileType.InstagramLogin or ProfileType.InstagramBusiness))
+                    continue;
+
+                count++;
+                match = await store.GetProfileByIdAsync(snapshot.Id, cancellationToken)
+                        ?? await store.GetProfileByExternalIdAsync(snapshot.ExternalProfileId, cancellationToken);
+            }
+        }
+
+        return count == 1 ? match : null;
+    }
+
     private static async Task<SocialProfileEntityBase?> ScanConnectedProfilesAsync(
         IProcessDataStore store,
         string entryId,

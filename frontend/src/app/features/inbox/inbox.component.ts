@@ -115,7 +115,7 @@ export class InboxComponent implements OnInit, OnDestroy {
     const kind = this.mode() === 'comments' ? 'comment' : 'message';
     return this.items().filter(i =>
       i.itemKind === kind &&
-      (!code || i.platformCode === code) &&
+      this.matchesPlatform(i.platformCode, code) &&
       !(kind === 'message' && i.platformCode === 'youtube')
     );
   });
@@ -378,6 +378,12 @@ export class InboxComponent implements OnInit, OnDestroy {
     if (!this.selectedKey()) {
       this.autoSelectFirst();
     }
+  }
+
+  private matchesPlatform(itemCode: string | undefined, filter: string | null): boolean {
+    if (!filter) return true;
+    if (itemCode === filter) return true;
+    return filter === 'instagram' && itemCode === 'instagram_login';
   }
 
   setPlatform(code: string | null): void {

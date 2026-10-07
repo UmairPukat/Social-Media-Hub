@@ -78,9 +78,10 @@ public class InboxService : IInboxService
             }
             else if (processMenu is not null)
             {
-                platformIds = (await _processData.ForMenu(processMenu).GetActivePlatformsAsync(cancellationToken))
-                    .Select(p => p.Id)
-                    .ToList();
+                // Load every comment/message for this user in the module. Filtering by
+                // catalog platform ids hid Instagram Login rows when Post.PlatformId
+                // did not match an IntegrationPlatforms.IsActive id.
+                platformIds = null;
             }
 
             var kind = filter?.ItemKind?.ToLowerInvariant();

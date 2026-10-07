@@ -773,7 +773,9 @@ public class InstagramService : IInstagramService
                 var igUserId = entry.TryGetProperty("id", out var idEl) ? idEl.ToString() : null;
 
                 var profile = await MetaWebhookEntryHelper.ResolveProfileForEntryAsync(
-                    _store, entry, result, cancellationToken);
+                    _store, entry, result, cancellationToken)
+                    ?? await MetaWebhookProfileResolver.TryResolveSoleInstagramAsync(
+                        _store, cancellationToken);
                 if (profile is null)
                     continue;
 
@@ -1005,11 +1007,7 @@ public class InstagramService : IInstagramService
                     ? username.GetString()
                     : null) ?? "Instagram user";
 
-            if (MetaMessagingHelper.ProfileOwnsSenderId(profile, authorId))
-            {
-                result.Skip($"Comment '{commentId}' is from the connected account — not stored.");
-                continue;
-            }
+            var fromConnectedAccount = MetaMessagingHelper.ProfileOwnsSenderId(profile, authorId);
 
             CommentEntityBase? parentComment = null;
             var parentExternalId = FirstNonEmpty(
@@ -1047,7 +1045,7 @@ public class InstagramService : IInstagramService
                 Content = comment.Message,
                 IsHidden = false,
                 IsRead = false,
-                IsOutgoing = !string.IsNullOrWhiteSpace(authorId) && authorId == profile.ExternalProfileId,
+                IsOutgoing = fromConnectedAccount,
                 ReceivedAt = receivedAt,
                 CommentLikes = comment.LikeCount,
                 ReplyCount = 0,
@@ -1110,12 +1108,6 @@ public class InstagramService : IInstagramService
             return;
         }
 
-        if (MetaWebhookEchoHelper.IsEcho(item, message))
-        {
-            result.Skip("Message is echo — not stored from webhook.");
-            return;
-        }
-
         var messageId = MetaMessagingHelper.ReadMessageId(message);
         if (string.IsNullOrWhiteSpace(messageId))
         {
@@ -1135,15 +1127,18 @@ public class InstagramService : IInstagramService
             MetaWebhookPayloadNormalizer.ReadActorId(item, "recipient"),
             MetaWebhookPayloadNormalizer.ReadActorId(item, "to"));
 
-        if (MetaMessagingHelper.ProfileOwnsSenderId(profile, senderId) ||
-            IdsMatchEntryBusiness(senderId, entryBusinessId, profile))
-        {
-            result.Skip($"Message '{messageId}' is from connected account — not stored from webhook.");
-            return;
-        }
+        var outbound = MetaWebhookEchoHelper.IsEcho(item, message)
+            || MetaMessagingHelper.ProfileOwnsSenderId(profile, senderId)
+            || IdsMatchEntryBusiness(senderId, entryBusinessId, profile);
 
-        var outbound = false;
-        var customerId = senderId;
+        var customerId = outbound
+            ? FirstNonEmpty(
+                !MetaMessagingHelper.ProfileOwnsSenderId(profile, receiverId)
+                && !IdsMatchEntryBusiness(receiverId, entryBusinessId, profile)
+                    ? receiverId
+                    : null,
+                receiverId)
+            : senderId;
         if (string.IsNullOrWhiteSpace(customerId) && !outbound)
         {
             if (!string.IsNullOrWhiteSpace(receiverId) &&
