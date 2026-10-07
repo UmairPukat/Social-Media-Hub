@@ -53,13 +53,41 @@ public static class ProcessEntityNav
         _ => null
     };
 
-    public static string? FirstMediaUrl(PostEntityBase post) => post switch
+    public static MediaEntityBase? FirstMedia(PostEntityBase post) => post switch
     {
-        IntegrationPost i => i.MediaItems?.FirstOrDefault()?.Url,
-        AppConnectionPost a => a.MediaItems?.FirstOrDefault()?.Url,
-        DeveloperAppPost d => d.MediaItems?.FirstOrDefault()?.Url,
+        IntegrationPost i => i.MediaItems?.FirstOrDefault(),
+        AppConnectionPost a => a.MediaItems?.FirstOrDefault(),
+        DeveloperAppPost d => d.MediaItems?.FirstOrDefault(),
         _ => null
     };
+
+    /// <summary>
+    /// Inbox renders an image/poster. Prefer a still (thumbnail) over a video file URL.
+    /// </summary>
+    public static string? FirstMediaUrl(PostEntityBase post)
+    {
+        var media = FirstMedia(post);
+        if (media is null)
+            return null;
+
+        if (media.MediaType == MediaType.Video)
+            return FirstNonEmpty(media.Thumbnail, LooksLikeVideo(media.Url) ? null : media.Url);
+
+        return FirstNonEmpty(media.Url, media.Thumbnail);
+    }
+
+    public static string? FirstVideoUrl(PostEntityBase post)
+    {
+        var media = FirstMedia(post);
+        if (media is null || media.MediaType != MediaType.Video)
+            return null;
+
+        return LooksLikeVideo(media.Url) ? media.Url : null;
+    }
+
+    public static bool HasDisplayableMedia(PostEntityBase post)
+        => !string.IsNullOrWhiteSpace(FirstMediaUrl(post))
+           || !string.IsNullOrWhiteSpace(FirstVideoUrl(post));
 
     public static int MediaCount(PostEntityBase post) => post switch
     {
@@ -68,6 +96,15 @@ public static class ProcessEntityNav
         DeveloperAppPost d => d.MediaItems?.Count ?? 0,
         _ => 0
     };
+
+    private static bool LooksLikeVideo(string? url)
+        => !string.IsNullOrWhiteSpace(url)
+           && (url.Contains(".mp4", StringComparison.OrdinalIgnoreCase)
+               || url.Contains(".mov", StringComparison.OrdinalIgnoreCase)
+               || url.Contains("video", StringComparison.OrdinalIgnoreCase));
+
+    private static string? FirstNonEmpty(params string?[] values)
+        => values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
 
     public static void AttachMedia(PostEntityBase post, MediaEntityBase media)
     {

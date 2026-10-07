@@ -36,7 +36,7 @@ internal static class MetaPostStore
                    ?? await store.FindPostByExternalIdAsync(externalPostId, cancellationToken);
         if (post is not null)
         {
-            if (IsAwaitingGraphFetch(post) || (requireMedia && ProcessEntityNav.MediaCount(post) == 0))
+            if (IsAwaitingGraphFetch(post) || (requireMedia && !ProcessEntityNav.HasDisplayableMedia(post)))
                 await EnrichAsync(store, post, fetchSnapshot, cancellationToken);
             return post;
         }
@@ -57,10 +57,9 @@ internal static class MetaPostStore
         post.ShareCount = snapshot?.ShareCount ?? 0;
         post.MetadataJson = BuildMetadata(snapshot);
 
-        AttachMedia(store, post, snapshot);
-
         await store.AddPostAsync(post, cancellationToken);
         await store.SaveChangesAsync(cancellationToken);
+        await MetaPostMediaWriter.PersistAsync(store, post, snapshot, cancellationToken);
         return post;
     }
 
@@ -87,27 +86,10 @@ internal static class MetaPostStore
         post.Type = ResolveType(snapshot);
         post.MetadataJson = BuildMetadata(snapshot);
 
-        if (ProcessEntityNav.MediaCount(post) == 0)
-            AttachMedia(store, post, snapshot);
-
         post.UpdatedAt = DateTime.UtcNow;
         store.UpdatePost(post);
         await store.SaveChangesAsync(cancellationToken);
-    }
-
-    private static void AttachMedia(IProcessDataStore store, PostEntityBase post, RemotePostSnapshot? snapshot)
-    {
-        var url = FirstNonEmpty(snapshot?.MediaUrl, snapshot?.ThumbnailUrl);
-        if (string.IsNullOrWhiteSpace(url))
-            return;
-
-        var media = store.NewMedia();
-        media.PostId = post.Id;
-        media.ExternalMediaId = snapshot!.ExternalId;
-        media.MediaType = snapshot.IsVideo ? MediaType.Video : MediaType.Image;
-        media.Url = url;
-        media.Thumbnail = snapshot.ThumbnailUrl;
-        ProcessEntityNav.AttachMedia(post, media);
+        await MetaPostMediaWriter.PersistAsync(store, post, snapshot, cancellationToken);
     }
 
     private static async Task<RemotePostSnapshot?> TryFetchAsync(
@@ -151,7 +133,4 @@ internal static class MetaPostStore
         => snapshot is null
             ? JsonSerializer.Serialize(new Dictionary<string, object> { [PlaceholderKey] = true })
             : JsonSerializer.Serialize(new Dictionary<string, object?> { ["permalink"] = snapshot.Permalink });
-
-    private static string? FirstNonEmpty(params string?[] values)
-        => values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
 }

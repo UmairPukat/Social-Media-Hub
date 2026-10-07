@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using SocialMedia.Application.Catalog;
 using SocialMedia.Application.Interfaces;
+using SocialMedia.Application.Meta;
 using SocialMedia.Domain.Common;
 using SocialMedia.Domain.Enums;
 using SocialMedia.Domain.Modules.AppConnections.Entities;
@@ -520,6 +521,22 @@ public sealed class ProcessDataStore : IProcessDataStore
                 break;
             default:
                 await _context.IntegrationPosts.AddAsync((IntegrationPost)post, cancellationToken);
+                break;
+        }
+    }
+
+    public async Task AddMediaAsync(MediaEntityBase media, CancellationToken cancellationToken = default)
+    {
+        switch (_menuType)
+        {
+            case MenuTypes.AppConnection:
+                await _context.AppConnectionMedia.AddAsync((AppConnectionMedia)media, cancellationToken);
+                break;
+            case MenuTypes.DeveloperApp:
+                await _context.DeveloperAppMedia.AddAsync((DeveloperAppMedia)media, cancellationToken);
+                break;
+            default:
+                await _context.IntegrationMedia.AddAsync((IntegrationMedia)media, cancellationToken);
                 break;
         }
     }
@@ -1084,7 +1101,7 @@ public sealed class ProcessDataStore : IProcessDataStore
             c.Post!.SocialProfile!.SocialAccount!,
             c.Post!.SocialProfile!.SocialAccount!.Platform!,
             c.Replies.Count,
-            c.Post!.MediaItems.FirstOrDefault()?.Url)).ToList();
+            ProcessEntityNav.FirstMediaUrl(c.Post!))).ToList();
 
     private static IReadOnlyList<InboxCommentRow> MapInboxCommentRows(IEnumerable<AppConnectionComment> comments)
         => comments.Select(c => new InboxCommentRow(
@@ -1094,7 +1111,7 @@ public sealed class ProcessDataStore : IProcessDataStore
             c.Post!.SocialProfile!.SocialAccount!,
             c.Post!.SocialProfile!.SocialAccount!.Platform!,
             c.Replies.Count,
-            c.Post!.MediaItems.FirstOrDefault()?.Url)).ToList();
+            ProcessEntityNav.FirstMediaUrl(c.Post!))).ToList();
 
     private static IReadOnlyList<InboxCommentRow> MapInboxCommentRows(IEnumerable<DeveloperAppComment> comments)
         => comments.Select(c => new InboxCommentRow(
@@ -1104,7 +1121,7 @@ public sealed class ProcessDataStore : IProcessDataStore
             c.Post!.SocialProfile!.SocialAccount!,
             c.Post!.SocialProfile!.SocialAccount!.Platform!,
             c.Replies.Count,
-            c.Post!.MediaItems.FirstOrDefault()?.Url)).ToList();
+            ProcessEntityNav.FirstMediaUrl(c.Post!))).ToList();
 
     private static IReadOnlyList<InboxMessageRow> MapInboxMessageRows(IEnumerable<IntegrationMessage> messages)
         => messages.Select(m => new InboxMessageRow(

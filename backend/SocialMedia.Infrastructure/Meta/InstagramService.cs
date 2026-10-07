@@ -418,7 +418,7 @@ public class InstagramService : IInstagramService
             return null;
 
         const string fields =
-            "id,caption,media_type,media_url,thumbnail_url,permalink,timestamp,like_count,comments_count,children{id,media_type,media_url,thumbnail_url}";
+            "id,caption,media_type,media_product_type,media_url,thumbnail_url,permalink,timestamp,like_count,comments_count,children{id,media_type,media_url,thumbnail_url}";
 
         using var doc = connectionType == InstagramConnectionType.InstagramLogin
             ? await _graph.GetInstagramAsync(InstagramLoginGraphVersion, mediaId, accessToken, cancellationToken, ("fields", fields))
@@ -427,13 +427,10 @@ public class InstagramService : IInstagramService
         LogApiDecision(null, connectionType, "GetPost", success: true);
 
         var root = doc.RootElement;
-        var mediaType = root.TryGetProperty("media_type", out var type) ? type.GetString() : null;
-        var mediaUrl = root.TryGetProperty("media_url", out var rootMediaUrl)
-            ? rootMediaUrl.GetString()
-            : null;
-        var thumbnailUrl = root.TryGetProperty("thumbnail_url", out var rootThumbnail)
-            ? rootThumbnail.GetString()
-            : null;
+        var mediaType = ReadGraphString(root, "media_type");
+        var productType = ReadGraphString(root, "media_product_type");
+        var mediaUrl = ReadGraphUrl(root, "media_url");
+        var thumbnailUrl = ReadGraphUrl(root, "thumbnail_url");
 
         // Carousel albums may not expose a usable URL on the parent. Use the first child
         // as the inbox preview so the attachment is still persisted and displayed.
@@ -445,23 +442,21 @@ public class InstagramService : IInstagramService
         {
             foreach (var child in childData.EnumerateArray())
             {
-                var childMedia = child.TryGetProperty("media_url", out var childMediaUrl)
-                    ? childMediaUrl.GetString()
-                    : null;
-                var childThumb = child.TryGetProperty("thumbnail_url", out var childThumbnail)
-                    ? childThumbnail.GetString()
-                    : null;
+                var childMedia = ReadGraphUrl(child, "media_url");
+                var childThumb = ReadGraphUrl(child, "thumbnail_url");
                 if (string.IsNullOrWhiteSpace(childMedia) && string.IsNullOrWhiteSpace(childThumb))
                     continue;
 
-                mediaType = child.TryGetProperty("media_type", out var childType)
-                    ? childType.GetString()
-                    : mediaType;
+                mediaType = ReadGraphString(child, "media_type") ?? mediaType;
                 mediaUrl = childMedia;
                 thumbnailUrl = childThumb;
                 break;
             }
         }
+
+        var isVideo = string.Equals(mediaType, "VIDEO", StringComparison.OrdinalIgnoreCase)
+                      || string.Equals(mediaType, "REELS", StringComparison.OrdinalIgnoreCase)
+                      || string.Equals(productType, "REELS", StringComparison.OrdinalIgnoreCase);
 
         return new RemotePostSnapshot
         {
@@ -470,7 +465,7 @@ public class InstagramService : IInstagramService
             Permalink = root.TryGetProperty("permalink", out var permalink) ? permalink.GetString() : null,
             MediaUrl = mediaUrl,
             ThumbnailUrl = thumbnailUrl,
-            IsVideo = string.Equals(mediaType, "VIDEO", StringComparison.OrdinalIgnoreCase),
+            IsVideo = isVideo,
             LikeCount = root.TryGetProperty("like_count", out var likes) && likes.TryGetInt32(out var likeCount) ? likeCount : 0,
             CommentCount = root.TryGetProperty("comments_count", out var comments) && comments.TryGetInt32(out var commentCount) ? commentCount : 0,
             CreatedTime = root.TryGetProperty("timestamp", out var timestamp) &&
@@ -1056,6 +1051,7 @@ public class InstagramService : IInstagramService
                     PageName = profile.Name ?? profile.Username ?? "Instagram",
                     PostText = FirstNonEmpty(post.Caption, post.Text),
                     PostImageUrl = ProcessEntityNav.FirstMediaUrl(post),
+                    PostVideoUrl = ProcessEntityNav.FirstVideoUrl(post),
                     LikesCount = post.LikeCount,
                     CommentsCount = post.CommentCount,
                     SharesCount = post.ShareCount,
@@ -1071,6 +1067,30 @@ public class InstagramService : IInstagramService
 
     private static string FirstNonEmpty(params string?[] values)
         => values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)) ?? string.Empty;
+
+    private static string? ReadGraphString(JsonElement parent, string name)
+        => parent.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
+            ? value.GetString()
+            : null;
+
+    private static string? ReadGraphUrl(JsonElement parent, string name)
+    {
+        if (!parent.TryGetProperty(name, out var value))
+            return null;
+
+        if (value.ValueKind == JsonValueKind.String)
+            return value.GetString();
+
+        if (value.ValueKind == JsonValueKind.Object)
+        {
+            if (value.TryGetProperty("url", out var url) && url.ValueKind == JsonValueKind.String)
+                return url.GetString();
+            if (value.TryGetProperty("uri", out var uri) && uri.ValueKind == JsonValueKind.String)
+                return uri.GetString();
+        }
+
+        return null;
+    }
 
     private async Task ProcessMessagesAsync(
         SocialProfileEntityBase profile,

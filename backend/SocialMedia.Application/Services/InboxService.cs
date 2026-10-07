@@ -1,6 +1,7 @@
 using SocialMedia.Application.Catalog;
 using SocialMedia.Application.DTOs.Common;
 using SocialMedia.Application.DTOs.Inbox;
+using SocialMedia.Application.DTOs.Meta;
 using SocialMedia.Application.Interfaces;
 using SocialMedia.Application.Meta;
 using SocialMedia.Domain.Enums;
@@ -112,18 +113,7 @@ public class InboxService : IInboxService
                         CommentLikes = row.Comment.LikeCount,
                         ReplyCount = row.ReplyCount,
                         ParentId = row.Comment.ParentCommentId,
-                        Post = new InboxPostMetaDto
-                        {
-                            PostId = row.Post.ExternalPostId ?? row.Post.Id.ToString(),
-                            PageName = row.Profile.Name ?? row.Profile.Username ?? "Instagram",
-                            PostText = DisplayPostText(row.Post),
-                            PostImageUrl = row.PostImageUrl,
-                            LikesCount = row.Post.LikeCount,
-                            CommentsCount = row.Post.CommentCount,
-                            SharesCount = row.Post.ShareCount,
-                            ViewsCount = row.Post.ViewCount,
-                            PostedAt = row.Post.PublishedAt ?? row.Post.CreatedAt
-                        }
+                        Post = ToPostMeta(row.Post, row.Profile, row.PostImageUrl)
                     };
                     InboxRoutingHelper.Apply(item, row.Profile, routingAccount, menuType);
                     return item;
@@ -199,7 +189,7 @@ public class InboxService : IInboxService
         SocialAccountEntityBase account)
         => userAccounts.FirstOrDefault(a => a.Account.Id == account.Id).MenuType;
 
-    private static async Task<IReadOnlyList<InboxCommentRow>> LoadCommentsAsync(
+    private async Task<IReadOnlyList<InboxCommentRow>> LoadCommentsAsync(
         Guid userId,
         Guid? platformId,
         IReadOnlyList<Guid>? platformIds,
@@ -212,14 +202,19 @@ public class InboxService : IInboxService
         var merged = new List<InboxCommentRow>();
         foreach (var store in stores)
         {
+            var batch = new List<InboxCommentRow>();
             if (platformIds is null || platformIds.Count == 0)
             {
-                merged.AddRange(await store.GetCommentsForInboxAsync(userId, platformId, null, cancellationToken));
-                continue;
+                batch.AddRange(await store.GetCommentsForInboxAsync(userId, platformId, null, cancellationToken));
+            }
+            else
+            {
+                foreach (var id in platformIds)
+                    batch.AddRange(await store.GetCommentsForInboxAsync(userId, id, null, cancellationToken));
             }
 
-            foreach (var id in platformIds)
-                merged.AddRange(await store.GetCommentsForInboxAsync(userId, id, null, cancellationToken));
+            await EnsureMissingCommentPostMediaAsync(store, batch, cancellationToken);
+            merged.AddRange(batch);
         }
 
         return merged
@@ -228,6 +223,89 @@ public class InboxService : IInboxService
             .OrderByDescending(c => c.Comment.CreatedAt)
             .ToList();
     }
+
+    /// <summary>
+    /// Comments saved before media was persisted still have caption-only posts.
+    /// Fetch the image/video once and store it so Inbox can render the media.
+    /// </summary>
+    private async Task EnsureMissingCommentPostMediaAsync(
+        IProcessDataStore store,
+        IReadOnlyList<InboxCommentRow> rows,
+        CancellationToken cancellationToken)
+    {
+        var missing = rows
+            .Where(row => !ProcessEntityNav.HasDisplayableMedia(row.Post)
+                          && string.IsNullOrWhiteSpace(row.PostImageUrl)
+                          && !string.IsNullOrWhiteSpace(row.Post.ExternalPostId))
+            .GroupBy(row => row.Post.Id)
+            .Select(group => group.First())
+            .ToList();
+
+        foreach (var row in missing)
+        {
+            try
+            {
+                var auth = await store.GetSocialAuthByAccountIdAsync(row.Account.Id, cancellationToken);
+                if (auth is null)
+                    continue;
+
+                var tokens = CandidateTokens(auth);
+                if (tokens.Count == 0)
+                    continue;
+
+                RemotePostSnapshot? snapshot = null;
+                if (InstagramConnectionResolver.IsInstagramPlatform(row.Platform.Code))
+                {
+                    var connectionType = InstagramConnectionResolver.FromProfile(row.Profile, row.Platform.Code);
+                    foreach (var token in tokens)
+                    {
+                        snapshot = await _instagramService.GetMediaSnapshotAsync(
+                            token, row.Post.ExternalPostId!, connectionType, cancellationToken);
+                        if (snapshot is not null
+                            && (!string.IsNullOrWhiteSpace(snapshot.MediaUrl)
+                                || !string.IsNullOrWhiteSpace(snapshot.ThumbnailUrl)))
+                            break;
+                    }
+                }
+                else if (string.Equals(row.Platform.Code, "facebook", StringComparison.OrdinalIgnoreCase))
+                {
+                    foreach (var token in tokens)
+                    {
+                        snapshot = await _facebookService.GetPostSnapshotAsync(
+                            token, row.Post.ExternalPostId!, cancellationToken);
+                        if (snapshot is not null
+                            && (!string.IsNullOrWhiteSpace(snapshot.MediaUrl)
+                                || !string.IsNullOrWhiteSpace(snapshot.ThumbnailUrl)))
+                            break;
+                    }
+                }
+
+                await MetaPostMediaWriter.PersistAsync(store, row.Post, snapshot, cancellationToken);
+            }
+            catch
+            {
+                // Inbox still returns the comment text if Graph media is unavailable.
+            }
+        }
+    }
+
+    private static InboxPostMetaDto ToPostMeta(
+        PostEntityBase post,
+        SocialProfileEntityBase profile,
+        string? fallbackImageUrl = null)
+        => new()
+        {
+            PostId = post.ExternalPostId ?? post.Id.ToString(),
+            PageName = profile.Name ?? profile.Username ?? "Instagram",
+            PostText = DisplayPostText(post),
+            PostImageUrl = ProcessEntityNav.FirstMediaUrl(post) ?? fallbackImageUrl,
+            PostVideoUrl = ProcessEntityNav.FirstVideoUrl(post),
+            LikesCount = post.LikeCount,
+            CommentsCount = post.CommentCount,
+            SharesCount = post.ShareCount,
+            ViewsCount = post.ViewCount,
+            PostedAt = post.PublishedAt ?? post.CreatedAt
+        };
 
     private static async Task<IReadOnlyList<InboxMessageRow>> LoadMessagesAsync(
         Guid userId,
@@ -834,18 +912,7 @@ public class InboxService : IInboxService
             CommentLikes = comment.LikeCount,
             ReplyCount = 0,
             ParentId = comment.ParentCommentId,
-            Post = new InboxPostMetaDto
-            {
-                PostId = post.ExternalPostId ?? post.Id.ToString(),
-                PageName = profile.Name ?? profile.Username ?? platformCode,
-                PostText = DisplayPostText(post),
-                PostImageUrl = ProcessEntityNav.FirstMediaUrl(post),
-                LikesCount = post.LikeCount,
-                CommentsCount = post.CommentCount,
-                SharesCount = post.ShareCount,
-                ViewsCount = post.ViewCount,
-                PostedAt = post.PublishedAt ?? post.CreatedAt
-            }
+            Post = ToPostMeta(post, profile)
         };
         InboxRoutingHelper.Apply(item, profile, account, menuType);
         return item;

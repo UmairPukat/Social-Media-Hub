@@ -42,6 +42,7 @@ public class InboxPostMetaDto
     public string PageName { get; set; } = string.Empty;
     public string PostText { get; set; } = string.Empty;
     public string? PostImageUrl { get; set; }
+    public string? PostVideoUrl { get; set; }
     public int LikesCount { get; set; }
     public int CommentsCount { get; set; }
     public int SharesCount { get; set; }

@@ -110,6 +110,7 @@ public static class DbSeeder
 
         await ModuleSchemaEnsurer.EnsureAsync(db, logger);
         await ModuleTableMigration.MigrateAndDropLegacyAsync(db, logger);
+        await EnsureMediaUrlLengthAsync(db);
         await EnsureMultiSocialAccountPerPlatformIndexAsync(db, logger);
         await SeedModulePlatformsAsync(db);
         await db.SaveChangesAsync();
@@ -532,6 +533,23 @@ public static class DbSeeder
             await db.Database.ExecuteSqlRawAsync($"""
                 ALTER TABLE "{table}" ADD COLUMN IF NOT EXISTS "WebhookUrl" character varying(2000) NULL;
                 """);
+        }
+    }
+
+    private static async Task EnsureMediaUrlLengthAsync(AppDbContext db)
+    {
+        foreach (var table in new[] { "IntegrationMedia", "AppConnectionMedia", "DeveloperAppMedia" })
+        {
+            try
+            {
+                await db.Database.ExecuteSqlRawAsync($"""
+                    ALTER TABLE "{table}" ALTER COLUMN "Url" TYPE character varying(4000);
+                    """);
+            }
+            catch
+            {
+                // Table may not exist yet in a fresh database.
+            }
         }
     }
 }

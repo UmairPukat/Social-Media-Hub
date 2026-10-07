@@ -198,6 +198,7 @@ export interface InboxPostMeta {
   pageName: string;
   postText: string;
   postImageUrl?: string;
+  postVideoUrl?: string;
   likesCount: number;
   commentsCount: number;
   sharesCount: number;

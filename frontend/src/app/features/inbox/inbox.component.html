@@ -59,8 +59,10 @@
               class="list-row"
               [class.active]="selectedKey() === thread.key"
               (click)="selectCommentThread(thread)">
-              <div class="thumb" [style.background-image]="'url(' + (thread.post.postImageUrl || '') + ')'">
-                @if (!thread.post.postImageUrl) {
+              <div class="thumb">
+                @if (thread.post.postImageUrl) {
+                  <img [src]="thread.post.postImageUrl" alt="" referrerpolicy="no-referrer" />
+                } @else {
                   <mat-icon>image</mat-icon>
                 }
               </div>
@@ -142,9 +144,21 @@
 
             <p class="post-text">{{ thread.post.postText }}</p>
 
-            @if (thread.post.postImageUrl) {
+            @if (thread.post.postVideoUrl || thread.post.postImageUrl) {
               <div class="post-media">
-                <img [src]="thread.post.postImageUrl" [alt]="thread.post.pageName" />
+                @if (thread.post.postVideoUrl) {
+                  <video
+                    [src]="thread.post.postVideoUrl"
+                    [poster]="thread.post.postImageUrl || null"
+                    referrerpolicy="no-referrer"
+                    controls
+                    playsinline></video>
+                } @else {
+                  <img
+                    [src]="thread.post.postImageUrl"
+                    [alt]="thread.post.pageName"
+                    referrerpolicy="no-referrer" />
+                }
               </div>
             }
 

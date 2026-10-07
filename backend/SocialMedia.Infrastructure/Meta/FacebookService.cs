@@ -280,9 +280,10 @@ public class FacebookService : IFacebookService
             return null;
 
         using var doc = await _graph.GetAsync(_settings.GraphApiVersion, postId, pageAccessToken, cancellationToken,
-            ("fields", "id,message,story,permalink_url,created_time,full_picture,shares,likes.summary(true),comments.summary(true)"));
+            ("fields", "id,message,story,permalink_url,created_time,full_picture,attachments{media_type,media{image{src},source},subattachments{data{media{image{src},source}}}},shares,likes.summary(true),comments.summary(true)"));
 
         var root = doc.RootElement;
+        var attachment = ReadFacebookAttachment(root);
         return new RemotePostSnapshot
         {
             ExternalId = root.TryGetProperty("id", out var id) ? id.GetString() ?? postId : postId,
@@ -290,7 +291,12 @@ public class FacebookService : IFacebookService
                 root.TryGetProperty("message", out var message) ? message.GetString() : null,
                 root.TryGetProperty("story", out var story) ? story.GetString() : null),
             Permalink = root.TryGetProperty("permalink_url", out var permalink) ? permalink.GetString() : null,
-            MediaUrl = root.TryGetProperty("full_picture", out var picture) ? picture.GetString() : null,
+            MediaUrl = FirstNonEmpty(
+                root.TryGetProperty("full_picture", out var picture) ? picture.GetString() : null,
+                attachment.ImageUrl,
+                attachment.SourceUrl),
+            ThumbnailUrl = attachment.ImageUrl,
+            IsVideo = attachment.IsVideo,
             LikeCount = ReadSummaryCount(root, "likes"),
             CommentCount = ReadSummaryCount(root, "comments"),
             ShareCount = root.TryGetProperty("shares", out var shares) &&
@@ -303,6 +309,50 @@ public class FacebookService : IFacebookService
                 ? createdAt.ToUniversalTime()
                 : null
         };
+    }
+
+    private static (string? ImageUrl, string? SourceUrl, bool IsVideo) ReadFacebookAttachment(JsonElement root)
+    {
+        if (!root.TryGetProperty("attachments", out var attachments)
+            || !attachments.TryGetProperty("data", out var data)
+            || data.ValueKind != JsonValueKind.Array)
+            return (null, null, false);
+
+        foreach (var item in data.EnumerateArray())
+        {
+            var parsed = ReadFacebookMediaNode(item);
+            if (parsed.ImageUrl is not null || parsed.SourceUrl is not null)
+                return parsed;
+
+            if (!item.TryGetProperty("subattachments", out var sub)
+                || !sub.TryGetProperty("data", out var subData)
+                || subData.ValueKind != JsonValueKind.Array)
+                continue;
+
+            foreach (var child in subData.EnumerateArray())
+            {
+                parsed = ReadFacebookMediaNode(child);
+                if (parsed.ImageUrl is not null || parsed.SourceUrl is not null)
+                    return parsed;
+            }
+        }
+
+        return (null, null, false);
+    }
+
+    private static (string? ImageUrl, string? SourceUrl, bool IsVideo) ReadFacebookMediaNode(JsonElement item)
+    {
+        var type = item.TryGetProperty("media_type", out var mediaType) ? mediaType.GetString() : null;
+        var isVideo = string.Equals(type, "video", StringComparison.OrdinalIgnoreCase);
+        if (!item.TryGetProperty("media", out var media) || media.ValueKind != JsonValueKind.Object)
+            return (null, null, isVideo);
+
+        var imageUrl = media.TryGetProperty("image", out var image)
+                       && image.TryGetProperty("src", out var src)
+            ? src.GetString()
+            : null;
+        var sourceUrl = media.TryGetProperty("source", out var source) ? source.GetString() : null;
+        return (imageUrl, sourceUrl, isVideo);
     }
 
     private static int ReadSummaryCount(JsonElement root, string edge)
@@ -669,6 +719,7 @@ public class FacebookService : IFacebookService
                 PageName = profile.Name ?? profile.Username ?? "Facebook",
                 PostText = FirstNonEmpty(post.Text, post.Caption),
                 PostImageUrl = ProcessEntityNav.FirstMediaUrl(post),
+                PostVideoUrl = ProcessEntityNav.FirstVideoUrl(post),
                 LikesCount = post.LikeCount,
                 CommentsCount = post.CommentCount,
                 SharesCount = post.ShareCount,
@@ -766,7 +817,7 @@ public class FacebookService : IFacebookService
             publishedAt,
             ct => GetPostSnapshotAsync(pageToken ?? string.Empty, postExternalId, ct),
             string.IsNullOrWhiteSpace(knownText) ? "Facebook post" : knownText!,
-            requireMedia: false,
+            requireMedia: true,
             cancellationToken: cancellationToken);
     }
 
