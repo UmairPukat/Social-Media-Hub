@@ -178,8 +178,10 @@ public class ProcessAppConfigService : IProcessAppConfigService
         string version,
         CancellationToken cancellationToken)
     {
-        var config = await _unitOfWork.IntegrationAppConfigs.GetByUserAndPlatformAsync(
-            userId, platform.Id, menuType, cancellationToken);
+        var config = await _unitOfWork.IntegrationAppConfigs.GetByUserAndPlatformCodeAsync(
+                       userId, code, menuType, cancellationToken)
+                   ?? await _unitOfWork.IntegrationAppConfigs.GetByUserAndPlatformAsync(
+                       userId, platform.Id, menuType, cancellationToken);
         var isNew = config is null;
         if (config is null)
         {
@@ -193,6 +195,10 @@ public class ProcessAppConfigService : IProcessAppConfigService
                 MenuType = menuType
             };
             await _unitOfWork.IntegrationAppConfigs.AddAsync(config, cancellationToken);
+        }
+        else
+        {
+            config.PlatformCode = code;
         }
 
         ApplyFields(config, request, code, menuType, version, isNew);
@@ -212,8 +218,10 @@ public class ProcessAppConfigService : IProcessAppConfigService
         string version,
         CancellationToken cancellationToken)
     {
-        var config = await _unitOfWork.AppConnectionConfigs.GetByUserAndPlatformAsync(
-            userId, platform.Id, menuType, cancellationToken);
+        var config = await _unitOfWork.AppConnectionConfigs.GetByUserAndPlatformCodeAsync(
+                       userId, code, menuType, cancellationToken)
+                   ?? await _unitOfWork.AppConnectionConfigs.GetByUserAndPlatformAsync(
+                       userId, platform.Id, menuType, cancellationToken);
         var isNew = config is null;
         if (config is null)
         {
@@ -227,6 +235,10 @@ public class ProcessAppConfigService : IProcessAppConfigService
                 MenuType = menuType
             };
             await _unitOfWork.AppConnectionConfigs.AddAsync(config, cancellationToken);
+        }
+        else
+        {
+            config.PlatformCode = code;
         }
 
         ApplyFields(config, request, code, menuType, version, isNew);
@@ -246,8 +258,10 @@ public class ProcessAppConfigService : IProcessAppConfigService
         string version,
         CancellationToken cancellationToken)
     {
-        var config = await _unitOfWork.DeveloperAppConfigs.GetByUserAndPlatformAsync(
-            userId, platform.Id, menuType, cancellationToken);
+        var config = await _unitOfWork.DeveloperAppConfigs.GetByUserAndPlatformCodeAsync(
+                       userId, code, menuType, cancellationToken)
+                   ?? await _unitOfWork.DeveloperAppConfigs.GetByUserAndPlatformAsync(
+                       userId, platform.Id, menuType, cancellationToken);
         var isNew = config is null;
         if (config is null)
         {
@@ -261,6 +275,10 @@ public class ProcessAppConfigService : IProcessAppConfigService
                 MenuType = menuType
             };
             await _unitOfWork.DeveloperAppConfigs.AddAsync(config, cancellationToken);
+        }
+        else
+        {
+            config.PlatformCode = code;
         }
 
         ApplyFields(config, request, code, menuType, version, isNew);
@@ -471,9 +489,14 @@ public class ProcessAppConfigService : IProcessAppConfigService
             return NullIfEmpty(normalized);
         }
 
-        if (platformCode == "facebook")
+        if (platformCode is "facebook" or "instagram" or "instagram_login" or "whatsapp")
         {
-            var normalized = PlatformCatalog.NormalizeFacebookScopes(scopes);
+            var fallback = platformCode == "facebook"
+                ? PlatformCatalog.NormalizeFacebookScopes(null)
+                : DefaultScopes(platformCode);
+            var normalized = platformCode == "facebook"
+                ? PlatformCatalog.NormalizeFacebookScopes(scopes)
+                : PlatformCatalog.NormalizeCommaSeparatedScopes(scopes, fallback);
             return NullIfEmpty(normalized);
         }
 

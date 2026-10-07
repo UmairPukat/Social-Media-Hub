@@ -265,18 +265,32 @@ public static class PlatformCatalog
     ];
 
     /// <summary>
-    /// Meta OAuth scopes are comma-separated. Ensures commerce/catalog scopes are always requested.
+    /// Meta OAuth scopes are comma-separated. Empty input uses the default Facebook list;
+    /// otherwise the caller's scopes are stored as-is (deduped).
     /// </summary>
     public static string NormalizeFacebookScopes(string? scopes)
+        => NormalizeCommaSeparatedScopes(scopes, string.Join(',', FacebookOAuthScopes));
+
+    public static string NormalizeCommaSeparatedScopes(string? scopes, string? fallback = null)
     {
-        var merged = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var tokens = DistinctScopeTokens(scopes);
+        if (tokens.Count == 0)
+            return fallback ?? string.Empty;
+
+        return string.Join(',', tokens);
+    }
+
+    private static List<string> DistinctScopeTokens(string? scopes)
+    {
+        var ordered = new List<string>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var token in SplitScopeTokens(scopes))
-            merged.Add(token);
+        {
+            if (seen.Add(token))
+                ordered.Add(token);
+        }
 
-        foreach (var required in FacebookOAuthScopes)
-            merged.Add(required);
-
-        return string.Join(',', merged);
+        return ordered;
     }
 
     private static IEnumerable<string> SplitScopeTokens(string? scopes)

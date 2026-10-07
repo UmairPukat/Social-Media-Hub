@@ -57,6 +57,7 @@ export const FACEBOOK_OAUTH_SCOPES = [
   'pages_show_list',
   'pages_read_engagement',
   'pages_read_user_content',
+  'pages_manage_posts',
   'pages_manage_engagement',
   'pages_manage_metadata',
   'pages_messaging',
@@ -67,16 +68,57 @@ export const FACEBOOK_OAUTH_SCOPES = [
   'catalog_management'
 ] as const;
 
+export const INSTAGRAM_OAUTH_SCOPES = [
+  'pages_read_user_content',
+  'pages_show_list',
+  'pages_manage_metadata',
+  'pages_messaging',
+  'business_management',
+  'instagram_basic',
+  'instagram_manage_comments',
+  'instagram_manage_messages'
+] as const;
+
+export const INSTAGRAM_LOGIN_OAUTH_SCOPES = [
+  'instagram_business_basic',
+  'instagram_business_content_publish',
+  'instagram_business_manage_messages',
+  'instagram_business_manage_comments'
+] as const;
+
+export const WHATSAPP_OAUTH_SCOPES = [
+  'whatsapp_business_management',
+  'whatsapp_business_messaging',
+  'business_management'
+] as const;
+
 export function facebookDefaultScopeString(): string {
   return FACEBOOK_OAUTH_SCOPES.join(',');
+}
+
+function formatCommaSeparatedScopes(scopes?: string | null, fallback = ''): string {
+  if (!scopes?.trim()) {
+    return fallback;
+  }
+
+  const seen = new Set<string>();
+  const tokens: string[] = [];
+  for (const token of scopes.split(/[,\s]+/).map((scope) => scope.trim()).filter(Boolean)) {
+    const key = token.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    tokens.push(token);
+  }
+  return tokens.join(',');
 }
 
 export function formatPlatformOAuthScopes(platformCode: string, scopes?: string | null): string {
   const code = (platformCode || '').toLowerCase();
   if (code === 'youtube') return formatYouTubeOAuthScopes(scopes);
   if (code === 'tiktok') return formatTikTokOAuthScopes(scopes);
-  if (code === 'facebook' || code === 'instagram' || code === 'whatsapp') {
-    return scopes?.trim() || facebookDefaultScopeString();
-  }
+  if (code === 'facebook') return formatCommaSeparatedScopes(scopes, facebookDefaultScopeString());
+  if (code === 'instagram') return formatCommaSeparatedScopes(scopes, INSTAGRAM_OAUTH_SCOPES.join(','));
+  if (code === 'instagram_login') return formatCommaSeparatedScopes(scopes, INSTAGRAM_LOGIN_OAUTH_SCOPES.join(','));
+  if (code === 'whatsapp') return formatCommaSeparatedScopes(scopes, WHATSAPP_OAUTH_SCOPES.join(','));
   return scopes?.trim() || '';
 }
