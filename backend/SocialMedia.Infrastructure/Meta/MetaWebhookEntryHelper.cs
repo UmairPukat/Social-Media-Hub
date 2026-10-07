@@ -39,6 +39,11 @@ internal static class MetaWebhookEntryHelper
                 return profile;
         }
 
+        var soleMatch = await MetaWebhookProfileResolver.TryResolveSoleConnectedAsync(
+            store, cancellationToken);
+        if (soleMatch is not null)
+            return soleMatch;
+
         if (WebhookProfileGuard.IsTestDeliveryId(entryId))
         {
             result.Skip($"Test delivery (entry id '{entryId}') ignored — connect a real account to store messages.");
@@ -71,20 +76,17 @@ internal static class MetaWebhookEntryHelper
                 CollectActorIds(item, ids);
         }
 
-        if (entry.TryGetProperty("changes", out var changes) && changes.ValueKind == JsonValueKind.Array)
+        foreach (var change in SocialMedia.Application.Meta.MetaWebhookPayloadNormalizer.EnumerateChanges(entry))
         {
-            foreach (var change in changes.EnumerateArray())
+            if (!change.TryGetProperty("value", out var value))
+                continue;
+
+            CollectActorIds(value, ids);
+
+            if (value.TryGetProperty("messaging", out var nested) && nested.ValueKind == JsonValueKind.Array)
             {
-                if (!change.TryGetProperty("value", out var value))
-                    continue;
-
-                CollectActorIds(value, ids);
-
-                if (value.TryGetProperty("messaging", out var nested) && nested.ValueKind == JsonValueKind.Array)
-                {
-                    foreach (var item in nested.EnumerateArray())
-                        CollectActorIds(item, ids);
-                }
+                foreach (var item in nested.EnumerateArray())
+                    CollectActorIds(item, ids);
             }
         }
 
@@ -99,19 +101,10 @@ internal static class MetaWebhookEntryHelper
                 ids.Add(id);
         }
 
-        if (item.TryGetProperty("recipient", out var recipient) &&
-            recipient.TryGetProperty("id", out var recipientId))
-            Add(recipientId.ToString());
-
-        if (item.TryGetProperty("sender", out var sender) &&
-            sender.TryGetProperty("id", out var senderId))
-            Add(senderId.ToString());
-
-        if (item.TryGetProperty("to", out var to))
-            Add(to.ToString());
-
-        if (item.TryGetProperty("from", out var from))
-            Add(from.ToString());
+        Add(SocialMedia.Application.Meta.MetaWebhookPayloadNormalizer.ReadActorId(item, "recipient"));
+        Add(SocialMedia.Application.Meta.MetaWebhookPayloadNormalizer.ReadActorId(item, "sender"));
+        Add(SocialMedia.Application.Meta.MetaWebhookPayloadNormalizer.ReadActorId(item, "to"));
+        Add(SocialMedia.Application.Meta.MetaWebhookPayloadNormalizer.ReadActorId(item, "from"));
 
         if (item.TryGetProperty("metadata", out var metadata) &&
             metadata.TryGetProperty("phone_number_id", out var phoneNumberId))

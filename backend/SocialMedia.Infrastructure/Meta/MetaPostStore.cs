@@ -32,7 +32,8 @@ internal static class MetaPostStore
         bool requireMedia,
         CancellationToken cancellationToken)
     {
-        var post = await store.GetPostByExternalIdAsync(profile.Id, externalPostId, cancellationToken);
+        var post = await store.GetPostByExternalIdAsync(profile.Id, externalPostId, cancellationToken)
+                   ?? await store.FindPostByExternalIdAsync(externalPostId, cancellationToken);
         if (post is not null)
         {
             if (IsAwaitingGraphFetch(post) || (requireMedia && ProcessEntityNav.MediaCount(post) == 0))

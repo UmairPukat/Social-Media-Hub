@@ -46,7 +46,26 @@ internal static class MetaWebhookProfileResolver
         if (profile is not null)
             return profile;
 
+        var account = await store.GetSocialAccountByExternalIdAsync(entryId, cancellationToken);
+        if (account is not null)
+        {
+            profile = await store.PickBestProfileForAccountAsync(account.Id, cancellationToken);
+            if (profile is not null)
+                return profile;
+        }
+
         return await ScanConnectedProfilesAsync(store, entryId, cancellationToken);
+    }
+
+    public static async Task<SocialProfileEntityBase?> TryResolveSoleConnectedAsync(
+        IProcessDataStore store,
+        CancellationToken cancellationToken)
+    {
+        var accounts = await store.FindConnectedSocialAccountsAsync(cancellationToken);
+        if (accounts.Count != 1)
+            return null;
+
+        return await store.PickBestProfileForAccountAsync(accounts[0].Id, cancellationToken);
     }
 
     private static async Task<SocialProfileEntityBase?> ScanConnectedProfilesAsync(
@@ -58,7 +77,8 @@ internal static class MetaWebhookProfileResolver
 
         foreach (var accountSnapshot in accounts.OrderByDescending(a => a.ConnectedAt ?? a.UpdatedAt))
         {
-            if (!SelectedPageIdMatches(accountSnapshot.MetadataJson, entryId))
+            if (!string.Equals(accountSnapshot.ExternalAccountId, entryId, StringComparison.Ordinal) &&
+                !SelectedPageIdMatches(accountSnapshot.MetadataJson, entryId))
                 continue;
 
             var profile = await store.PickBestProfileForAccountAsync(accountSnapshot.Id, cancellationToken);

@@ -391,29 +391,25 @@ public class WebhookService : IWebhookService
                 }
                 : null;
 
-            if (!doc.RootElement.TryGetProperty("entry", out var entries) ||
-                entries.ValueKind != JsonValueKind.Array)
+            if (!doc.RootElement.TryGetProperty("entry", out _))
                 return ("received", null, platformCode);
 
             string? entryId = null;
             var fields = new List<string>();
 
-            foreach (var entry in entries.EnumerateArray())
+            foreach (var entry in MetaWebhookPayloadNormalizer.EnumerateEntries(doc.RootElement))
             {
                 entryId ??= entry.TryGetProperty("id", out var id) ? id.ToString() : null;
 
-                if (entry.TryGetProperty("changes", out var changes) && changes.ValueKind == JsonValueKind.Array)
+                foreach (var change in MetaWebhookPayloadNormalizer.EnumerateChanges(entry))
                 {
-                    foreach (var change in changes.EnumerateArray())
-                    {
-                        var field = change.TryGetProperty("field", out var f) ? f.GetString() : null;
-                        if (!string.IsNullOrWhiteSpace(field) && !fields.Contains(field!))
-                            fields.Add(field!);
-                    }
+                    var field = change.TryGetProperty("field", out var f) ? f.GetString() : null;
+                    if (!string.IsNullOrWhiteSpace(field) && !fields.Contains(field!))
+                        fields.Add(field!);
                 }
 
                 if (entry.TryGetProperty("messaging", out var messaging) &&
-                    messaging.ValueKind == JsonValueKind.Array &&
+                    messaging.ValueKind is JsonValueKind.Array or JsonValueKind.Object &&
                     !fields.Contains("messaging"))
                     fields.Add("messaging");
             }

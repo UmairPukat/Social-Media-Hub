@@ -168,16 +168,15 @@ public class WhatsAppService : IWhatsAppService
         try
         {
             using var doc = JsonDocument.Parse(webhookEvent.PayloadJson);
-            if (!doc.RootElement.TryGetProperty("entry", out var entries))
+            if (!doc.RootElement.TryGetProperty("entry", out _))
             {
                 result.Skip("Payload has no 'entry' array — not a Meta webhook delivery.");
                 return result;
             }
 
-            foreach (var entry in entries.EnumerateArray())
+            foreach (var entry in MetaWebhookPayloadNormalizer.EnumerateEntries(doc.RootElement))
             {
-                if (!entry.TryGetProperty("changes", out var changes)) continue;
-                foreach (var change in changes.EnumerateArray())
+                foreach (var change in MetaWebhookPayloadNormalizer.EnumerateChanges(entry))
                 {
                     if (!change.TryGetProperty("value", out var value)) continue;
                     var phoneNumberId = value.TryGetProperty("metadata", out var meta)

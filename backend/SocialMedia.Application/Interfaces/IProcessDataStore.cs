@@ -53,6 +53,7 @@ public interface IProcessDataStore
     Task<IReadOnlyList<PostEntityBase>> GetPostsByUserProfilesAsync(Guid userId, Guid? platformId = null, CancellationToken cancellationToken = default);
     Task<PostEntityBase?> GetPostByIdAsync(Guid id, CancellationToken cancellationToken = default);
     Task<PostEntityBase?> GetPostByExternalIdAsync(Guid socialProfileId, string externalPostId, CancellationToken cancellationToken = default);
+    Task<PostEntityBase?> FindPostByExternalIdAsync(string externalPostId, CancellationToken cancellationToken = default);
     Task AddPostAsync(PostEntityBase post, CancellationToken cancellationToken = default);
     void UpdatePost(PostEntityBase post);
     void RemovePost(PostEntityBase post);

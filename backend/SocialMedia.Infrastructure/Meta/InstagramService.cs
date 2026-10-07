@@ -555,9 +555,7 @@ public class InstagramService : IInstagramService
         {
             ExternalId = root.TryGetProperty("id", out var id) ? id.GetString() ?? commentId : commentId,
             Message = root.TryGetProperty("text", out var text) ? text.GetString() : null,
-            PostExternalId = root.TryGetProperty("media", out var media) && media.TryGetProperty("id", out var mediaId)
-                ? mediaId.ToString()
-                : null,
+            PostExternalId = MetaWebhookPayloadNormalizer.ReadMediaId(root),
             ParentExternalId = root.TryGetProperty("parent_id", out var parentId) ? parentId.ToString() : null,
             AuthorId = authorId,
             AuthorName = authorName,
@@ -764,20 +762,15 @@ public class InstagramService : IInstagramService
         try
         {
             using var doc = JsonDocument.Parse(webhookEvent.PayloadJson);
-            if (!doc.RootElement.TryGetProperty("entry", out var entries))
+            if (!doc.RootElement.TryGetProperty("entry", out _))
             {
                 result.Skip("Payload has no 'entry' array — not a Meta webhook delivery.");
                 return result;
             }
 
-            foreach (var entry in entries.EnumerateArray())
+            foreach (var entry in MetaWebhookPayloadNormalizer.EnumerateEntries(doc.RootElement))
             {
                 var igUserId = entry.TryGetProperty("id", out var idEl) ? idEl.ToString() : null;
-                if (string.IsNullOrWhiteSpace(igUserId))
-                {
-                    result.Skip("Entry has no id.");
-                    continue;
-                }
 
                 var profile = await MetaWebhookEntryHelper.ResolveProfileForEntryAsync(
                     _store, entry, result, cancellationToken);
@@ -787,32 +780,22 @@ public class InstagramService : IInstagramService
                 var account = await _store.GetSocialAccountByIdAsync(profile.SocialAccountId, cancellationToken);
                 if (account is null)
                 {
-                    result.Skip($"Entry '{igUserId}' has no owning account.");
+                    result.Skip($"Entry '{igUserId ?? profile.ExternalProfileId}' has no owning account.");
                     continue;
                 }
 
                 if (!WebhookProfileGuard.CanProcess(profile, account, _menuType, result))
                     continue;
 
-                // Business Login for Instagram can attach field/value on the entry itself.
-                if (entry.TryGetProperty("field", out var directFieldElement)
-                    && entry.TryGetProperty("value", out var directValueElement))
-                {
-                    var fieldName = directFieldElement.GetString();
-                    if (!string.IsNullOrWhiteSpace(fieldName))
-                    {
-                        var wrappedJson =
-                            $"[{{\"field\":{JsonSerializer.Serialize(fieldName)},\"value\":{directValueElement.GetRawText()}}}]";
-                        using var wrappedDoc = JsonDocument.Parse(wrappedJson);
-                        await ProcessChangesAsync(profile, entry, wrappedDoc.RootElement, result, cancellationToken);
-                    }
-                }
-
-                if (entry.TryGetProperty("changes", out var changes))
-                    await ProcessChangesAsync(profile, entry, changes, result, cancellationToken);
+                await ProcessChangesAsync(profile, entry, result, cancellationToken);
 
                 foreach (var messaging in MetaWebhookEntryHelper.EnumerateMessageArrays(entry))
-                    await ProcessMessagesAsync(profile, igUserId, messaging, result, cancellationToken);
+                    await ProcessMessagesAsync(
+                        profile,
+                        igUserId ?? profile.ExternalProfileId,
+                        messaging,
+                        result,
+                        cancellationToken);
             }
 
             await _store.SaveChangesAsync(cancellationToken);
@@ -894,7 +877,6 @@ public class InstagramService : IInstagramService
     private async Task ProcessChangesAsync(
         SocialProfileEntityBase profile,
         JsonElement entry,
-        JsonElement changes,
         WebhookProcessResult result,
         CancellationToken cancellationToken)
     {
@@ -912,7 +894,7 @@ public class InstagramService : IInstagramService
             profile.ExternalProfileId,
             InstagramConnectionResolver.ToLogLabel(connectionType));
 
-        foreach (var change in changes.EnumerateArray())
+        foreach (var change in MetaWebhookPayloadNormalizer.EnumerateChanges(entry))
         {
             var field = change.TryGetProperty("field", out var fieldElement) ? fieldElement.GetString() : null;
             if (!change.TryGetProperty("value", out var value))
@@ -924,23 +906,18 @@ public class InstagramService : IInstagramService
             // Instagram messaging can arrive as a change with field=messages rather than entry.messaging.
             if (field is "messages" or "messaging" or "messaging_postbacks" or "message_reactions")
             {
+                var entryId = entry.TryGetProperty("id", out var idEl) ? idEl.ToString() : profile.ExternalProfileId;
                 if (value.TryGetProperty("message", out _))
-                {
-                    var entryId = entry.TryGetProperty("id", out var idEl) ? idEl.ToString() : null;
                     await ProcessMessageAsync(profile, account, entryId, value, result, cancellationToken);
-                }
                 else if (value.TryGetProperty("messaging", out var nestedMessaging) &&
                          nestedMessaging.ValueKind == JsonValueKind.Array)
-                {
-                    var entryId = entry.TryGetProperty("id", out var idEl) ? idEl.ToString() : null;
                     await ProcessMessagesAsync(profile, entryId, nestedMessaging, result, cancellationToken);
-                }
                 else
                     result.Skip($"Change '{field}' value has no message envelope.");
                 continue;
             }
 
-            if (field is not ("comments" or "live_comments"))
+            if (field is not ("comments" or "live_comments" or "mentions" or "comment"))
             {
                 result.Skip($"Field '{field}' is not handled.");
                 continue;
@@ -973,9 +950,7 @@ public class InstagramService : IInstagramService
 
             var mediaId = FirstNonEmpty(
                 enriched?.PostExternalId,
-                value.TryGetProperty("media", out var media) && media.TryGetProperty("id", out var mediaIdElement)
-                    ? mediaIdElement.ToString()
-                    : null);
+                MetaWebhookPayloadNormalizer.ReadMediaId(value));
             if (string.IsNullOrWhiteSpace(mediaId))
             {
                 result.Skip("Comment change is missing media.id.");
@@ -984,7 +959,7 @@ public class InstagramService : IInstagramService
 
             var commentText = FirstNonEmpty(
                 enriched?.Message,
-                value.TryGetProperty("text", out var text) ? text.GetString() : null) ?? string.Empty;
+                MetaWebhookPayloadNormalizer.ReadCommentText(value)) ?? string.Empty;
 
             // Resolve the post before checking comment idempotency. A redelivered comment can
             // therefore repair an older post row that was saved without its Instagram media.
@@ -1021,13 +996,12 @@ public class InstagramService : IInstagramService
 
             var authorId = FirstNonEmpty(
                 enriched?.AuthorId,
-                value.TryGetProperty("from", out var from) && from.TryGetProperty("id", out var fromId)
-                    ? fromId.ToString()
-                    : null) ?? string.Empty;
+                MetaWebhookPayloadNormalizer.ReadActorId(value, "from")) ?? string.Empty;
             var authorName = FirstNonEmpty(
                 enriched?.AuthorUsername,
                 enriched?.AuthorName,
-                value.TryGetProperty("from", out var fromUser) && fromUser.TryGetProperty("username", out var username)
+                value.TryGetProperty("from", out var fromUser) && fromUser.ValueKind == JsonValueKind.Object &&
+                fromUser.TryGetProperty("username", out var username)
                     ? username.GetString()
                     : null) ?? "Instagram user";
 
@@ -1155,15 +1129,11 @@ public class InstagramService : IInstagramService
         }
 
         var senderId = FirstNonEmpty(
-            item.TryGetProperty("sender", out var sender) && sender.TryGetProperty("id", out var senderValue)
-                ? senderValue.ToString()
-                : null,
-            item.TryGetProperty("from", out var from) ? from.ToString() : null);
+            MetaWebhookPayloadNormalizer.ReadActorId(item, "sender"),
+            MetaWebhookPayloadNormalizer.ReadActorId(item, "from"));
         var receiverId = FirstNonEmpty(
-            item.TryGetProperty("recipient", out var recipient) && recipient.TryGetProperty("id", out var recipientValue)
-                ? recipientValue.ToString()
-                : null,
-            item.TryGetProperty("to", out var to) ? to.ToString() : null);
+            MetaWebhookPayloadNormalizer.ReadActorId(item, "recipient"),
+            MetaWebhookPayloadNormalizer.ReadActorId(item, "to"));
 
         if (MetaMessagingHelper.ProfileOwnsSenderId(profile, senderId) ||
             IdsMatchEntryBusiness(senderId, entryBusinessId, profile))

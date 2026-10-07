@@ -489,6 +489,25 @@ public sealed class ProcessDataStore : IProcessDataStore
                     .FirstOrDefaultAsync(p => p.SocialProfileId == socialProfileId && p.ExternalPostId == externalPostId, cancellationToken))
         };
 
+    public Task<PostEntityBase?> FindPostByExternalIdAsync(
+        string externalPostId,
+        CancellationToken cancellationToken = default)
+        => _menuType switch
+        {
+            MenuTypes.AppConnection => AsBase<AppConnectionPost, PostEntityBase>(
+                _context.AppConnectionPosts.AsNoTracking()
+                    .Include(p => p.MediaItems)
+                    .FirstOrDefaultAsync(p => p.ExternalPostId == externalPostId, cancellationToken)),
+            MenuTypes.DeveloperApp => AsBase<DeveloperAppPost, PostEntityBase>(
+                _context.DeveloperAppPosts.AsNoTracking()
+                    .Include(p => p.MediaItems)
+                    .FirstOrDefaultAsync(p => p.ExternalPostId == externalPostId, cancellationToken)),
+            _ => AsBase<IntegrationPost, PostEntityBase>(
+                _context.IntegrationPosts.AsNoTracking()
+                    .Include(p => p.MediaItems)
+                    .FirstOrDefaultAsync(p => p.ExternalPostId == externalPostId, cancellationToken))
+        };
+
     public async Task AddPostAsync(PostEntityBase post, CancellationToken cancellationToken = default)
     {
         switch (_menuType)

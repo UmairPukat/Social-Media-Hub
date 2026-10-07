@@ -410,20 +410,15 @@ public class FacebookService : IFacebookService
         try
         {
             using var doc = JsonDocument.Parse(webhookEvent.PayloadJson);
-            if (!doc.RootElement.TryGetProperty("entry", out var entries))
+            if (!doc.RootElement.TryGetProperty("entry", out _))
             {
                 result.Skip("Payload has no 'entry' array — not a Meta page webhook delivery.");
                 return result;
             }
 
-            foreach (var entry in entries.EnumerateArray())
+            foreach (var entry in MetaWebhookPayloadNormalizer.EnumerateEntries(doc.RootElement))
             {
                 var pageId = entry.TryGetProperty("id", out var idElement) ? idElement.ToString() : null;
-                if (string.IsNullOrWhiteSpace(pageId))
-                {
-                    result.Skip("Entry has no page id.");
-                    continue;
-                }
 
                 var profile = await MetaWebhookEntryHelper.ResolveProfileForEntryAsync(
                     _store, entry, result, cancellationToken);
@@ -433,15 +428,14 @@ public class FacebookService : IFacebookService
                 var account = await _store.GetSocialAccountByIdAsync(profile.SocialAccountId, cancellationToken);
                 if (account is null)
                 {
-                    result.Skip($"Page '{pageId}' has no owning account.");
+                    result.Skip($"Page '{pageId ?? profile.ExternalProfileId}' has no owning account.");
                     continue;
                 }
 
                 if (!WebhookProfileGuard.CanProcess(profile, account, _menuType, result))
                     continue;
 
-                if (entry.TryGetProperty("changes", out var changes))
-                    await ProcessChangesAsync(profile, account, entry, changes, result, cancellationToken);
+                await ProcessChangesAsync(profile, account, entry, result, cancellationToken);
 
                 foreach (var messaging in MetaWebhookEntryHelper.EnumerateMessageArrays(entry))
                     await ProcessMessagesAsync(profile, account, messaging, result, cancellationToken);
@@ -465,11 +459,10 @@ public class FacebookService : IFacebookService
         SocialProfileEntityBase profile,
         SocialAccountEntityBase account,
         JsonElement entry,
-        JsonElement changes,
         WebhookProcessResult result,
         CancellationToken cancellationToken)
     {
-        foreach (var change in changes.EnumerateArray())
+        foreach (var change in MetaWebhookPayloadNormalizer.EnumerateChanges(entry))
         {
             var field = change.TryGetProperty("field", out var fieldElement) ? fieldElement.GetString() : null;
             if (!change.TryGetProperty("value", out var value))
@@ -552,7 +545,9 @@ public class FacebookService : IFacebookService
             return;
         }
 
-        var commentId = value.TryGetProperty("comment_id", out var commentIdElement) ? commentIdElement.ToString() : null;
+        var commentId = FirstNonEmpty(
+            value.TryGetProperty("comment_id", out var commentIdElement) ? commentIdElement.ToString() : null,
+            value.TryGetProperty("id", out var idElement) ? idElement.ToString() : null);
         if (string.IsNullOrWhiteSpace(commentId))
         {
             result.Skip("Comment change has no comment_id.");
@@ -596,7 +591,8 @@ public class FacebookService : IFacebookService
 
         var postExternalId = FirstNonEmpty(
             enriched?.PostExternalId,
-            value.TryGetProperty("post_id", out var postIdElement) ? postIdElement.ToString() : null);
+            value.TryGetProperty("post_id", out var postIdElement) ? postIdElement.ToString() : null,
+            MetaWebhookPayloadNormalizer.ReadMediaId(value));
         if (string.IsNullOrWhiteSpace(postExternalId))
         {
             result.Skip($"Comment '{commentId}' has no post_id.");

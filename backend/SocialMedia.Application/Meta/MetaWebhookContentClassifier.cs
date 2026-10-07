@@ -59,35 +59,29 @@ public static class MetaWebhookContentClassifier
         try
         {
             using var doc = JsonDocument.Parse(payloadJson);
-            if (!doc.RootElement.TryGetProperty("entry", out var entries) ||
-                entries.ValueKind != JsonValueKind.Array)
-                return "No entry array.";
-
+            var root = doc.RootElement;
             var parts = new List<string>();
-            foreach (var entry in entries.EnumerateArray())
+            foreach (var entry in MetaWebhookPayloadNormalizer.EnumerateEntries(root))
             {
                 var entryId = entry.TryGetProperty("id", out var idElement) ? idElement.ToString() : "?";
 
                 if (entry.TryGetProperty("messaging", out var messaging) && messaging.ValueKind == JsonValueKind.Array)
                 {
                     foreach (var item in messaging.EnumerateArray())
-                    {
-                        var kinds = DescribeMessagingItemKinds(item);
-                        parts.Add($"entry:{entryId} messaging:[{kinds}]");
-                    }
+                        parts.Add($"entry:{entryId} messaging:[{DescribeMessagingItemKinds(item)}]");
                 }
 
-                if (entry.TryGetProperty("changes", out var changes) && changes.ValueKind == JsonValueKind.Array)
+                foreach (var change in MetaWebhookPayloadNormalizer.EnumerateChanges(entry))
                 {
-                    foreach (var change in changes.EnumerateArray())
-                    {
-                        var field = change.TryGetProperty("field", out var f) ? f.GetString() : "?";
-                        parts.Add($"entry:{entryId} change:{field}");
-                    }
+                    var field = change.TryGetProperty("field", out var f) ? f.GetString() : "?";
+                    parts.Add($"entry:{entryId} change:{field}");
                 }
             }
 
-            return parts.Count > 0 ? string.Join("; ", parts) : "No messaging/changes fields.";
+            if (parts.Count == 0)
+                return root.TryGetProperty("entry", out _) ? "No messaging/changes fields." : "No entry array.";
+
+            return string.Join("; ", parts);
         }
         catch (JsonException ex)
         {
@@ -97,11 +91,7 @@ public static class MetaWebhookContentClassifier
 
     private static bool ContainsRealUserInboundContent(JsonElement root)
     {
-        if (!root.TryGetProperty("entry", out var entries) ||
-            entries.ValueKind != JsonValueKind.Array)
-            return false;
-
-        foreach (var entry in entries.EnumerateArray())
+        foreach (var entry in MetaWebhookPayloadNormalizer.EnumerateEntries(root))
         {
             var entryId = entry.TryGetProperty("id", out var idElement) ? idElement.ToString() : null;
 
@@ -111,24 +101,12 @@ public static class MetaWebhookContentClassifier
                     return true;
             }
 
-            if (entry.TryGetProperty("changes", out var changes) &&
-                changes.ValueKind == JsonValueKind.Array)
+            foreach (var change in MetaWebhookPayloadNormalizer.EnumerateChanges(entry))
             {
-                foreach (var change in changes.EnumerateArray())
-                {
-                    if (!change.TryGetProperty("value", out var value))
-                        continue;
+                if (!change.TryGetProperty("value", out var value))
+                    continue;
 
-                    if (IsRealUserChange(change, value, entryId))
-                        return true;
-                }
-            }
-
-            if (entry.TryGetProperty("field", out var directField) &&
-                entry.TryGetProperty("value", out var directValue))
-            {
-                var fieldName = directField.GetString();
-                if (IsRealUserDirectField(fieldName, directValue, entryId))
+                if (IsRealUserChange(change, value, entryId))
                     return true;
             }
         }
@@ -138,11 +116,7 @@ public static class MetaWebhookContentClassifier
 
     private static bool HasInboxCandidatePayload(JsonElement root)
     {
-        if (!root.TryGetProperty("entry", out var entries) ||
-            entries.ValueKind != JsonValueKind.Array)
-            return false;
-
-        foreach (var entry in entries.EnumerateArray())
+        foreach (var entry in MetaWebhookPayloadNormalizer.EnumerateEntries(root))
         {
             foreach (var item in EnumerateMessagingItems(entry))
             {
@@ -150,31 +124,32 @@ public static class MetaWebhookContentClassifier
                     return true;
             }
 
-            if (entry.TryGetProperty("changes", out var changes) &&
-                changes.ValueKind == JsonValueKind.Array)
+            foreach (var change in MetaWebhookPayloadNormalizer.EnumerateChanges(entry))
             {
-                foreach (var change in changes.EnumerateArray())
+                var field = change.TryGetProperty("field", out var fieldElement) ? fieldElement.GetString() : null;
+                if (field is "comments" or "live_comments" or "mentions" or "comment")
+                    return true;
+
+                if (field is not ("messages" or "messaging" or "messaging_postbacks") ||
+                    !change.TryGetProperty("value", out var value))
+                    continue;
+
+                if (IsInboxMessageCandidate(value))
+                    return true;
+
+                if (value.TryGetProperty("messaging", out var nested) && nested.ValueKind == JsonValueKind.Array)
                 {
-                    var field = change.TryGetProperty("field", out var fieldElement) ? fieldElement.GetString() : null;
-                    if (field is "comments" or "live_comments")
-                        return true;
-
-                    if (field is not ("messages" or "messaging") ||
-                        !change.TryGetProperty("value", out var value))
-                        continue;
-
-                    if (IsInboxMessageCandidate(value))
-                        return true;
-
-                    if (value.TryGetProperty("messaging", out var nested) && nested.ValueKind == JsonValueKind.Array)
+                    foreach (var item in nested.EnumerateArray())
                     {
-                        foreach (var item in nested.EnumerateArray())
-                        {
-                            if (IsInboxMessageCandidate(item))
-                                return true;
-                        }
+                        if (IsInboxMessageCandidate(item))
+                            return true;
                     }
                 }
+
+                if (value.TryGetProperty("messages", out var cloudMessages) &&
+                    cloudMessages.ValueKind == JsonValueKind.Array &&
+                    cloudMessages.GetArrayLength() > 0)
+                    return true;
             }
         }
 
@@ -224,13 +199,10 @@ public static class MetaWebhookContentClassifier
                 yield return item;
         }
 
-        if (!entry.TryGetProperty("changes", out var changes) || changes.ValueKind != JsonValueKind.Array)
-            yield break;
-
-        foreach (var change in changes.EnumerateArray())
+        foreach (var change in MetaWebhookPayloadNormalizer.EnumerateChanges(entry))
         {
             var field = change.TryGetProperty("field", out var fieldElement) ? fieldElement.GetString() : null;
-            if (field is not ("messages" or "messaging"))
+            if (field is not ("messages" or "messaging" or "messaging_postbacks"))
                 continue;
 
             if (!change.TryGetProperty("value", out var value))
@@ -252,7 +224,7 @@ public static class MetaWebhookContentClassifier
     {
         var field = change.TryGetProperty("field", out var fieldElement) ? fieldElement.GetString() : null;
 
-        if (field is "messages" or "messaging")
+        if (field is "messages" or "messaging" or "messaging_postbacks")
         {
             if (IsRealUserMessageItem(value, entryId))
                 return true;
@@ -269,7 +241,7 @@ public static class MetaWebhookContentClassifier
             return IsRealUserCloudMessagesValue(value, entryId);
         }
 
-        if (field is "comments" or "live_comments")
+        if (field is "comments" or "live_comments" or "mentions" or "comment")
             return IsRealUserComment(value, entryId);
 
         if (field is "feed")
@@ -305,7 +277,7 @@ public static class MetaWebhookContentClassifier
 
         return fieldName switch
         {
-            "comments" or "live_comments" => IsRealUserComment(value, entryId),
+            "comments" or "live_comments" or "mentions" or "comment" => IsRealUserComment(value, entryId),
             _ => false
         };
     }
@@ -353,7 +325,8 @@ public static class MetaWebhookContentClassifier
             value.TryGetProperty("id", out var id) ? id.ToString() : null,
             value.TryGetProperty("comment_id", out var commentIdElement) ? commentIdElement.ToString() : null);
 
-        if (string.IsNullOrWhiteSpace(commentId))
+        if (string.IsNullOrWhiteSpace(commentId) &&
+            string.IsNullOrWhiteSpace(MetaWebhookPayloadNormalizer.ReadMediaId(value)))
             return false;
 
         if (value.TryGetProperty("verb", out var verb))
