@@ -29,6 +29,16 @@ public abstract class ProcessInboxControllerBase : ControllerBase
         return Ok(response);
     }
 
+    [HttpGet("inbox/media")]
+    public async Task<IActionResult> GetInboxMedia(string postId)
+    {
+        var file = await _inboxService.GetPostMediaAsync(User.GetUserId(), postId, MenuType);
+        if (file is null)
+            return NotFound();
+
+        return File(file.Bytes, file.ContentType);
+    }
+
     [HttpPost("inbox/comments/{id:guid}/reply")]
     public async Task<IActionResult> ReplyToComment(Guid id, [FromBody] ReplyCommentRequest model)
     {

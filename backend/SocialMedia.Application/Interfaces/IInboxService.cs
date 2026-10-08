@@ -12,4 +12,7 @@ public interface IInboxService
     Task<ApiResponse<object>> ReplyToMessageAsync(Guid userId, Guid messageId, ReplyMessageRequest request, CancellationToken cancellationToken = default);
     Task<ApiResponse<object>> DeleteMessageAsync(Guid userId, Guid messageId, string? menuType = null, CancellationToken cancellationToken = default);
     Task<ApiResponse<object>> MarkReadAsync(Guid userId, Guid conversationId, string? menuType = null, CancellationToken cancellationToken = default);
+    Task<InboxMediaFile?> GetPostMediaAsync(Guid userId, string postExternalId, string menuType, CancellationToken cancellationToken = default);
 }
+
+public sealed record InboxMediaFile(byte[] Bytes, string ContentType);

@@ -406,7 +406,8 @@ export class InboxComponent implements OnInit, OnDestroy {
   reload(): void {
     this.processApi.getInbox(this.processRoute.currentMenuType()).subscribe({
       next: (res: ApiResponse<InboxItem[]>) => {
-        this.items.set((res.data || []).map((item) => this.normalizeInboxItem(item)));
+        const items = (res.data || []).map((item) => this.normalizeInboxItem(item));
+        this.items.set(items);
         this.banner.set('');
         this.autoSelectFirst();
       },

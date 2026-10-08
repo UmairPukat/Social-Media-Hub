@@ -17,6 +17,7 @@ public class InboxService : IInboxService
     private readonly IWhatsAppService _whatsAppService;
     private readonly IYouTubeService _youTubeService;
     private readonly IInboxRealtimeNotifier _inboxRealtime;
+    private readonly IPublishMediaCacheService _mediaCache;
 
     public InboxService(
         IProcessDataStoreFactory processData,
@@ -24,7 +25,8 @@ public class InboxService : IInboxService
         IInstagramService instagramService,
         IWhatsAppService whatsAppService,
         IYouTubeService youTubeService,
-        IInboxRealtimeNotifier inboxRealtime)
+        IInboxRealtimeNotifier inboxRealtime,
+        IPublishMediaCacheService mediaCache)
     {
         _processData = processData;
         _facebookService = facebookService;
@@ -32,6 +34,7 @@ public class InboxService : IInboxService
         _whatsAppService = whatsAppService;
         _youTubeService = youTubeService;
         _inboxRealtime = inboxRealtime;
+        _mediaCache = mediaCache;
     }
 
     public async Task<ApiResponse<IReadOnlyList<InboxItemDto>>> GetInboxAsync(
@@ -164,6 +167,66 @@ public class InboxService : IInboxService
         }
     }
 
+    public async Task<InboxMediaFile?> GetPostMediaAsync(
+        Guid userId,
+        string postExternalId,
+        string menuType,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(postExternalId))
+            return null;
+
+        var store = _processData.ForMenu(menuType);
+        var post = await store.FindPostByExternalIdAsync(postExternalId, cancellationToken);
+        if (post is null)
+            return null;
+
+        var profile = await store.GetProfileByIdAsync(post.SocialProfileId, cancellationToken);
+        if (profile is null)
+            return null;
+
+        var account = await store.GetSocialAccountByIdAsync(profile.SocialAccountId, cancellationToken);
+        if (account is null || account.UserId != userId)
+            return null;
+
+        var platform = await store.GetPlatformByIdAsync(account.PlatformId, cancellationToken);
+        var imageUrl = ProcessEntityNav.FirstMediaUrl(post);
+        if (string.IsNullOrWhiteSpace(imageUrl) && InstagramConnectionResolver.IsInstagramPlatform(platform?.Code))
+        {
+            var auth = await store.GetSocialAuthByAccountIdAsync(account.Id, cancellationToken);
+            var tokens = auth is null ? [] : CandidateTokens(auth);
+            var connectionType = InstagramConnectionResolver.FromProfile(profile, platform?.Code);
+            foreach (var token in tokens)
+            {
+                var snapshot = await _instagramService.GetMediaSnapshotAsync(
+                    token,
+                    postExternalId,
+                    connectionType,
+                    cancellationToken);
+                if (snapshot is null)
+                    continue;
+
+                await MetaPostMediaWriter.ApplySnapshotAsync(store, post, snapshot, cancellationToken);
+                imageUrl = ProcessEntityNav.FirstMediaUrl(post) ?? snapshot.ThumbnailUrl ?? snapshot.MediaUrl;
+                break;
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(imageUrl))
+            return null;
+
+        var cached = await _mediaCache.TryReadLocalAsync(imageUrl);
+        if (cached is not null)
+            return new InboxMediaFile(cached.Value.Bytes, cached.Value.ContentType);
+
+        var stored = await _mediaCache.StoreFromRemoteAsync(imageUrl, cancellationToken);
+        if (string.IsNullOrWhiteSpace(stored))
+            return null;
+
+        cached = await _mediaCache.TryReadLocalAsync(stored);
+        return cached is null ? null : new InboxMediaFile(cached.Value.Bytes, cached.Value.ContentType);
+    }
+
     private IReadOnlyList<IProcessDataStore> ResolveStores(string? processMenu)
         => string.IsNullOrWhiteSpace(processMenu)
             ? _processData.AllStores()
@@ -260,7 +323,10 @@ public class InboxService : IInboxService
                     foreach (var token in tokens)
                     {
                         snapshot = await _instagramService.GetMediaSnapshotAsync(
-                            token, row.Post.ExternalPostId!, connectionType, cancellationToken);
+                            token,
+                            row.Post.ExternalPostId!,
+                            connectionType,
+                            cancellationToken);
                         if (snapshot is not null
                             && (!string.IsNullOrWhiteSpace(snapshot.Text)
                                 || !string.IsNullOrWhiteSpace(snapshot.MediaUrl)

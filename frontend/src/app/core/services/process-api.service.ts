@@ -108,6 +108,13 @@ export class ProcessApiService {
     return this.http.get<ApiResponse<InboxItem[]>>(`${this.base(menuType)}/inbox${q}`);
   }
 
+  getInboxMedia(menuType: ProcessMenuType, postId: string): Observable<Blob> {
+    return this.http.get(`${this.base(menuType)}/inbox/media`, {
+      params: { postId },
+      responseType: 'blob'
+    });
+  }
+
   replyComment(
     menuType: ProcessMenuType,
     id: string,

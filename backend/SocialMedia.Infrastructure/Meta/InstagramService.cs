@@ -408,10 +408,7 @@ public class InstagramService : IInstagramService
             "Instagram is still processing the media. Wait a moment and try publishing again.");
     }
 
-    /// <summary>
-    /// Facebook equivalent of <c>full_picture</c>: Instagram <c>media_url</c> / <c>thumbnail_url</c>.
-    /// Counts are omitted so a missing permission cannot fail the whole media read.
-    /// </summary>
+    /// <summary>Instagram <c>media_url</c> is the same field Facebook Inbox uses as <c>full_picture</c>.</summary>
     private const string InstagramMediaPictureFields =
         "id,caption,media_type,media_url,thumbnail_url,permalink,timestamp,children{id,media_type,media_url,thumbnail_url}";
 
@@ -424,274 +421,58 @@ public class InstagramService : IInstagramService
         if (string.IsNullOrWhiteSpace(accessToken) || string.IsNullOrWhiteSpace(mediaId))
             return null;
 
-        return await GetMediaByIdAsync(accessToken, mediaId, connectionType, cancellationToken);
+        try
+        {
+            using var doc = connectionType == InstagramConnectionType.InstagramLogin
+                ? await _graph.GetInstagramAsync(
+                    InstagramLoginGraphVersion, mediaId, accessToken, cancellationToken,
+                    ("fields", InstagramMediaPictureFields))
+                : await _graph.GetAsync(
+                    GraphVersion, mediaId, accessToken, cancellationToken,
+                    ("fields", InstagramMediaPictureFields));
+
+            LogApiDecision(null, connectionType, "GetPost", success: true);
+            return ParseMediaSnapshot(doc.RootElement, mediaId);
+        }
+        catch (Exception ex)
+        {
+            LogApiDecision(null, connectionType, "GetPost", success: false, metaError: ex.Message);
+            return null;
+        }
     }
 
-    /// <summary>
-    /// Facebook pattern: Graph GET the post picture, save it, then map the comment.
-    /// Also reuses a post published from this app when webhook media.id does not match.
-    /// </summary>
+    public async Task<RemotePostSnapshot?> GetOwnedMediaSnapshotAsync(
+        string accessToken,
+        string mediaId,
+        InstagramConnectionType connectionType,
+        string? commentId = null,
+        string? ownerExternalId = null,
+        string? ownerMetadataJson = null,
+        CancellationToken cancellationToken = default)
+        => await GetMediaSnapshotAsync(accessToken, mediaId, connectionType, cancellationToken);
+
+    /// <summary>Same as Facebook <c>ResolvePostAsync</c>: one token, one Graph GET, save picture URL, map comment.</summary>
     private async Task<PostEntityBase> ResolveInstagramPostAsync(
         SocialProfileEntityBase profile,
         SocialAccountEntityBase account,
         InstagramConnectionType connectionType,
         string mediaId,
         DateTime publishedAt,
-        string? commentId,
         CancellationToken cancellationToken)
     {
-        var tokens = await ResolveAccessTokensAsync(account, connectionType, cancellationToken);
-        var snapshot = await FetchOwnedMediaSnapshotAsync(
-            tokens, mediaId, commentId, profile, connectionType, cancellationToken);
-        snapshot = await LocalizeSnapshotMediaAsync(snapshot, cancellationToken);
-
-        foreach (var candidateId in DistinctIds(mediaId, snapshot?.ExternalId))
-        {
-            var existing = await _store!.GetPostByExternalIdAsync(profile.Id, candidateId, cancellationToken)
-                           ?? await _store.FindPostByExternalIdAsync(candidateId, cancellationToken);
-            if (existing is null)
-                continue;
-
-            if (!string.IsNullOrWhiteSpace(snapshot?.ExternalId))
-                existing.ExternalPostId = snapshot.ExternalId;
-            existing.UpdatedAt = DateTime.UtcNow;
-            _store.UpdatePost(existing);
-            await _store.SaveChangesAsync(cancellationToken);
-            await MetaPostMediaWriter.ApplySnapshotAsync(_store, existing, snapshot, cancellationToken);
-            return existing;
-        }
-
-        if (snapshot is not null && !string.IsNullOrWhiteSpace(snapshot.Text))
-        {
-            var published = await FindPublishedPostByCaptionAsync(
-                account.UserId, profile.Id, snapshot.Text, cancellationToken);
-            if (published is not null)
-            {
-                published.ExternalPostId = FirstNonEmpty(snapshot.ExternalId, mediaId);
-                published.UpdatedAt = DateTime.UtcNow;
-                _store!.UpdatePost(published);
-                await _store.SaveChangesAsync(cancellationToken);
-                await MetaPostMediaWriter.ApplySnapshotAsync(_store, published, snapshot, cancellationToken);
-                return published;
-            }
-        }
+        var token = (await ResolveAccessTokensAsync(account, connectionType, cancellationToken))
+            .FirstOrDefault() ?? string.Empty;
 
         return await MetaPostStore.ResolveAsync(
             _store!,
             profile,
             account.PlatformId,
-            FirstNonEmpty(snapshot?.ExternalId, mediaId),
+            mediaId,
             publishedAt,
-            _ => Task.FromResult(snapshot),
+            ct => GetMediaSnapshotAsync(token, mediaId, connectionType, ct),
             "Instagram post",
             requireMedia: true,
             cancellationToken: cancellationToken);
-    }
-
-    private async Task<PostEntityBase?> FindPublishedPostByCaptionAsync(
-        Guid userId,
-        Guid profileId,
-        string caption,
-        CancellationToken cancellationToken)
-    {
-        var posts = await _store!.GetPostsByUserProfilesAsync(userId, platformId: null, cancellationToken);
-        return posts
-            .Where(post => post.SocialProfileId == profileId
-                           && post.Status == ContentPostStatus.Published
-                           && !ProcessEntityNav.HasDisplayableMedia(post)
-                           && string.Equals(post.Caption?.Trim(), caption.Trim(), StringComparison.Ordinal))
-            .OrderByDescending(post => post.PublishedAt ?? post.CreatedAt)
-            .FirstOrDefault();
-    }
-
-    private async Task<RemotePostSnapshot?> LocalizeSnapshotMediaAsync(
-        RemotePostSnapshot? snapshot,
-        CancellationToken cancellationToken)
-    {
-        if (snapshot is null)
-            return null;
-
-        var remoteImage = snapshot.IsVideo
-            ? FirstNonEmpty(snapshot.ThumbnailUrl, snapshot.MediaUrl)
-            : FirstNonEmpty(snapshot.MediaUrl, snapshot.ThumbnailUrl);
-        if (string.IsNullOrWhiteSpace(remoteImage))
-            return snapshot;
-
-        var local = await _publishMediaCache.StoreFromRemoteAsync(remoteImage, cancellationToken);
-        if (string.IsNullOrWhiteSpace(local))
-            return snapshot;
-
-        if (snapshot.IsVideo)
-            snapshot.ThumbnailUrl = local;
-        else
-            snapshot.MediaUrl = local;
-        return snapshot;
-    }
-
-    private static IEnumerable<string> DistinctIds(params string?[] ids)
-        => ids.Where(id => !string.IsNullOrWhiteSpace(id)).Select(id => id!).Distinct(StringComparer.Ordinal);
-
-    private async Task<RemotePostSnapshot?> FetchOwnedMediaSnapshotAsync(
-        IReadOnlyList<string> accessTokens,
-        string mediaId,
-        string? commentId,
-        SocialProfileEntityBase profile,
-        InstagramConnectionType connectionType,
-        CancellationToken cancellationToken)
-    {
-        Exception? lastError = null;
-        foreach (var accessToken in accessTokens)
-        {
-            try
-            {
-                var snapshot = await GetMediaByIdAsync(accessToken, mediaId, connectionType, cancellationToken);
-                if (HasPicture(snapshot))
-                    return snapshot;
-
-                if (!string.IsNullOrWhiteSpace(commentId))
-                {
-                    var fromComment = await GetMediaFromCommentAsync(
-                        accessToken, commentId, mediaId, connectionType, cancellationToken);
-                    if (HasPicture(fromComment))
-                        return fromComment;
-                    snapshot ??= fromComment;
-                }
-
-                var fromFeed = await FindMediaInOwnedFeedAsync(
-                    accessToken, mediaId, profile, connectionType, cancellationToken);
-                if (HasPicture(fromFeed) || fromFeed is not null)
-                    return fromFeed ?? snapshot;
-
-                if (snapshot is not null)
-                    return snapshot;
-            }
-            catch (Exception ex)
-            {
-                lastError = ex;
-                LogApiDecision(profile.ExternalProfileId, connectionType, "GetPost", success: false, metaError: ex.Message);
-            }
-        }
-
-        if (lastError is not null)
-            _logger.LogWarning(
-                lastError,
-                "Instagram {ConnectionType} could not load media {MediaId} from {Host}.",
-                InstagramConnectionResolver.ToLogLabel(connectionType),
-                mediaId,
-                connectionType == InstagramConnectionType.InstagramLogin
-                    ? "graph.instagram.com"
-                    : "graph.facebook.com");
-        return null;
-    }
-
-    private async Task<RemotePostSnapshot?> GetMediaByIdAsync(
-        string accessToken,
-        string mediaId,
-        InstagramConnectionType connectionType,
-        CancellationToken cancellationToken)
-    {
-        foreach (var hostType in new[]
-                 {
-                     connectionType,
-                     connectionType == InstagramConnectionType.InstagramLogin
-                         ? InstagramConnectionType.FacebookLogin
-                         : InstagramConnectionType.InstagramLogin
-                 })
-        {
-            try
-            {
-                using var doc = await GetGraphJsonAsync(
-                    hostType, mediaId, accessToken, InstagramMediaPictureFields, cancellationToken);
-                var snapshot = ParseMediaSnapshot(doc.RootElement, mediaId);
-                if (snapshot is null)
-                    continue;
-
-                LogApiDecision(null, hostType, "GetPost", success: true);
-                return await LocalizeSnapshotMediaAsync(snapshot, cancellationToken);
-            }
-            catch (Exception ex)
-            {
-                LogApiDecision(null, hostType, "GetPost", success: false, metaError: ex.Message);
-            }
-        }
-
-        return null;
-    }
-
-    private async Task<RemotePostSnapshot?> GetMediaFromCommentAsync(
-        string accessToken,
-        string commentId,
-        string mediaId,
-        InstagramConnectionType connectionType,
-        CancellationToken cancellationToken)
-    {
-        try
-        {
-            using var doc = await GetGraphJsonAsync(
-                connectionType,
-                commentId,
-                accessToken,
-                $"media{{{InstagramMediaPictureFields}}}",
-                cancellationToken);
-            if (!doc.RootElement.TryGetProperty("media", out var media))
-                return null;
-            return ParseMediaSnapshot(media, mediaId);
-        }
-        catch (Exception ex)
-        {
-            LogApiDecision(null, connectionType, "GetCommentMedia", success: false, metaError: ex.Message);
-            return null;
-        }
-    }
-
-    private async Task<RemotePostSnapshot?> FindMediaInOwnedFeedAsync(
-        string accessToken,
-        string mediaId,
-        SocialProfileEntityBase profile,
-        InstagramConnectionType connectionType,
-        CancellationToken cancellationToken)
-    {
-        var owners = new List<string> { "me" };
-        if (!string.IsNullOrWhiteSpace(profile.ExternalProfileId))
-            owners.Add(profile.ExternalProfileId);
-        owners.AddRange(ReadAlternateIds(profile.MetadataJson));
-
-        foreach (var ownerId in owners.Distinct(StringComparer.Ordinal))
-        {
-            try
-            {
-                using var doc = await GetGraphJsonAsync(
-                    connectionType,
-                    $"{ownerId}/media",
-                    accessToken,
-                    InstagramMediaPictureFields,
-                    cancellationToken,
-                    ("limit", "50"));
-                if (!doc.RootElement.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Array)
-                    continue;
-
-                foreach (var item in data.EnumerateArray())
-                {
-                    var id = item.TryGetProperty("id", out var idEl) ? idEl.GetString() : null;
-                    if (string.Equals(id, mediaId, StringComparison.Ordinal))
-                        return ParseMediaSnapshot(item, mediaId);
-
-                    if (item.TryGetProperty("children", out var children) &&
-                        children.TryGetProperty("data", out var childData) &&
-                        childData.ValueKind == JsonValueKind.Array &&
-                        childData.EnumerateArray().Any(child =>
-                            child.TryGetProperty("id", out var childId) &&
-                            string.Equals(childId.GetString(), mediaId, StringComparison.Ordinal)))
-                        return ParseMediaSnapshot(item, mediaId);
-                }
-            }
-            catch (Exception ex)
-            {
-                LogApiDecision(ownerId, connectionType, "ListMedia", success: false, metaError: ex.Message);
-            }
-        }
-
-        return null;
     }
 
     private async Task<JsonDocument> GetGraphJsonAsync(
@@ -710,11 +491,6 @@ public class InstagramService : IInstagramService
             ? await _graph.GetInstagramAsync(InstagramLoginGraphVersion, path, accessToken, cancellationToken, query)
             : await _graph.GetAsync(GraphVersion, path, accessToken, cancellationToken, query);
     }
-
-    private static bool HasPicture(RemotePostSnapshot? snapshot)
-        => snapshot is not null
-           && (!string.IsNullOrWhiteSpace(snapshot.MediaUrl)
-               || !string.IsNullOrWhiteSpace(snapshot.ThumbnailUrl));
 
     private static RemotePostSnapshot? ParseMediaSnapshot(JsonElement root, string fallbackId)
     {
@@ -1274,7 +1050,6 @@ public class InstagramService : IInstagramService
                 connectionType,
                 mediaId!,
                 enriched?.CreatedTime ?? UnixSeconds(entry, "time") ?? DateTime.UtcNow,
-                commentId,
                 cancellationToken);
 
             var existing = await _store!.GetCommentByExternalIdAsync(commentId, cancellationToken);

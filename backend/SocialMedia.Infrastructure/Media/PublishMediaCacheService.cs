@@ -94,6 +94,31 @@ public sealed class PublishMediaCacheService : IPublishMediaCacheService
             : $"{_publicBaseUrl}/publish-cache/{storedName}";
     }
 
+    public Task<(byte[] Bytes, string ContentType)?> TryReadLocalAsync(string url)
+    {
+        if (string.IsNullOrWhiteSpace(url) || !IsLocalCacheUrl(url))
+            return Task.FromResult<(byte[] Bytes, string ContentType)?>(null);
+
+        var name = Path.GetFileName(url.Split('?', 2)[0]);
+        if (string.IsNullOrWhiteSpace(name))
+            return Task.FromResult<(byte[] Bytes, string ContentType)?>(null);
+
+        var path = Path.Combine(_cacheDirectory, name);
+        if (!File.Exists(path))
+            return Task.FromResult<(byte[] Bytes, string ContentType)?>(null);
+
+        var bytes = File.ReadAllBytes(path);
+        var contentType = Path.GetExtension(name).ToLowerInvariant() switch
+        {
+            ".png" => "image/png",
+            ".webp" => "image/webp",
+            ".gif" => "image/gif",
+            ".mp4" => "video/mp4",
+            _ => "image/jpeg"
+        };
+        return Task.FromResult<(byte[] Bytes, string ContentType)?>((bytes, contentType));
+    }
+
     private static bool IsLocalCacheUrl(string url)
         => url.Contains("/publish-cache/", StringComparison.OrdinalIgnoreCase);
 

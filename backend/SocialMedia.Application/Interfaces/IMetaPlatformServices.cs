@@ -105,6 +105,16 @@ public interface IInstagramService
         InstagramConnectionType connectionType = InstagramConnectionType.FacebookLogin,
         CancellationToken cancellationToken = default);
 
+    /// <summary>Same Graph media read as <see cref="GetMediaSnapshotAsync"/>.</summary>
+    Task<RemotePostSnapshot?> GetOwnedMediaSnapshotAsync(
+        string accessToken,
+        string mediaId,
+        InstagramConnectionType connectionType,
+        string? commentId = null,
+        string? ownerExternalId = null,
+        string? ownerMetadataJson = null,
+        CancellationToken cancellationToken = default);
+
     /// <summary>Reads one Instagram comment to fill fields the webhook may omit.</summary>
     Task<RemoteCommentSnapshot?> GetCommentSnapshotAsync(
         string accessToken,
