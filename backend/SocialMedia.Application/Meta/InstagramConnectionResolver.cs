@@ -27,13 +27,14 @@ public static class InstagramConnectionResolver
 
     public static InstagramConnectionType FromProfile(SocialProfileEntityBase profile, string? platformCode = null)
     {
+        // Platform.Code is the source of truth for which Graph host and token to use.
+        if (!string.IsNullOrWhiteSpace(platformCode) && IsInstagramPlatform(platformCode))
+            return FromPlatformCode(platformCode);
+
         if (profile.ProfileType == ProfileType.InstagramLogin)
             return InstagramConnectionType.InstagramLogin;
 
-        if (profile.ProfileType == ProfileType.InstagramBusiness)
-            return InstagramConnectionType.FacebookLogin;
-
-        return FromPlatformCode(platformCode);
+        return InstagramConnectionType.FacebookLogin;
     }
 
     public static string ToLogLabel(InstagramConnectionType connectionType)

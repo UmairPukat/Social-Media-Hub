@@ -199,11 +199,13 @@ public class InboxService : IInboxService
             var connectionType = InstagramConnectionResolver.FromProfile(profile, platform?.Code);
             foreach (var token in tokens)
             {
-                var snapshot = await _instagramService.GetMediaSnapshotAsync(
+                var snapshot = await _instagramService.GetOwnedMediaSnapshotAsync(
                     token,
                     postExternalId,
                     connectionType,
-                    cancellationToken);
+                    ownerExternalId: profile.ExternalProfileId,
+                    ownerMetadataJson: profile.MetadataJson,
+                    cancellationToken: cancellationToken);
                 if (snapshot is null)
                     continue;
 
@@ -323,10 +325,13 @@ public class InboxService : IInboxService
                     var connectionType = InstagramConnectionResolver.FromProfile(row.Profile, row.Platform.Code);
                     foreach (var token in tokens)
                     {
-                        snapshot = await _instagramService.GetMediaSnapshotAsync(
+                        snapshot = await _instagramService.GetOwnedMediaSnapshotAsync(
                             token,
                             row.Post.ExternalPostId!,
                             connectionType,
+                            row.Comment.ExternalCommentId,
+                            row.Profile.ExternalProfileId,
+                            row.Profile.MetadataJson,
                             cancellationToken);
                         if (snapshot is not null
                             && (!string.IsNullOrWhiteSpace(snapshot.Text)
