@@ -144,8 +144,13 @@ export interface ConnectionDetails {
   pageImage?: string;
   instagramId?: string;
   instagramUsername?: string;
-  /** Page access token stored after Meta connect. */
+  /** Token stored on this card only — Facebook, Instagram, and Instagram Login are separate. */
   accessToken?: string;
+  graphHost?: string;
+  tokenKind?: string;
+  tokenValid?: boolean;
+  tokenError?: string;
+  tokenHint?: string;
   webhookSubscribed: boolean;
   subscribedFields: string[];
   webhookError?: string;
@@ -268,6 +273,15 @@ export interface YouTubeSyncResult {
 }
 
 export type PlatformSyncResult = YouTubeSyncResult;
+
+export interface PublicPage {
+  name: string;
+  category?: string;
+  about?: string;
+  fanCount?: number;
+  followersCount?: number;
+  link?: string;
+}
 
 export interface YouTubePostStatistics {
   postId: string;

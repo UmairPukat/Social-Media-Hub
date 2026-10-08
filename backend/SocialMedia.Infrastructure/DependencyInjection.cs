@@ -50,6 +50,7 @@ public static class DependencyInjection
             });
         services.AddScoped<IMetaOAuthExchange, MetaOAuthExchangeService>();
         services.AddScoped<IFacebookService, FacebookService>();
+        services.AddScoped<IPublicPagesService, PublicPagesService>();
         services.AddScoped<IInstagramService, InstagramService>();
         services.AddScoped<IWhatsAppService, WhatsAppService>();
         services.AddScoped<IMetaMarketingContextFactory, MetaMarketingContextFactory>();

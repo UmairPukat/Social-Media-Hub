@@ -647,6 +647,18 @@
   color: #15803d;
 }
 
+.token-error {
+  display: inline-block;
+  margin-top: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #b91c1c;
+}
+
+.token-kind {
+  margin-top: 8px;
+}
+
 .webhook-block {
   margin-top: 20px;
   padding-top: 16px;

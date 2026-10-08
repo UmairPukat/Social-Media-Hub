@@ -548,8 +548,9 @@ export class DeveloperAppsComponent implements OnInit {
 
   tokenLabel(platformCode: string): string {
     const code = (platformCode || '').toLowerCase();
-    if (code === 'facebook' || code === 'instagram') return 'Page access token';
-    if (code === 'instagram_login') return 'Instagram access token';
+    if (code === 'facebook') return 'Facebook Page access token';
+    if (code === 'instagram') return 'Instagram (Facebook Login) Page token';
+    if (code === 'instagram_login') return 'Instagram Login access token';
     if (code === 'youtube') return 'Google access token';
     if (code === 'tiktok') return 'TikTok access token';
     if (code === 'whatsapp') return 'WhatsApp access token';

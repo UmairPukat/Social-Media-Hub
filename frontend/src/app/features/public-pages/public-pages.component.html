@@ -1,0 +1,80 @@
+<section class="page public-pages-page">
+  <header class="hero">
+    <div>
+      <p class="eyebrow">{{ processLabel() }}</p>
+      <h1>Discover Public Pages</h1>
+      <p class="lede">
+        Search Facebook’s public Page directory in real time. This uses Page Public Metadata Access
+        and this module’s Facebook app token — not connected Page tokens.
+      </p>
+    </div>
+  </header>
+
+  <form class="search-panel" (submit)="$event.preventDefault(); search()">
+    <label class="search-bar" for="public-page-q">
+      <mat-icon>search</mat-icon>
+      <input
+        id="public-page-q"
+        type="search"
+        name="q"
+        placeholder="Discover Public Pages"
+        [value]="query()"
+        (input)="onQueryInput($event)"
+        autocomplete="off"
+      />
+    </label>
+    <button mat-flat-button color="primary" type="submit" [disabled]="loading()">
+      <mat-icon>travel_explore</mat-icon>
+      {{ loading() ? 'Searching…' : 'Search' }}
+    </button>
+  </form>
+
+  @if (error()) {
+    <div class="banner error">{{ error() }}</div>
+  }
+
+  <section class="results-panel">
+    @if (loading()) {
+      <p class="state">Loading public Page metadata…</p>
+    } @else if (searched() && !error() && pages().length === 0) {
+      <p class="state">No public Pages matched that keyword.</p>
+    } @else if (pages().length) {
+      <p class="result-count">{{ pages().length }} public {{ pages().length === 1 ? 'Page' : 'Pages' }}</p>
+      <div class="table-wrap">
+        <table class="pages-table">
+          <thead>
+            <tr>
+              <th>Page Name</th>
+              <th>Category</th>
+              <th>Likes</th>
+              <th>Followers</th>
+              <th>About</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (page of pages(); track page.name + (page.link || '')) {
+              <tr>
+                <td>
+                  @if (page.link) {
+                    <a [href]="page.link" target="_blank" rel="noopener noreferrer">{{ page.name }}</a>
+                  } @else {
+                    {{ page.name }}
+                  }
+                </td>
+                <td>{{ page.category || '—' }}</td>
+                <td>{{ page.fanCount == null ? '—' : (page.fanCount | number) }}</td>
+                <td>{{ page.followersCount == null ? '—' : (page.followersCount | number) }}</td>
+                <td class="about-cell">{{ page.about || '—' }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    } @else {
+      <p class="state">
+        Search by brand, topic, or competitor name to aggregate public About info and engagement
+        (likes / followers) from multiple Pages.
+      </p>
+    }
+  </section>
+</section>

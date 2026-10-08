@@ -144,10 +144,25 @@ public class ConnectionDetailsDto
     public string? InstagramUsername { get; set; }
 
     /// <summary>
-    /// Page access token stored after Meta connect (Facebook Page token for both Facebook and Instagram).
-    /// Empty when the account is connected but the token was cleared.
+    /// Token stored on this card only: Facebook Page token, Instagram (Facebook Login) Page token,
+    /// or Instagram Login user token. Never shared across cards or modules.
     /// </summary>
     public string? AccessToken { get; set; }
+
+    /// <summary>Graph host this token must be sent to, e.g. graph.instagram.com.</summary>
+    public string? GraphHost { get; set; }
+
+    /// <summary>Human label for which card owns this token.</summary>
+    public string? TokenKind { get; set; }
+
+    /// <summary>Live check against <see cref="GraphHost"/>, when performed.</summary>
+    public bool? TokenValid { get; set; }
+
+    /// <summary>Why the live token check failed, when it did.</summary>
+    public string? TokenError { get; set; }
+
+    /// <summary>How to call Graph with this token (Instagram Login is not Facebook Graph).</summary>
+    public string? TokenHint { get; set; }
 
     public bool WebhookSubscribed { get; set; }
     public IReadOnlyList<string> SubscribedFields { get; set; } = Array.Empty<string>();

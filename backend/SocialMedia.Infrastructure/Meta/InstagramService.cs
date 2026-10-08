@@ -59,7 +59,7 @@ public class InstagramService : IInstagramService
                 : "v21.0";
 
     private string InstagramLoginGraphVersion =>
-        FirstNonEmpty(_instagramLogin.GraphApiVersion, _instagram.GraphApiVersion, GraphVersion);
+        FirstNonEmpty(_instagramLogin.GraphApiVersion, "v21.0");
 
     private string AppId =>
         !string.IsNullOrWhiteSpace(_instagram.AppId) ? _instagram.AppId : _facebook.AppId;

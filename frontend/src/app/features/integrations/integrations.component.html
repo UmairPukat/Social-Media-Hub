@@ -450,6 +450,17 @@
                   @if (tokenCopied()) {
                     <span class="token-copied">Copied to clipboard</span>
                   }
+                  @if (info.tokenKind) {
+                    <p class="section-note token-kind">{{ info.tokenKind }} · {{ info.graphHost }}</p>
+                  }
+                  @if (info.tokenValid === true) {
+                    <span class="token-copied">Valid on {{ info.graphHost }}</span>
+                  } @else if (info.tokenValid === false) {
+                    <span class="token-error">{{ info.tokenError || 'This token was rejected. Reconnect this card.' }}</span>
+                  }
+                  @if (info.tokenHint) {
+                    <p class="section-note">{{ info.tokenHint }}</p>
+                  }
                 </dd>
               </div>
             } @else if (info.webhookError) {

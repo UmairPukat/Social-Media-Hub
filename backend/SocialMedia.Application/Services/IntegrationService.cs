@@ -1170,14 +1170,16 @@ public class IntegrationService : IIntegrationService
                 details.WhatsAppWabaId = appConfig?.WabaId;
             }
 
+            ApplyTokenMetadata(details, code);
             if (string.IsNullOrWhiteSpace(pageAccessToken))
             {
                 details.WebhookError = code == "whatsapp"
                     ? "No access token is stored for this connection. Disconnect WhatsApp, then connect again to refresh the token."
-                    : "No access token is stored for this connection. Disconnect Instagram Login, then connect again to refresh the token.";
+                    : "No access token is stored for this card. Disconnect, then connect this platform again.";
             }
             else
             {
+                await ApplyTokenStatusAsync(details, code, pageAccessToken, cancellationToken);
                 await ApplyWebhookStatusAsync(details, code, pageId, pageAccessToken, cancellationToken);
             }
             return ApiResponse<ConnectionDetailsDto>.Ok(details);
@@ -1185,6 +1187,66 @@ public class IntegrationService : IIntegrationService
         catch (Exception ex)
         {
             return ApiResponse<ConnectionDetailsDto>.Fail(ex.Message);
+        }
+    }
+
+    private static void ApplyTokenMetadata(ConnectionDetailsDto details, string platformCode)
+    {
+        switch (platformCode)
+        {
+            case "instagram_login":
+                details.GraphHost = "https://graph.instagram.com";
+                details.TokenKind = "Instagram Login user token (this card only)";
+                details.TokenHint =
+                    "Test with GET https://graph.instagram.com/me?fields=user_id,username&access_token=TOKEN. " +
+                    "graph.facebook.com cannot parse Instagram Login tokens (OAuth 190: Cannot parse access token).";
+                break;
+            case "instagram":
+                details.GraphHost = "https://graph.facebook.com";
+                details.TokenKind = "Instagram (Facebook Login) Page token (this card only)";
+                details.TokenHint =
+                    "This Instagram card uses Facebook Login. Call graph.facebook.com with this Page token — not an Instagram Login IGA token.";
+                break;
+            case "facebook":
+                details.GraphHost = "https://graph.facebook.com";
+                details.TokenKind = "Facebook Page token (this card only)";
+                details.TokenHint = "Call graph.facebook.com with this Page token. Do not use it on graph.instagram.com.";
+                break;
+            case "youtube":
+                details.GraphHost = "https://www.googleapis.com";
+                details.TokenKind = "YouTube / Google access token (this card only)";
+                break;
+            case "tiktok":
+                details.GraphHost = "https://open.tiktokapis.com";
+                details.TokenKind = "TikTok access token (this card only)";
+                break;
+            case "whatsapp":
+                details.GraphHost = "https://graph.facebook.com";
+                details.TokenKind = "WhatsApp Cloud API token (this card only)";
+                break;
+        }
+    }
+
+    private async Task ApplyTokenStatusAsync(
+        ConnectionDetailsDto details,
+        string platformCode,
+        string accessToken,
+        CancellationToken cancellationToken)
+    {
+        if (platformCode != "instagram_login")
+            return;
+
+        try
+        {
+            await _instagramService.GetInstagramLoginMeAsync(accessToken, cancellationToken);
+            details.TokenValid = true;
+        }
+        catch (Exception ex)
+        {
+            details.TokenValid = false;
+            details.TokenError =
+                "Instagram Login rejected this token on graph.instagram.com. Reconnect the Instagram Login card. "
+                + ex.Message;
         }
     }
 

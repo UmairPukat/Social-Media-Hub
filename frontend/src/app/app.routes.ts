@@ -28,6 +28,11 @@ const processChildren = (connectComponent: () => Promise<{ default?: never } & i
   {
     path: 'accounts',
     loadComponent: () => import('./features/accounts/accounts.component').then(m => m.AccountsComponent)
+  },
+  {
+    path: 'public-pages',
+    loadComponent: () =>
+      import('./features/public-pages/public-pages.component').then(m => m.PublicPagesComponent)
   }
 ] satisfies Routes;
 

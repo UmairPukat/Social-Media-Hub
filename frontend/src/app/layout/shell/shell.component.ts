@@ -38,7 +38,8 @@ export class ShellComponent {
     { suffix: 'inbox', icon: 'inbox', label: 'Inbox' },
     { suffix: 'sync', icon: 'sync', label: 'Platform sync' },
     { suffix: 'analytics', icon: 'insights', label: 'Analytics' },
-    { suffix: 'accounts', icon: 'link', label: 'Connected Accounts' }
+    { suffix: 'accounts', icon: 'link', label: 'Connected Accounts' },
+    { suffix: 'public-pages', icon: 'travel_explore', label: 'Public Pages' }
   ];
 
   readonly metaAdsNavItems = [
