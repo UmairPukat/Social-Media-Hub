@@ -80,6 +80,7 @@ internal static class MetaWebhookProfileResolver
         SocialProfileEntityBase? match = null;
         var count = 0;
 
+        ProfileType? matchedType = null;
         foreach (var account in accounts)
         {
             var profiles = await store.GetProfilesByAccountAsync(account.Id, cancellationToken);
@@ -87,6 +88,11 @@ internal static class MetaWebhookProfileResolver
             {
                 if (snapshot.ProfileType is not (ProfileType.InstagramLogin or ProfileType.InstagramBusiness))
                     continue;
+
+                if (matchedType is null)
+                    matchedType = snapshot.ProfileType;
+                else if (matchedType != snapshot.ProfileType)
+                    return null;
 
                 count++;
                 match = await store.GetProfileByIdAsync(snapshot.Id, cancellationToken)

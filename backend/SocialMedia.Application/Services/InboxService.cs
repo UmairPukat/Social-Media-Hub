@@ -199,8 +199,8 @@ public class InboxService : IInboxService
             && !ProcessEntityNav.IsBrowserDisplayableUrl(imageUrl))
         {
             var auth = await store.GetSocialAuthByAccountIdAsync(account.Id, cancellationToken);
-            var tokens = auth is null ? [] : CandidateTokens(auth);
-            var connectionType = InstagramConnectionResolver.FromProfile(profile, platform?.Code);
+            var tokens = auth is null ? [] : CandidateTokens(auth, platform?.Code);
+            var connectionType = InstagramConnectionResolver.FromPlatformCode(platform?.Code);
             foreach (var token in tokens)
             {
                 var snapshot = await _instagramService.GetOwnedMediaSnapshotAsync(
@@ -319,14 +319,14 @@ public class InboxService : IInboxService
                 if (auth is null)
                     continue;
 
-                var tokens = CandidateTokens(auth);
+                var tokens = CandidateTokens(auth, row.Platform.Code);
                 if (tokens.Count == 0)
                     continue;
 
                 RemotePostSnapshot? snapshot = null;
                 if (InstagramConnectionResolver.IsInstagramPlatform(row.Platform.Code))
                 {
-                    var connectionType = InstagramConnectionResolver.FromProfile(row.Profile, row.Platform.Code);
+                    var connectionType = InstagramConnectionResolver.FromPlatformCode(row.Platform.Code);
                     foreach (var token in tokens)
                     {
                         snapshot = await _instagramService.GetOwnedMediaSnapshotAsync(
@@ -338,8 +338,7 @@ public class InboxService : IInboxService
                             row.Profile.MetadataJson,
                             cancellationToken);
                         if (snapshot is not null
-                            && (!string.IsNullOrWhiteSpace(snapshot.Text)
-                                || !string.IsNullOrWhiteSpace(snapshot.MediaUrl)
+                            && (!string.IsNullOrWhiteSpace(snapshot.MediaUrl)
                                 || !string.IsNullOrWhiteSpace(snapshot.ThumbnailUrl)))
                             break;
                     }
@@ -467,8 +466,8 @@ public class InboxService : IInboxService
                 replyTargetExternalId.StartsWith("local_", StringComparison.OrdinalIgnoreCase))
                 return ApiResponse<object>.Fail("Cannot reply until the original comment is synced from the platform.");
 
-            var connectionType = InstagramConnectionResolver.FromProfile(profile, code);
-            var tokens = code == "youtube" ? CandidateYouTubeTokens(auth) : CandidateTokens(auth);
+            var connectionType = InstagramConnectionResolver.FromPlatformCode(code);
+            var tokens = code == "youtube" ? CandidateYouTubeTokens(auth) : CandidateTokens(auth, code);
             if (tokens.Count == 0)
                 return ApiResponse<object>.Fail("No access token is available. Reconnect the account.");
 
@@ -553,66 +552,17 @@ public class InboxService : IInboxService
 
         var store = _processData.ForMenu(moduleMenu);
         var linked = await store.GetSocialAccountWithAuthAndProfilesAsync(profile.SocialAccountId, cancellationToken);
-        if (linked is not null
-            && linked.UserId == userId
-            && ProcessEntityNav.Auth(linked) is { } linkedAuth
-            && CandidateTokens(linkedAuth).Count > 0)
-            return new ReplyAuthResolution(linked, linkedAuth, moduleMenu);
-
-        // Instagram IGSIDs only work with the same Meta app that received the webhook.
-        if (linked is not null
-            && linked.UserId == userId
-            && InstagramConnectionResolver.IsInstagramPlatform(
-                InferPlatformCode(profile) ?? ProcessEntityNav.PlatformCode(linked) ?? string.Empty))
+        if (linked is null || linked.UserId != userId)
             return null;
 
-        var hinted = await FindAccountByRoutingHintsAsync(
-            userId,
-            profile,
-            ReplyAuthHints.FromRequest(moduleMenu, hints.PageId, hints.AccountId),
-            cancellationToken);
-        if (hinted is not null)
-            return new ReplyAuthResolution(hinted.Value.Account, hinted.Value.Auth, moduleMenu);
-
-        var userAccounts = await LoadUserAccountsAsync(userId, moduleMenu, cancellationToken);
-        var routingAccount = PickRoutingAccount(
-            profile,
-            linked,
-            userAccounts.Select(a => a.Account).ToList(),
-            moduleMenu);
-        if (routingAccount is not null
-            && ProcessEntityNav.Auth(routingAccount) is { } routingAuth
-            && CandidateTokens(routingAuth).Count > 0)
-            return new ReplyAuthResolution(routingAccount, routingAuth, moduleMenu);
-
-        var platformCodes = ResolvePlatformCodes(profile, linked);
-        if (platformCodes.Count == 0)
+        var linkedAuth = ProcessEntityNav.Auth(linked)
+                         ?? await store.GetSocialAuthByAccountIdAsync(linked.Id, cancellationToken);
+        var platformCode = ProcessEntityNav.PlatformCode(linked)
+                           ?? (await store.GetPlatformByIdAsync(linked.PlatformId, cancellationToken))?.Code;
+        if (linkedAuth is null || CandidateTokens(linkedAuth, platformCode).Count == 0)
             return null;
 
-        foreach (var (menuType, row) in userAccounts
-                     .OrderByDescending(a => HasStoredTokens(ProcessEntityNav.Auth(a.Account)))
-                     .ThenByDescending(a => a.Account.Status == SocialAccountStatus.Connected)
-                     .ThenByDescending(a => a.Account.ConnectedAt ?? a.Account.UpdatedAt ?? a.Account.CreatedAt))
-        {
-            if (row.UserId != userId
-                || !PlatformCodesOverlap(ProcessEntityNav.PlatformCode(row), platformCodes)
-                || (row.Status != SocialAccountStatus.Connected && !HasStoredTokens(ProcessEntityNav.Auth(row))))
-                continue;
-
-            var loaded = await store.GetSocialAccountWithAuthAndProfilesAsync(row.Id, cancellationToken);
-            var auth = loaded is null ? null : ProcessEntityNav.Auth(loaded);
-            if (auth is null || CandidateTokens(auth).Count == 0)
-                continue;
-
-            if (ProcessEntityNav.Profiles(loaded!).Any(p => ProfilesShareIdentity(p, profile)))
-                return new ReplyAuthResolution(loaded!, auth, menuType);
-
-            if (InboxRoutingHelper.ProfileMatchesRouting(profile, hints.PageId, hints.AccountId)
-                && ProcessEntityNav.Profiles(loaded!).Any(p => InboxRoutingHelper.ProfileMatchesRouting(p, hints.PageId, hints.AccountId)))
-                return new ReplyAuthResolution(loaded!, auth, menuType);
-        }
-
-        return null;
+        return new ReplyAuthResolution(linked, linkedAuth, moduleMenu);
     }
 
     private async Task<string> ResolvePlatformCodeForReplyAsync(
@@ -766,7 +716,6 @@ public class InboxService : IInboxService
                 break;
             case ProfileType.InstagramBusiness:
                 codes.Add(InstagramConnectionResolver.FacebookLoginPlatformCode);
-                codes.Add(InstagramConnectionResolver.InstagramLoginPlatformCode);
                 break;
             case ProfileType.FacebookPage:
                 codes.Add("facebook");
@@ -790,11 +739,7 @@ public class InboxService : IInboxService
         if (string.IsNullOrWhiteSpace(platformCode))
             return false;
 
-        if (expectedCodes.Contains(platformCode))
-            return true;
-
-        return InstagramConnectionResolver.IsInstagramPlatform(platformCode)
-               && expectedCodes.Any(InstagramConnectionResolver.IsInstagramPlatform);
+        return expectedCodes.Contains(platformCode);
     }
 
     private static bool HasStoredTokens(SocialAuthEntityBase? auth)
@@ -881,7 +826,7 @@ public class InboxService : IInboxService
         }
     }
 
-    private static List<string> CandidateTokens(SocialAuthEntityBase auth)
+    private static List<string> CandidateTokens(SocialAuthEntityBase auth, string? platformCode = null)
     {
         var tokens = new List<string>();
         void Add(string? token)
@@ -891,6 +836,10 @@ public class InboxService : IInboxService
         }
 
         Add(auth.AccessToken);
+        if (string.Equals(platformCode, InstagramConnectionResolver.InstagramLoginPlatformCode, StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(auth.RefreshToken, auth.AccessToken, StringComparison.Ordinal))
+            return tokens;
+
         Add(auth.RefreshToken);
         return tokens;
     }
@@ -1117,8 +1066,8 @@ public class InboxService : IInboxService
                 ? quoted.ExternalMessageId
                 : null;
 
-            var connectionType = InstagramConnectionResolver.FromProfile(profile, code);
-            var tokens = CandidateTokens(auth);
+            var connectionType = InstagramConnectionResolver.FromPlatformCode(code);
+            var tokens = CandidateTokens(auth, code);
             if (tokens.Count == 0)
                 return ApiResponse<object>.Fail("No access token is available. Reconnect the account.");
 
@@ -1370,7 +1319,7 @@ public class InboxService : IInboxService
 
         var (account, auth, accountMenuType) = resolvedAuth;
         var code = await ResolvePlatformCodeForReplyAsync(store, account, profile, accountMenuType, cancellationToken);
-        var connectionType = InstagramConnectionResolver.FromProfile(profile, code);
+        var connectionType = InstagramConnectionResolver.FromPlatformCode(code);
         return (new MetaCallContext
         {
             AccessToken = auth.AccessToken,

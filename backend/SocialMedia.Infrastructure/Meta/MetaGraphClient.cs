@@ -163,6 +163,9 @@ public class MetaGraphClient
         params (string Key, string Value)[] query)
         => TryGetRawAsync(InstagramGraphHost, version, path, accessToken, cancellationToken, query);
 
+    public Task<GraphGetResult> TryGetUrlAsync(string url, CancellationToken cancellationToken)
+        => SendGetAsync(url, null, cancellationToken);
+
     private async Task<GraphGetResult> TryGetRawAsync(
         string host,
         string version,

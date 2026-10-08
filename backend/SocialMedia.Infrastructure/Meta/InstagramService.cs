@@ -62,16 +62,14 @@ public class InstagramService : IInstagramService
         FirstNonEmpty(_instagramLogin.GraphApiVersion, _instagram.GraphApiVersion, GraphVersion);
 
     private string AppId =>
-        !string.IsNullOrWhiteSpace(_facebook.AppId) ? _facebook.AppId : _instagram.AppId;
+        !string.IsNullOrWhiteSpace(_instagram.AppId) ? _instagram.AppId : _facebook.AppId;
 
     private string AppSecret =>
-        !string.IsNullOrWhiteSpace(_facebook.AppSecret) ? _facebook.AppSecret : _instagram.AppSecret;
+        !string.IsNullOrWhiteSpace(_instagram.AppSecret) ? _instagram.AppSecret : _facebook.AppSecret;
 
-    private string InstagramLoginAppId =>
-        FirstNonEmpty(_instagramLogin.AppId, _instagram.AppId);
+    private string InstagramLoginAppId => _instagramLogin.AppId;
 
-    private string InstagramLoginAppSecret =>
-        FirstNonEmpty(_instagramLogin.AppSecret, _instagram.AppSecret);
+    private string InstagramLoginAppSecret => _instagramLogin.AppSecret;
 
     /// <summary>Facebook Login: authorization code → short token → long-lived user token.</summary>
     public async Task<OAuthTokenResult> ExchangeCodeAsync(string code, string redirectUri, CancellationToken cancellationToken = default)
@@ -413,7 +411,9 @@ public class InstagramService : IInstagramService
     private const string InstagramMediaPictureFields =
         "id,caption,media_type,media_url,thumbnail_url,permalink,timestamp";
     private const string InstagramMediaPictureFieldsWithChildren =
-        "id,caption,media_type,media_url,thumbnail_url,permalink,timestamp,children{id,media_type,media_url,thumbnail_url}";
+        "id,ig_id,caption,media_type,media_url,thumbnail_url,permalink,timestamp,children{id,ig_id,media_type,media_url,thumbnail_url}";
+    private const string InstagramOwnedFeedFields =
+        "id,ig_id,caption,media_type,media_url,thumbnail_url,permalink,timestamp,children{id,ig_id,media_type,media_url,thumbnail_url}";
 
     public async Task<RemotePostSnapshot?> GetMediaSnapshotAsync(
         string accessToken,
@@ -521,11 +521,35 @@ public class InstagramService : IInstagramService
         if (string.IsNullOrWhiteSpace(accessToken) || string.IsNullOrWhiteSpace(mediaId))
             return null;
 
-        var byId = await FetchMediaSnapshotAsync(accessToken, mediaId, connectionType, cancellationToken);
-        if (HasPicture(byId))
-            return byId;
+        // Instagram Login tokens cannot GET graph.facebook.com (OAuth 190) and Graph rejects
+        // GET /{media-id} and GET /{comment-id} (IG 100/33). Load media_url from /me/media
+        // and match the webhook id against both Graph id and ig_id.
+        if (connectionType == InstagramConnectionType.InstagramLogin)
+        {
+            var fromFeed = await FindMediaInOwnedFeedAsync(
+                accessToken, mediaId, ownerExternalId, ownerMetadataJson, connectionType, cancellationToken);
+            if (HasPicture(fromFeed))
+                return fromFeed;
 
-        RemotePostSnapshot? best = byId;
+            if (!string.IsNullOrWhiteSpace(fromFeed?.Permalink))
+            {
+                var oembed = await FetchOEmbedThumbnailAsync(
+                    accessToken, fromFeed.Permalink, connectionType, cancellationToken);
+                if (!string.IsNullOrWhiteSpace(oembed))
+                {
+                    fromFeed.ThumbnailUrl = oembed;
+                    return fromFeed;
+                }
+            }
+
+            return fromFeed;
+        }
+
+        var facebookById = await FetchMediaSnapshotAsync(accessToken, mediaId, connectionType, cancellationToken);
+        if (HasPicture(facebookById))
+            return facebookById;
+
+        RemotePostSnapshot? best = facebookById;
         foreach (var host in HostOrder(connectionType))
         {
             if (!string.IsNullOrWhiteSpace(commentId))
@@ -772,45 +796,125 @@ public class InstagramService : IInstagramService
 
         foreach (var ownerId in owners.Distinct(StringComparer.Ordinal))
         {
-            try
+            string? nextUrl = null;
+            string? after = null;
+            for (var page = 0; page < 20; page++)
             {
-                using var doc = await GetGraphJsonAsync(
-                    connectionType,
-                    $"{ownerId}/media",
-                    accessToken,
-                    InstagramMediaPictureFieldsWithChildren,
-                    cancellationToken,
-                    ("limit", "50"));
-                if (!doc.RootElement.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Array)
-                    continue;
-
-                foreach (var item in data.EnumerateArray())
+                MetaGraphClient.GraphGetResult result;
+                if (!string.IsNullOrWhiteSpace(nextUrl))
                 {
-                    var id = item.TryGetProperty("id", out var idEl) ? idEl.GetString() : null;
-                    if (string.Equals(id, mediaId, StringComparison.Ordinal))
+                    result = await _graph.TryGetUrlAsync(nextUrl, cancellationToken);
+                }
+                else
+                {
+                    var extras = after is null
+                        ? new (string Key, string Value)[] { ("fields", InstagramOwnedFeedFields), ("limit", "100") }
+                        : [("fields", InstagramOwnedFeedFields), ("limit", "100"), ("after", after)];
+
+                    result = connectionType == InstagramConnectionType.InstagramLogin
+                        ? await _graph.TryGetInstagramAsync(
+                            InstagramLoginGraphVersion, $"{ownerId}/media", accessToken, cancellationToken, extras)
+                        : await _graph.TryGetFacebookAsync(
+                            GraphVersion, $"{ownerId}/media", accessToken, cancellationToken, extras);
+                }
+
+                await LogPostGraphAsync(mediaId, connectionType, $"{ownerId}/media", result, cancellationToken);
+                if (result.Status is < 200 or >= 300)
+                {
+                    LogApiDecision(ownerId, connectionType, "ListMedia", success: false, metaError: result.Body);
+                    break;
+                }
+
+                using var doc = ParseGraphBody(result.Body);
+                if (doc is null)
+                    break;
+
+                var data = ReadMediaListData(doc.RootElement);
+                if (data.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var item in data.EnumerateArray())
                     {
-                        var snapshot = ParseMediaSnapshot(item, mediaId);
-                        if (snapshot is not null)
+                        if (!MediaItemMatchesId(item, mediaId))
+                            continue;
+
+                        var snapshot = SnapshotFromFeedItem(item, mediaId);
+                        if (HasPicture(snapshot) || snapshot is not null)
                             return snapshot;
                     }
-
-                    if (item.TryGetProperty("children", out var children) &&
-                        children.TryGetProperty("data", out var childData) &&
-                        childData.ValueKind == JsonValueKind.Array &&
-                        childData.EnumerateArray().Any(child =>
-                            child.TryGetProperty("id", out var childId) &&
-                            string.Equals(childId.GetString(), mediaId, StringComparison.Ordinal)))
-                        return ParseMediaSnapshot(item, mediaId);
                 }
-            }
-            catch (Exception ex)
-            {
-                LogApiDecision(ownerId, connectionType, "ListMedia", success: false, metaError: ex.Message);
+
+                nextUrl = null;
+                after = null;
+                if (doc.RootElement.TryGetProperty("paging", out var paging))
+                {
+                    if (paging.TryGetProperty("next", out var nextEl))
+                        nextUrl = nextEl.GetString();
+                    if (string.IsNullOrWhiteSpace(nextUrl)
+                        && paging.TryGetProperty("cursors", out var cursors)
+                        && cursors.TryGetProperty("after", out var afterEl))
+                        after = afterEl.GetString();
+                }
+
+                if (string.IsNullOrWhiteSpace(nextUrl) && string.IsNullOrWhiteSpace(after))
+                    break;
             }
         }
 
         return null;
     }
+
+    private static JsonElement ReadMediaListData(JsonElement root)
+    {
+        if (root.TryGetProperty("data", out var data) && data.ValueKind == JsonValueKind.Array)
+            return data;
+        if (root.TryGetProperty("media", out var media)
+            && media.TryGetProperty("data", out var nested)
+            && nested.ValueKind == JsonValueKind.Array)
+            return nested;
+        return default;
+    }
+
+    private static RemotePostSnapshot? SnapshotFromFeedItem(JsonElement item, string mediaId)
+    {
+        if (item.TryGetProperty("children", out var children)
+            && children.TryGetProperty("data", out var childData)
+            && childData.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var child in childData.EnumerateArray())
+            {
+                if (!IdEquals(child, "id", mediaId) && !IdEquals(child, "ig_id", mediaId))
+                    continue;
+
+                var childSnap = ParseMediaSnapshot(child, mediaId) ?? SnapshotFromAnyCdnUrl(child, mediaId);
+                if (childSnap is null)
+                    break;
+
+                childSnap.Text = FirstNonEmpty(childSnap.Text, ReadGraphString(item, "caption"));
+                childSnap.Permalink = FirstNonEmpty(childSnap.Permalink, ReadGraphString(item, "permalink"));
+                return childSnap;
+            }
+        }
+
+        return ParseMediaSnapshot(item, mediaId) ?? SnapshotFromAnyCdnUrl(item, mediaId);
+    }
+
+    private static bool MediaItemMatchesId(JsonElement item, string mediaId)
+    {
+        if (IdEquals(item, "id", mediaId) || IdEquals(item, "ig_id", mediaId))
+            return true;
+
+        if (!item.TryGetProperty("children", out var children)
+            || !children.TryGetProperty("data", out var childData)
+            || childData.ValueKind != JsonValueKind.Array)
+            return false;
+
+        return childData.EnumerateArray().Any(child =>
+            IdEquals(child, "id", mediaId) || IdEquals(child, "ig_id", mediaId));
+    }
+
+    private static bool IdEquals(JsonElement parent, string name, string mediaId)
+        => parent.TryGetProperty(name, out var value)
+           && string.Equals(value.ToString(), mediaId, StringComparison.Ordinal);
 
     private async Task<string?> FetchOEmbedThumbnailAsync(
         string accessToken,
@@ -848,8 +952,8 @@ public class InstagramService : IInstagramService
 
     private static InstagramConnectionType[] HostOrder(InstagramConnectionType preferred)
         => preferred == InstagramConnectionType.InstagramLogin
-            ? [InstagramConnectionType.InstagramLogin, InstagramConnectionType.FacebookLogin]
-            : [InstagramConnectionType.FacebookLogin, InstagramConnectionType.InstagramLogin];
+            ? [InstagramConnectionType.InstagramLogin]
+            : [InstagramConnectionType.FacebookLogin];
 
     private async Task<RemotePostSnapshot?> LocalizeSnapshotMediaAsync(
         RemotePostSnapshot? snapshot,
@@ -1283,6 +1387,14 @@ public class InstagramService : IInstagramService
                 if (!WebhookProfileGuard.CanProcess(profile, account, _menuType, result))
                     continue;
 
+                var webhookPlatform = await _store.GetPlatformByIdAsync(account.PlatformId, cancellationToken);
+                if (string.Equals(webhookPlatform?.Code, "facebook", StringComparison.OrdinalIgnoreCase)
+                    || profile.ProfileType == ProfileType.FacebookPage)
+                {
+                    result.Skip("Facebook deliveries use the Facebook card token.");
+                    continue;
+                }
+
                 await ProcessChangesAsync(profile, entry, result, cancellationToken);
 
                 foreach (var messaging in MetaWebhookEntryHelper.EnumerateMessageArrays(entry))
@@ -1358,13 +1470,16 @@ public class InstagramService : IInstagramService
                 tokens.Add(token);
         }
 
-        // Always prefer the primary stored token for this connection.
+        // This account's stored token only — never a Facebook, Instagram, or Instagram Login
+        // token from another card or module.
         Add(auth?.AccessToken);
 
-        // Facebook Login: RefreshToken retains the long-lived user token and is a useful fallback.
-        // Instagram Login: do not invent a Page token — only reuse RefreshToken if it is also an IG user token.
-        if (connectionType == InstagramConnectionType.FacebookLogin ||
-            connectionType == InstagramConnectionType.InstagramLogin)
+        // Facebook Login Instagram stores the Page token on AccessToken and the user token
+        // on RefreshToken. Instagram Login stores the same IG user token on both.
+        if (connectionType == InstagramConnectionType.FacebookLogin)
+            Add(auth?.RefreshToken);
+        else if (connectionType == InstagramConnectionType.InstagramLogin
+                 && string.Equals(auth?.RefreshToken, auth?.AccessToken, StringComparison.Ordinal))
             Add(auth?.RefreshToken);
 
         return tokens;
@@ -1384,7 +1499,9 @@ public class InstagramService : IInstagramService
         }
 
         var platform = await _store!.GetPlatformByIdAsync(account.PlatformId, cancellationToken);
-        var connectionType = InstagramConnectionResolver.FromProfile(profile, platform?.Code);
+        var connectionType = !string.IsNullOrWhiteSpace(platform?.Code)
+            ? InstagramConnectionResolver.FromPlatformCode(platform.Code)
+            : InstagramConnectionResolver.FromProfile(profile);
         _logger.LogInformation(
             "Instagram webhook comment/message routing | InstagramAccountId={InstagramAccountId} | ConnectionType={ConnectionType}",
             profile.ExternalProfileId,
@@ -1433,18 +1550,22 @@ public class InstagramService : IInstagramService
             var mediaId = MetaWebhookPayloadNormalizer.ReadMediaId(value);
             var accessTokens = await ResolveAccessTokensAsync(account, connectionType, cancellationToken);
             RemoteCommentSnapshot? enriched = null;
-            foreach (var accessToken in accessTokens)
+            // Instagram Login GET /{comment-id} returns IG 100/33. Comment text is already on the webhook.
+            if (connectionType != InstagramConnectionType.InstagramLogin)
             {
-                try
+                foreach (var accessToken in accessTokens)
                 {
-                    enriched = await GetCommentSnapshotAsync(accessToken, commentId!, connectionType, cancellationToken);
-                    if (enriched is not null)
-                        break;
-                }
-                catch (Exception ex)
-                {
-                    LogApiDecision(profile.ExternalProfileId, connectionType, "GetComment", success: false, metaError: ex.Message);
-                    result.Skip($"Graph comment enrich failed for '{commentId}': {ex.Message}");
+                    try
+                    {
+                        enriched = await GetCommentSnapshotAsync(accessToken, commentId!, connectionType, cancellationToken);
+                        if (enriched is not null)
+                            break;
+                    }
+                    catch (Exception ex)
+                    {
+                        LogApiDecision(profile.ExternalProfileId, connectionType, "GetComment", success: false, metaError: ex.Message);
+                        result.Skip($"Graph comment enrich failed for '{commentId}': {ex.Message}");
+                    }
                 }
             }
 

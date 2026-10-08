@@ -485,6 +485,14 @@ public class FacebookService : IFacebookService
                 if (!WebhookProfileGuard.CanProcess(profile, account, _menuType, result))
                     continue;
 
+                var platform = await _store.GetPlatformByIdAsync(account.PlatformId, cancellationToken);
+                if (InstagramConnectionResolver.IsInstagramPlatform(platform?.Code)
+                    || profile.ProfileType is ProfileType.InstagramLogin or ProfileType.InstagramBusiness)
+                {
+                    result.Skip("Instagram deliveries use the Instagram or Instagram Login card token.");
+                    continue;
+                }
+
                 await ProcessChangesAsync(profile, account, entry, result, cancellationToken);
 
                 foreach (var messaging in MetaWebhookEntryHelper.EnumerateMessageArrays(entry))

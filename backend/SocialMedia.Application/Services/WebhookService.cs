@@ -301,12 +301,14 @@ public class WebhookService : IWebhookService
         string targetCode,
         CancellationToken cancellationToken)
     {
+        // Each card uses its own app token. Page webhooks can carry Facebook comments or
+        // Instagram-via-Facebook-Login comments; Instagram Login never uses a Facebook token.
         var processors = targetCode.ToLowerInvariant() switch
         {
             "facebook" => new[] { "facebook", "instagram" },
-            "instagram" => new[] { "instagram", "instagram_login", "facebook" },
+            "instagram" or "instagram_login" => new[] { "instagram" },
             "whatsapp" => new[] { "whatsapp" },
-            _ => new[] { "instagram", "instagram_login", "facebook", "whatsapp" }
+            _ => Array.Empty<string>()
         };
 
         WebhookProcessResult? last = null;
