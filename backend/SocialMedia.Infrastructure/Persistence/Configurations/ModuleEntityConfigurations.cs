@@ -82,7 +82,7 @@ public class IntegrationMediaConfiguration : IEntityTypeConfiguration<Integratio
     {
         builder.ToTable("IntegrationMedia");
         builder.HasKey(x => x.Id);
-        builder.Property(x => x.Url).IsRequired().HasMaxLength(4000);
+        builder.Property(x => x.Url).IsRequired();
         builder.HasOne(x => x.Post).WithMany(x => x.MediaItems).HasForeignKey(x => x.PostId).OnDelete(DeleteBehavior.Cascade);
     }
 }
@@ -250,7 +250,7 @@ public class AppConnectionMediaConfiguration : IEntityTypeConfiguration<AppConne
     {
         builder.ToTable("AppConnectionMedia");
         builder.HasKey(x => x.Id);
-        builder.Property(x => x.Url).IsRequired().HasMaxLength(4000);
+        builder.Property(x => x.Url).IsRequired();
         builder.HasOne(x => x.Post).WithMany(x => x.MediaItems).HasForeignKey(x => x.PostId).OnDelete(DeleteBehavior.Cascade);
     }
 }
@@ -418,7 +418,7 @@ public class DeveloperAppMediaConfiguration : IEntityTypeConfiguration<Developer
     {
         builder.ToTable("DeveloperAppMedia");
         builder.HasKey(x => x.Id);
-        builder.Property(x => x.Url).IsRequired().HasMaxLength(4000);
+        builder.Property(x => x.Url).IsRequired();
         builder.HasOne(x => x.Post).WithMany(x => x.MediaItems).HasForeignKey(x => x.PostId).OnDelete(DeleteBehavior.Cascade);
     }
 }

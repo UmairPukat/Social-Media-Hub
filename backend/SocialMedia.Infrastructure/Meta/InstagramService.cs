@@ -543,6 +543,17 @@ public class InstagramService : IInstagramService
             best ??= fromFeed;
         }
 
+        if (!HasPicture(best) && !string.IsNullOrWhiteSpace(best?.Permalink))
+        {
+            var oembed = await FetchOEmbedThumbnailAsync(
+                accessToken, best!.Permalink!, connectionType, cancellationToken);
+            if (!string.IsNullOrWhiteSpace(oembed))
+            {
+                best.ThumbnailUrl = oembed;
+                return best;
+            }
+        }
+
         return best;
     }
 
@@ -667,6 +678,40 @@ public class InstagramService : IInstagramService
             catch (Exception ex)
             {
                 LogApiDecision(ownerId, connectionType, "ListMedia", success: false, metaError: ex.Message);
+            }
+        }
+
+        return null;
+    }
+
+    private async Task<string?> FetchOEmbedThumbnailAsync(
+        string accessToken,
+        string permalink,
+        InstagramConnectionType connectionType,
+        CancellationToken cancellationToken)
+    {
+        foreach (var host in HostOrder(connectionType))
+        {
+            foreach (var path in new[] { "instagram_oembed", "oembed" })
+            {
+                try
+                {
+                    using var doc = await GetGraphJsonAsync(
+                        host,
+                        path,
+                        accessToken,
+                        "thumbnail_url",
+                        cancellationToken,
+                        ("url", permalink));
+                    var thumbnail = ReadGraphUrl(doc.RootElement, "thumbnail_url")
+                                    ?? ReadGraphUrl(doc.RootElement, "thumbnail_url_www");
+                    if (!string.IsNullOrWhiteSpace(thumbnail))
+                        return thumbnail;
+                }
+                catch (Exception ex)
+                {
+                    LogApiDecision(null, host, "OEmbed", success: false, metaError: ex.Message);
+                }
             }
         }
 

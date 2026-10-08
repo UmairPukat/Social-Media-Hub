@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using SocialMedia.Application.Catalog;
 using SocialMedia.Application.DTOs.Common;
 using SocialMedia.Application.DTOs.Inbox;
@@ -18,6 +19,7 @@ public class InboxService : IInboxService
     private readonly IYouTubeService _youTubeService;
     private readonly IInboxRealtimeNotifier _inboxRealtime;
     private readonly IPublishMediaCacheService _mediaCache;
+    private readonly ILogger<InboxService> _logger;
 
     public InboxService(
         IProcessDataStoreFactory processData,
@@ -26,7 +28,8 @@ public class InboxService : IInboxService
         IWhatsAppService whatsAppService,
         IYouTubeService youTubeService,
         IInboxRealtimeNotifier inboxRealtime,
-        IPublishMediaCacheService mediaCache)
+        IPublishMediaCacheService mediaCache,
+        ILogger<InboxService> logger)
     {
         _processData = processData;
         _facebookService = facebookService;
@@ -35,6 +38,7 @@ public class InboxService : IInboxService
         _youTubeService = youTubeService;
         _inboxRealtime = inboxRealtime;
         _mediaCache = mediaCache;
+        _logger = logger;
     }
 
     public async Task<ApiResponse<IReadOnlyList<InboxItemDto>>> GetInboxAsync(
@@ -356,9 +360,12 @@ public class InboxService : IInboxService
 
                 await MetaPostMediaWriter.ApplySnapshotAsync(store, row.Post, snapshot, cancellationToken);
             }
-            catch
+            catch (Exception ex)
             {
-                // Inbox still returns the comment text if Graph media is unavailable.
+                _logger.LogWarning(
+                    ex,
+                    "Could not persist Instagram/Facebook post media for ExternalPostId {PostId}.",
+                    row.Post.ExternalPostId);
             }
         }
     }

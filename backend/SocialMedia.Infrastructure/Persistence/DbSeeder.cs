@@ -543,7 +543,10 @@ public static class DbSeeder
             try
             {
                 await db.Database.ExecuteSqlRawAsync($"""
-                    ALTER TABLE "{table}" ALTER COLUMN "Url" TYPE character varying(4000);
+                    ALTER TABLE "{table}" ALTER COLUMN "Url" TYPE text;
+                    """);
+                await db.Database.ExecuteSqlRawAsync($"""
+                    ALTER TABLE "{table}" ALTER COLUMN "Thumbnail" TYPE text;
                     """);
             }
             catch
