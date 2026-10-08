@@ -110,7 +110,7 @@ public static class DbSeeder
 
         await ModuleSchemaEnsurer.EnsureAsync(db, logger);
         await ModuleTableMigration.MigrateAndDropLegacyAsync(db, logger);
-        await EnsureMediaUrlLengthAsync(db);
+        await EnsureMediaUrlLengthAsync(db, logger);
         await EnsureMultiSocialAccountPerPlatformIndexAsync(db, logger);
         await SeedModulePlatformsAsync(db);
         await db.SaveChangesAsync();
@@ -536,7 +536,7 @@ public static class DbSeeder
         }
     }
 
-    private static async Task EnsureMediaUrlLengthAsync(AppDbContext db)
+    private static async Task EnsureMediaUrlLengthAsync(AppDbContext db, ILogger? logger)
     {
         foreach (var table in new[] { "IntegrationMedia", "AppConnectionMedia", "DeveloperAppMedia" })
         {
@@ -548,10 +548,11 @@ public static class DbSeeder
                 await db.Database.ExecuteSqlRawAsync($"""
                     ALTER TABLE "{table}" ALTER COLUMN "Thumbnail" TYPE text;
                     """);
+                logger?.LogInformation("Widened {Table}.Url/Thumbnail to text for Instagram CDN URLs.", table);
             }
-            catch
+            catch (Exception ex)
             {
-                // Table may not exist yet in a fresh database.
+                logger?.LogWarning(ex, "Could not widen {Table}.Url/Thumbnail.", table);
             }
         }
     }

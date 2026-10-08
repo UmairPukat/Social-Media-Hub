@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using SocialMedia.Application.Catalog;
 using SocialMedia.Application.DTOs.Inbox;
 using SocialMedia.Application.DTOs.Meta;
 using SocialMedia.Application.Interfaces;
@@ -569,29 +570,147 @@ public class InstagramService : IInstagramService
         RemotePostSnapshot? best = null;
         foreach (var host in HostOrder(connectionType))
         {
-            foreach (var fields in new[] { InstagramMediaPictureFields, InstagramMediaPictureFieldsWithChildren })
+            foreach (var fields in new[]
+                     {
+                         InstagramMediaPictureFields,
+                         InstagramMediaPictureFieldsWithChildren,
+                         "id,media_url,thumbnail_url,media_type,permalink"
+                     })
             {
-                try
-                {
-                    using var doc = await GetGraphJsonAsync(
-                        host, mediaId, accessToken, fields, cancellationToken);
-                    var snapshot = ParseMediaSnapshot(doc.RootElement, mediaId);
-                    if (snapshot is null)
-                        continue;
+                var result = host == InstagramConnectionType.InstagramLogin
+                    ? await _graph.TryGetInstagramAsync(
+                        InstagramLoginGraphVersion, mediaId, accessToken, cancellationToken, ("fields", fields))
+                    : await _graph.TryGetFacebookAsync(
+                        GraphVersion, mediaId, accessToken, cancellationToken, ("fields", fields));
 
-                    LogApiDecision(null, host, "GetPost", success: true);
-                    if (HasPicture(snapshot))
-                        return snapshot;
-                    best ??= snapshot;
-                }
-                catch (Exception ex)
+                await LogPostGraphAsync(mediaId, host, mediaId, result, cancellationToken);
+
+                if (result.Status is < 200 or >= 300)
                 {
-                    LogApiDecision(null, host, "GetPost", success: false, metaError: ex.Message);
+                    LogApiDecision(null, host, "GetPost", success: false, metaError: result.Body);
+                    continue;
                 }
+
+                using var doc = ParseGraphBody(result.Body);
+                if (doc is null)
+                    continue;
+
+                var snapshot = ParseMediaSnapshot(doc.RootElement, mediaId)
+                               ?? SnapshotFromAnyCdnUrl(doc.RootElement, mediaId);
+                if (snapshot is null)
+                    continue;
+
+                LogApiDecision(null, host, "GetPost", success: true);
+                if (HasPicture(snapshot))
+                    return snapshot;
+                best ??= snapshot;
             }
         }
 
         return best;
+    }
+
+    private async Task LogPostGraphAsync(
+        string mediaId,
+        InstagramConnectionType host,
+        string path,
+        MetaGraphClient.GraphGetResult result,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var store = _store ?? _processData.ForMenu(
+                string.IsNullOrWhiteSpace(_menuType) ? MenuTypes.Integration : _menuType);
+            var log = store.NewWebhookLog();
+            log.PlatformCode = host == InstagramConnectionType.InstagramLogin
+                ? InstagramConnectionResolver.InstagramLoginPlatformCode
+                : InstagramConnectionResolver.FacebookLoginPlatformCode;
+            log.PayloadJson = JsonSerializer.Serialize(new
+            {
+                kind = "instagram_post_graph",
+                mediaId,
+                host = host == InstagramConnectionType.InstagramLogin
+                    ? "graph.instagram.com"
+                    : "graph.facebook.com",
+                path,
+                status = result.Status,
+                url = result.Url,
+                body = TryParseLogJson(result.Body)
+            });
+            log.ReceivedAt = DateTime.UtcNow;
+            await store.AddWebhookLogAsync(log, cancellationToken);
+            await store.SaveChangesAsync(cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Could not write Instagram post Graph payload for {MediaId}", mediaId);
+        }
+    }
+
+    private static object TryParseLogJson(string body)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(body);
+            return JsonSerializer.Deserialize<object>(doc.RootElement.GetRawText()) ?? body;
+        }
+        catch (JsonException)
+        {
+            return body;
+        }
+    }
+
+    private static JsonDocument? ParseGraphBody(string body)
+    {
+        try
+        {
+            return JsonDocument.Parse(body);
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    private static RemotePostSnapshot? SnapshotFromAnyCdnUrl(JsonElement root, string mediaId)
+    {
+        var urls = new List<string>();
+        CollectCdnUrls(root, urls);
+        var picture = urls.FirstOrDefault();
+        if (string.IsNullOrWhiteSpace(picture))
+            return null;
+
+        return new RemotePostSnapshot
+        {
+            ExternalId = mediaId,
+            MediaUrl = picture,
+            ThumbnailUrl = urls.Skip(1).FirstOrDefault()
+        };
+    }
+
+    private static void CollectCdnUrls(JsonElement element, List<string> urls)
+    {
+        switch (element.ValueKind)
+        {
+            case JsonValueKind.String:
+                var value = element.GetString();
+                if (!string.IsNullOrWhiteSpace(value)
+                    && value.StartsWith("http", StringComparison.OrdinalIgnoreCase)
+                    && (value.Contains("cdninstagram", StringComparison.OrdinalIgnoreCase)
+                        || value.Contains("scontent", StringComparison.OrdinalIgnoreCase)
+                        || value.Contains("fbcdn", StringComparison.OrdinalIgnoreCase)
+                        || value.Contains("/publish-cache/", StringComparison.OrdinalIgnoreCase)))
+                    urls.Add(value);
+                break;
+            case JsonValueKind.Object:
+                foreach (var property in element.EnumerateObject())
+                    CollectCdnUrls(property.Value, urls);
+                break;
+            case JsonValueKind.Array:
+                foreach (var item in element.EnumerateArray())
+                    CollectCdnUrls(item, urls);
+                break;
+        }
     }
 
     private async Task<RemotePostSnapshot?> FetchMediaFromCommentAsync(
@@ -609,12 +728,21 @@ public class InstagramService : IInstagramService
         {
             try
             {
-                using var doc = await GetGraphJsonAsync(
-                    connectionType, commentId, accessToken, fields, cancellationToken);
-                if (!doc.RootElement.TryGetProperty("media", out var media))
+                var result = connectionType == InstagramConnectionType.InstagramLogin
+                    ? await _graph.TryGetInstagramAsync(
+                        InstagramLoginGraphVersion, commentId, accessToken, cancellationToken, ("fields", fields))
+                    : await _graph.TryGetFacebookAsync(
+                        GraphVersion, commentId, accessToken, cancellationToken, ("fields", fields));
+                await LogPostGraphAsync(mediaId, connectionType, commentId, result, cancellationToken);
+                if (result.Status is < 200 or >= 300)
                     continue;
 
-                var snapshot = ParseMediaSnapshot(media, mediaId);
+                using var doc = ParseGraphBody(result.Body);
+                if (doc is null || !doc.RootElement.TryGetProperty("media", out var media))
+                    continue;
+
+                var snapshot = ParseMediaSnapshot(media, mediaId)
+                               ?? SnapshotFromAnyCdnUrl(media, mediaId);
                 if (HasPicture(snapshot))
                     return snapshot;
                 if (snapshot is not null)
@@ -777,8 +905,17 @@ public class InstagramService : IInstagramService
 
         var mediaType = ReadGraphString(root, "media_type");
         var productType = ReadGraphString(root, "media_product_type");
-        var mediaUrl = ReadGraphUrl(root, "media_url");
-        var thumbnailUrl = ReadGraphUrl(root, "thumbnail_url");
+        var mediaUrl = FirstNonEmpty(
+            ReadGraphUrl(root, "media_url"),
+            ReadGraphUrl(root, "url"),
+            ReadGraphUrl(root, "uri"),
+            ReadGraphUrl(root, "src"),
+            ReadNestedUrl(root, "image", "url"),
+            ReadNestedUrl(root, "picture", "url"));
+        var thumbnailUrl = FirstNonEmpty(
+            ReadGraphUrl(root, "thumbnail_url"),
+            ReadGraphUrl(root, "thumbnail"),
+            ReadNestedUrl(root, "image", "src"));
 
         if (string.IsNullOrWhiteSpace(mediaUrl) &&
             string.IsNullOrWhiteSpace(thumbnailUrl) &&
@@ -1322,6 +1459,11 @@ public class InstagramService : IInstagramService
                 enriched?.Message,
                 MetaWebhookPayloadNormalizer.ReadCommentText(value)) ?? string.Empty;
 
+            var webhookPost = value.TryGetProperty("media", out var webhookMedia)
+                ? ParseMediaSnapshot(webhookMedia, mediaId!)
+                : null;
+            var knownPost = HasPicture(enriched?.Post) ? enriched!.Post : (webhookPost ?? enriched?.Post);
+
             var post = await ResolveInstagramPostAsync(
                 profile,
                 account,
@@ -1329,8 +1471,26 @@ public class InstagramService : IInstagramService
                 mediaId!,
                 enriched?.CreatedTime ?? UnixSeconds(entry, "time") ?? DateTime.UtcNow,
                 commentId,
-                enriched?.Post,
+                knownPost,
                 cancellationToken);
+
+            var tokens = await ResolveAccessTokensAsync(account, connectionType, cancellationToken);
+            foreach (var token in tokens)
+            {
+                var picture = await GetOwnedMediaSnapshotAsync(
+                    token,
+                    mediaId!,
+                    connectionType,
+                    commentId,
+                    profile.ExternalProfileId,
+                    profile.MetadataJson,
+                    cancellationToken);
+                if (picture is null)
+                    continue;
+                await MetaPostMediaWriter.ApplySnapshotAsync(_store!, post, picture, cancellationToken);
+                if (HasPicture(picture) || ProcessEntityNav.HasDisplayableMedia(post))
+                    break;
+            }
 
             var existing = await _store!.GetCommentByExternalIdAsync(commentId, cancellationToken);
             if (existing is not null)
@@ -1451,6 +1611,13 @@ public class InstagramService : IInstagramService
         }
 
         return null;
+    }
+
+    private static string? ReadNestedUrl(JsonElement parent, string objectName, string urlName)
+    {
+        if (!parent.TryGetProperty(objectName, out var nested) || nested.ValueKind != JsonValueKind.Object)
+            return null;
+        return ReadGraphUrl(nested, urlName);
     }
 
     private async Task ProcessMessagesAsync(

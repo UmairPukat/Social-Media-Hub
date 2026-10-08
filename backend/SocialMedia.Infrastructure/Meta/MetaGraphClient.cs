@@ -130,6 +130,8 @@ public class MetaGraphClient
             ? url.GetString()
             : null;
 
+    public readonly record struct GraphGetResult(int Status, string Body, string Url);
+
     public async Task<JsonDocument> GetInstagramAsync(
         string version,
         string path,
@@ -139,6 +141,58 @@ public class MetaGraphClient
     {
         var url = BuildUrl(InstagramGraphHost, version, path, accessToken, query);
         return await GetUrlAsync(url, cancellationToken);
+    }
+
+    /// <summary>
+    /// GET that never throws: returns status and raw body so callers can log Graph payloads
+    /// and retry with a Bearer header when the query-string token is rejected.
+    /// </summary>
+    public Task<GraphGetResult> TryGetFacebookAsync(
+        string version,
+        string path,
+        string accessToken,
+        CancellationToken cancellationToken,
+        params (string Key, string Value)[] query)
+        => TryGetRawAsync(FacebookGraphHost, version, path, accessToken, cancellationToken, query);
+
+    public Task<GraphGetResult> TryGetInstagramAsync(
+        string version,
+        string path,
+        string accessToken,
+        CancellationToken cancellationToken,
+        params (string Key, string Value)[] query)
+        => TryGetRawAsync(InstagramGraphHost, version, path, accessToken, cancellationToken, query);
+
+    private async Task<GraphGetResult> TryGetRawAsync(
+        string host,
+        string version,
+        string path,
+        string accessToken,
+        CancellationToken cancellationToken,
+        params (string Key, string Value)[] query)
+    {
+        var url = BuildUrl(host, version, path, accessToken, query);
+        var first = await SendGetAsync(url, null, cancellationToken);
+        if (first.Status is >= 200 and < 300)
+            return first;
+
+        var bearerUrl = BuildUrl(host, version, path, string.Empty, query);
+        var second = await SendGetAsync(bearerUrl, accessToken, cancellationToken);
+        return second.Status is >= 200 and < 300 ? second : first;
+    }
+
+    private async Task<GraphGetResult> SendGetAsync(
+        string url,
+        string? bearerToken,
+        CancellationToken cancellationToken)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, url);
+        if (!string.IsNullOrWhiteSpace(bearerToken))
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        return new GraphGetResult((int)response.StatusCode, body, url.Split('?')[0]);
     }
 
     public async Task<JsonDocument> GetInstagramTokenAsync(
