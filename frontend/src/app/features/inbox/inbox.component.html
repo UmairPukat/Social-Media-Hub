@@ -61,7 +61,7 @@
               (click)="selectCommentThread(thread)">
               <div class="thumb">
                 @if (thread.post.postImageUrl) {
-                  <img [src]="thread.post.postImageUrl" alt="" referrerpolicy="no-referrer" />
+                  <img [src]="mediaSrc(thread.post.postImageUrl)" alt="" referrerpolicy="no-referrer" />
                 } @else {
                   <mat-icon>image</mat-icon>
                 }
@@ -148,14 +148,14 @@
               <div class="post-media">
                 @if (thread.post.postVideoUrl) {
                   <video
-                    [src]="thread.post.postVideoUrl"
-                    [poster]="thread.post.postImageUrl || null"
+                    [src]="mediaSrc(thread.post.postVideoUrl)"
+                    [poster]="mediaSrc(thread.post.postImageUrl) || null"
                     referrerpolicy="no-referrer"
                     controls
                     playsinline></video>
                 } @else {
                   <img
-                    [src]="thread.post.postImageUrl"
+                    [src]="mediaSrc(thread.post.postImageUrl)"
                     [alt]="thread.post.pageName"
                     referrerpolicy="no-referrer" />
                 }

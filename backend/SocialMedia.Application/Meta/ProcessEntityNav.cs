@@ -70,8 +70,8 @@ public static class ProcessEntityNav
         if (media is null)
             return null;
 
-        if (media.MediaType == MediaType.Video)
-            return FirstNonEmpty(media.Thumbnail, LooksLikeVideo(media.Url) ? null : media.Url);
+        if (media.MediaType == MediaType.Video || LooksLikeVideo(media.Url))
+            return FirstNonEmpty(media.Thumbnail, LooksLikeImage(media.Url) ? media.Url : null);
 
         return FirstNonEmpty(media.Url, media.Thumbnail);
     }
@@ -79,10 +79,12 @@ public static class ProcessEntityNav
     public static string? FirstVideoUrl(PostEntityBase post)
     {
         var media = FirstMedia(post);
-        if (media is null || media.MediaType != MediaType.Video)
+        if (media is null)
             return null;
 
-        return LooksLikeVideo(media.Url) ? media.Url : null;
+        return media.MediaType == MediaType.Video || LooksLikeVideo(media.Url)
+            ? (LooksLikeVideo(media.Url) ? media.Url : null)
+            : null;
     }
 
     public static bool HasDisplayableMedia(PostEntityBase post)
@@ -100,8 +102,15 @@ public static class ProcessEntityNav
     private static bool LooksLikeVideo(string? url)
         => !string.IsNullOrWhiteSpace(url)
            && (url.Contains(".mp4", StringComparison.OrdinalIgnoreCase)
-               || url.Contains(".mov", StringComparison.OrdinalIgnoreCase)
-               || url.Contains("video", StringComparison.OrdinalIgnoreCase));
+               || url.Contains(".mov", StringComparison.OrdinalIgnoreCase));
+
+    private static bool LooksLikeImage(string? url)
+        => !string.IsNullOrWhiteSpace(url)
+           && (url.Contains(".jpg", StringComparison.OrdinalIgnoreCase)
+               || url.Contains(".jpeg", StringComparison.OrdinalIgnoreCase)
+               || url.Contains(".png", StringComparison.OrdinalIgnoreCase)
+               || url.Contains(".webp", StringComparison.OrdinalIgnoreCase)
+               || url.Contains("/publish-cache/", StringComparison.OrdinalIgnoreCase));
 
     private static string? FirstNonEmpty(params string?[] values)
         => values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));

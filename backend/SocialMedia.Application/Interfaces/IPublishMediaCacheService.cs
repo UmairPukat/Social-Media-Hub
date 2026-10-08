@@ -10,4 +10,7 @@ public interface IPublishMediaCacheService
         string? fileName,
         string? contentType,
         CancellationToken cancellationToken = default);
+
+    /// <summary>Downloads a remote Graph/CDN image so Inbox can render it from this API.</summary>
+    Task<string?> StoreFromRemoteAsync(string remoteUrl, CancellationToken cancellationToken = default);
 }

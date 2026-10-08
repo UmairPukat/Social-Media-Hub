@@ -8,8 +8,12 @@ public sealed class PublishMediaCacheService : IPublishMediaCacheService
 {
     private readonly string _cacheDirectory;
     private readonly string _publicBaseUrl;
+    private readonly IHttpClientFactory _httpClientFactory;
 
-    public PublishMediaCacheService(IConfiguration configuration, IHostEnvironment environment)
+    public PublishMediaCacheService(
+        IConfiguration configuration,
+        IHostEnvironment environment,
+        IHttpClientFactory httpClientFactory)
     {
         _cacheDirectory = Path.Combine(environment.ContentRootPath, "publish-cache");
         Directory.CreateDirectory(_cacheDirectory);
@@ -17,6 +21,7 @@ public sealed class PublishMediaCacheService : IPublishMediaCacheService
         _publicBaseUrl = FirstNonEmpty(
             configuration["BackendBaseUrl"],
             configuration["backendBaseUrl"])?.TrimEnd('/') ?? string.Empty;
+        _httpClientFactory = httpClientFactory;
     }
 
     public async Task<string> StoreAsync(
@@ -41,6 +46,56 @@ public sealed class PublishMediaCacheService : IPublishMediaCacheService
 
         return $"{_publicBaseUrl}/publish-cache/{storedName}";
     }
+
+    public async Task<string?> StoreFromRemoteAsync(string remoteUrl, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(remoteUrl) || IsLocalCacheUrl(remoteUrl))
+            return remoteUrl;
+
+        try
+        {
+            var client = _httpClientFactory.CreateClient();
+            using var response = await client.GetAsync(remoteUrl, cancellationToken);
+            if (!response.IsSuccessStatusCode)
+                return null;
+
+            await using var stream = new MemoryStream();
+            await response.Content.CopyToAsync(stream, cancellationToken);
+            if (stream.Length == 0)
+                return null;
+
+            stream.Position = 0;
+            var contentType = response.Content.Headers.ContentType?.MediaType;
+            var fileName = Path.GetFileName(new Uri(remoteUrl).AbsolutePath);
+            return await StoreInboxAsync(stream, fileName, contentType, cancellationToken);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private async Task<string> StoreInboxAsync(
+        Stream mediaStream,
+        string? fileName,
+        string? contentType,
+        CancellationToken cancellationToken)
+    {
+        var extension = ResolveExtension(fileName, contentType);
+        var storedName = $"{Guid.NewGuid():N}{extension}";
+        var path = Path.Combine(_cacheDirectory, storedName);
+
+        mediaStream.Position = 0;
+        await using (var file = File.Create(path))
+            await mediaStream.CopyToAsync(file, cancellationToken);
+
+        return string.IsNullOrWhiteSpace(_publicBaseUrl)
+            ? $"/publish-cache/{storedName}"
+            : $"{_publicBaseUrl}/publish-cache/{storedName}";
+    }
+
+    private static bool IsLocalCacheUrl(string url)
+        => url.Contains("/publish-cache/", StringComparison.OrdinalIgnoreCase);
 
     private static string ResolveExtension(string? fileName, string? contentType)
     {

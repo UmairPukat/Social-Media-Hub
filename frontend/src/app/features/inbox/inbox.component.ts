@@ -15,6 +15,7 @@ import {
   InboxPostMeta,
   PLATFORM_COLORS
 } from '../../core/models/api.models';
+import { environment } from '../../../environments/environment';
 
 export interface MessageConversation {
   key: string;
@@ -526,6 +527,14 @@ export class InboxComponent implements OnInit, OnDestroy {
 
   color(code: string): string {
     return this.colors[code?.toLowerCase()] || '#64748B';
+  }
+
+  mediaSrc(url?: string | null): string {
+    if (!url) return '';
+    if (url.startsWith('/publish-cache/')) {
+      return `${environment.apiUrl.replace(/\/api\/?$/, '')}${url}`;
+    }
+    return url;
   }
 
   platformIcon(code: string): string {
