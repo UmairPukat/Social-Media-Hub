@@ -410,6 +410,7 @@ export class InboxComponent implements OnInit, OnDestroy {
         this.items.set(items);
         this.banner.set('');
         this.autoSelectFirst();
+        this.hydrateInstagramMedia(items);
       },
       error: () => {
         this.items.set([]);
@@ -417,6 +418,52 @@ export class InboxComponent implements OnInit, OnDestroy {
         this.autoSelectFirst();
       }
     });
+  }
+
+  private hydrateInstagramMedia(items: InboxItem[]): void {
+    const seen = new Set<string>();
+    for (const item of items) {
+      if (item.itemKind !== 'comment' || !this.matchesPlatform(item.platformCode, 'instagram') || !item.post?.postId) {
+        continue;
+      }
+      if (this.isDisplayableInboxImage(item.post.postImageUrl)) {
+        continue;
+      }
+
+      const menu = (item.menuType || this.processRoute.currentMenuType()) as ProcessMenuType;
+      const key = `${menu}:${item.post.postId}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      this.loadInboxPostImage(menu, item.post.postId);
+    }
+  }
+
+  hydratePostMedia(thread: CommentPostThread): void {
+    if (!thread.post?.postId) return;
+    const menu = (thread.menuType ?? this.processRoute.currentMenuType()) as ProcessMenuType;
+    this.loadInboxPostImage(menu, thread.post.postId);
+  }
+
+  private loadInboxPostImage(menu: ProcessMenuType, postId: string): void {
+    this.processApi.getInboxMedia(menu, postId).subscribe({
+      next: blob => {
+        if (!blob?.size || blob.type.includes('json')) return;
+        const url = URL.createObjectURL(blob);
+        this.items.update(list => list.map(entry => {
+          if (entry.post?.postId !== postId) return entry;
+          return { ...entry, post: { ...entry.post, postImageUrl: url } };
+        }));
+      },
+      error: () => undefined
+    });
+  }
+
+  private isDisplayableInboxImage(url?: string | null): boolean {
+    if (!url) return false;
+    if (url.startsWith('blob:') || url.startsWith('/publish-cache/') || url.includes('/publish-cache/')) {
+      return true;
+    }
+    return !/cdninstagram\.com|instagram\.f|\/t51\./i.test(url);
   }
 
   private autoSelectFirst(): void {

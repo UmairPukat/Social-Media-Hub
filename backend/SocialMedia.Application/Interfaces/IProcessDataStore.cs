@@ -56,6 +56,7 @@ public interface IProcessDataStore
     Task<PostEntityBase?> FindPostByExternalIdAsync(string externalPostId, CancellationToken cancellationToken = default);
     Task AddPostAsync(PostEntityBase post, CancellationToken cancellationToken = default);
     Task AddMediaAsync(MediaEntityBase media, CancellationToken cancellationToken = default);
+    void UpdateMedia(MediaEntityBase media);
     void UpdatePost(PostEntityBase post);
     void RemovePost(PostEntityBase post);
     void RemovePostById(Guid postId);

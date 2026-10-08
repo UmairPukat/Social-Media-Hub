@@ -61,7 +61,7 @@
               (click)="selectCommentThread(thread)">
               <div class="thumb">
                 @if (thread.post.postImageUrl) {
-                  <img [src]="mediaSrc(thread.post.postImageUrl)" alt="" referrerpolicy="no-referrer" />
+                  <img [src]="mediaSrc(thread.post.postImageUrl)" alt="" referrerpolicy="no-referrer" (error)="hydratePostMedia(thread)" />
                 } @else {
                   <mat-icon>image</mat-icon>
                 }
@@ -157,7 +157,8 @@
                   <img
                     [src]="mediaSrc(thread.post.postImageUrl)"
                     [alt]="thread.post.pageName"
-                    referrerpolicy="no-referrer" />
+                    referrerpolicy="no-referrer"
+                    (error)="hydratePostMedia(thread)" />
                 }
               </div>
             }

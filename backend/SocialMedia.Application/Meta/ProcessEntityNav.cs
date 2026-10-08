@@ -88,8 +88,27 @@ public static class ProcessEntityNav
     }
 
     public static bool HasDisplayableMedia(PostEntityBase post)
-        => !string.IsNullOrWhiteSpace(FirstMediaUrl(post))
-           || !string.IsNullOrWhiteSpace(FirstVideoUrl(post));
+        => IsBrowserDisplayableUrl(FirstMediaUrl(post))
+           || IsBrowserDisplayableUrl(FirstVideoUrl(post));
+
+    /// <summary>
+    /// Facebook <c>full_picture</c> URLs render in an img tag. Instagram Login <c>media_url</c>
+    /// (cdninstagram) is hotlink-blocked, so Inbox must serve a local copy instead.
+    /// </summary>
+    public static bool IsBrowserDisplayableUrl(string? url)
+    {
+        if (string.IsNullOrWhiteSpace(url))
+            return false;
+        if (url.Contains("/publish-cache/", StringComparison.OrdinalIgnoreCase))
+            return true;
+        return !LooksLikeInstagramCdn(url);
+    }
+
+    public static bool LooksLikeInstagramCdn(string? url)
+        => !string.IsNullOrWhiteSpace(url)
+           && (url.Contains("cdninstagram.com", StringComparison.OrdinalIgnoreCase)
+               || url.Contains("instagram.f", StringComparison.OrdinalIgnoreCase)
+               || url.Contains("/t51.", StringComparison.OrdinalIgnoreCase));
 
     public static int MediaCount(PostEntityBase post) => post switch
     {

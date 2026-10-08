@@ -541,6 +541,22 @@ public sealed class ProcessDataStore : IProcessDataStore
         }
     }
 
+    public void UpdateMedia(MediaEntityBase media)
+    {
+        switch (_menuType)
+        {
+            case MenuTypes.AppConnection:
+                UpdateTracked(_context.AppConnectionMedia, (AppConnectionMedia)media);
+                break;
+            case MenuTypes.DeveloperApp:
+                UpdateTracked(_context.DeveloperAppMedia, (DeveloperAppMedia)media);
+                break;
+            default:
+                UpdateTracked(_context.IntegrationMedia, (IntegrationMedia)media);
+                break;
+        }
+    }
+
     public void UpdatePost(PostEntityBase post)
     {
         switch (_menuType)

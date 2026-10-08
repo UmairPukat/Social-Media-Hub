@@ -86,12 +86,29 @@ public static class MetaPostMediaWriter
         RemotePostSnapshot? snapshot,
         CancellationToken cancellationToken = default)
     {
-        if (snapshot is null || ProcessEntityNav.HasDisplayableMedia(post))
+        if (snapshot is null)
             return false;
 
         var url = FirstNonEmpty(snapshot.MediaUrl, snapshot.ThumbnailUrl);
         if (string.IsNullOrWhiteSpace(url))
             return false;
+
+        var existing = ProcessEntityNav.FirstMedia(post);
+        if (existing is not null)
+        {
+            if (ProcessEntityNav.IsBrowserDisplayableUrl(existing.Url)
+                && ProcessEntityNav.IsBrowserDisplayableUrl(FirstNonEmpty(existing.Thumbnail, existing.Url))
+                && string.Equals(existing.Url, url, StringComparison.Ordinal))
+                return false;
+
+            existing.Url = url;
+            existing.Thumbnail = snapshot.ThumbnailUrl;
+            existing.MediaType = snapshot.IsVideo ? MediaType.Video : MediaType.Image;
+            existing.ExternalMediaId = snapshot.ExternalId ?? existing.ExternalMediaId;
+            store.UpdateMedia(existing);
+            await store.SaveChangesAsync(cancellationToken);
+            return true;
+        }
 
         var media = store.NewMedia();
         media.PostId = post.Id;

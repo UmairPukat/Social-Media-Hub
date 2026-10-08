@@ -410,6 +410,8 @@ public class InstagramService : IInstagramService
 
     /// <summary>Instagram <c>media_url</c> is the same field Facebook Inbox uses as <c>full_picture</c>.</summary>
     private const string InstagramMediaPictureFields =
+        "id,caption,media_type,media_url,thumbnail_url,permalink,timestamp";
+    private const string InstagramMediaPictureFieldsWithChildren =
         "id,caption,media_type,media_url,thumbnail_url,permalink,timestamp,children{id,media_type,media_url,thumbnail_url}";
 
     public async Task<RemotePostSnapshot?> GetMediaSnapshotAsync(
@@ -418,27 +420,8 @@ public class InstagramService : IInstagramService
         InstagramConnectionType connectionType = InstagramConnectionType.FacebookLogin,
         CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(accessToken) || string.IsNullOrWhiteSpace(mediaId))
-            return null;
-
-        try
-        {
-            using var doc = connectionType == InstagramConnectionType.InstagramLogin
-                ? await _graph.GetInstagramAsync(
-                    InstagramLoginGraphVersion, mediaId, accessToken, cancellationToken,
-                    ("fields", InstagramMediaPictureFields))
-                : await _graph.GetAsync(
-                    GraphVersion, mediaId, accessToken, cancellationToken,
-                    ("fields", InstagramMediaPictureFields));
-
-            LogApiDecision(null, connectionType, "GetPost", success: true);
-            return ParseMediaSnapshot(doc.RootElement, mediaId);
-        }
-        catch (Exception ex)
-        {
-            LogApiDecision(null, connectionType, "GetPost", success: false, metaError: ex.Message);
-            return null;
-        }
+        var snapshot = await FetchMediaSnapshotAsync(accessToken, mediaId, connectionType, cancellationToken);
+        return await LocalizeSnapshotMediaAsync(snapshot, cancellationToken);
     }
 
     public async Task<RemotePostSnapshot?> GetOwnedMediaSnapshotAsync(
@@ -451,17 +434,21 @@ public class InstagramService : IInstagramService
         CancellationToken cancellationToken = default)
         => await GetMediaSnapshotAsync(accessToken, mediaId, connectionType, cancellationToken);
 
-    /// <summary>Same as Facebook <c>ResolvePostAsync</c>: one token, one Graph GET, save picture URL, map comment.</summary>
+    /// <summary>
+    /// Same as Facebook <c>ResolvePostAsync</c>: Graph GET the post picture, save a URL Inbox can
+    /// render, then map the comment. Instagram Login CDN URLs are copied to publish-cache first
+    /// because the browser cannot display <c>media_url</c> the way it can Facebook <c>full_picture</c>.
+    /// </summary>
     private async Task<PostEntityBase> ResolveInstagramPostAsync(
         SocialProfileEntityBase profile,
         SocialAccountEntityBase account,
         InstagramConnectionType connectionType,
         string mediaId,
         DateTime publishedAt,
+        RemotePostSnapshot? knownPost,
         CancellationToken cancellationToken)
     {
-        var token = (await ResolveAccessTokensAsync(account, connectionType, cancellationToken))
-            .FirstOrDefault() ?? string.Empty;
+        var tokens = await ResolveAccessTokensAsync(account, connectionType, cancellationToken);
 
         return await MetaPostStore.ResolveAsync(
             _store!,
@@ -469,11 +456,96 @@ public class InstagramService : IInstagramService
             account.PlatformId,
             mediaId,
             publishedAt,
-            ct => GetMediaSnapshotAsync(token, mediaId, connectionType, ct),
+            ct => LoadInstagramPictureAsync(tokens, mediaId, connectionType, knownPost, ct),
             "Instagram post",
             requireMedia: true,
             cancellationToken: cancellationToken);
     }
+
+    private async Task<RemotePostSnapshot?> LoadInstagramPictureAsync(
+        IReadOnlyList<string> tokens,
+        string mediaId,
+        InstagramConnectionType connectionType,
+        RemotePostSnapshot? knownPost,
+        CancellationToken cancellationToken)
+    {
+        foreach (var token in tokens)
+        {
+            var snapshot = await GetMediaSnapshotAsync(token, mediaId, connectionType, cancellationToken);
+            if (HasPicture(snapshot))
+                return snapshot;
+        }
+
+        return await LocalizeSnapshotMediaAsync(knownPost, cancellationToken);
+    }
+
+    private async Task<RemotePostSnapshot?> FetchMediaSnapshotAsync(
+        string accessToken,
+        string mediaId,
+        InstagramConnectionType connectionType,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(accessToken) || string.IsNullOrWhiteSpace(mediaId))
+            return null;
+
+        foreach (var fields in new[] { InstagramMediaPictureFields, InstagramMediaPictureFieldsWithChildren })
+        {
+            try
+            {
+                using var doc = connectionType == InstagramConnectionType.InstagramLogin
+                    ? await _graph.GetInstagramAsync(
+                        InstagramLoginGraphVersion, mediaId, accessToken, cancellationToken,
+                        ("fields", fields))
+                    : await _graph.GetAsync(
+                        GraphVersion, mediaId, accessToken, cancellationToken,
+                        ("fields", fields));
+
+                var snapshot = ParseMediaSnapshot(doc.RootElement, mediaId);
+                if (snapshot is null)
+                    continue;
+
+                LogApiDecision(null, connectionType, "GetPost", success: true);
+                if (HasPicture(snapshot) || fields == InstagramMediaPictureFieldsWithChildren)
+                    return snapshot;
+            }
+            catch (Exception ex)
+            {
+                LogApiDecision(null, connectionType, "GetPost", success: false, metaError: ex.Message);
+            }
+        }
+
+        return null;
+    }
+
+    private async Task<RemotePostSnapshot?> LocalizeSnapshotMediaAsync(
+        RemotePostSnapshot? snapshot,
+        CancellationToken cancellationToken)
+    {
+        if (snapshot is null)
+            return null;
+
+        var remotePicture = snapshot.IsVideo
+            ? FirstNonEmpty(snapshot.ThumbnailUrl, snapshot.MediaUrl)
+            : FirstNonEmpty(snapshot.MediaUrl, snapshot.ThumbnailUrl);
+        if (string.IsNullOrWhiteSpace(remotePicture)
+            || ProcessEntityNav.IsBrowserDisplayableUrl(remotePicture))
+            return snapshot;
+
+        var local = await _publishMediaCache.StoreFromRemoteAsync(remotePicture, cancellationToken);
+        if (string.IsNullOrWhiteSpace(local))
+            return snapshot;
+
+        if (snapshot.IsVideo)
+            snapshot.ThumbnailUrl = local;
+        else
+            snapshot.MediaUrl = local;
+        return snapshot;
+    }
+
+    private static bool HasPicture(RemotePostSnapshot? snapshot)
+        => snapshot is not null
+           && (!string.IsNullOrWhiteSpace(snapshot.MediaUrl)
+               || !string.IsNullOrWhiteSpace(snapshot.ThumbnailUrl));
 
     private async Task<JsonDocument> GetGraphJsonAsync(
         InstagramConnectionType connectionType,
@@ -596,7 +668,7 @@ public class InstagramService : IInstagramService
             return null;
 
         const string fieldsWithPost =
-            "id,text,timestamp,username,from,like_count,parent_id,media{id,caption,media_type,media_product_type,media_url,thumbnail_url,permalink,timestamp,like_count,comments_count,children{id,media_type,media_url,thumbnail_url}}";
+            "id,text,timestamp,username,from,like_count,parent_id,media{id,caption,media_type,media_url,thumbnail_url,permalink,timestamp}";
         const string fieldsBasic = "id,text,timestamp,username,from,like_count,parent_id,media";
 
         JsonDocument? doc = null;
@@ -1050,6 +1122,7 @@ public class InstagramService : IInstagramService
                 connectionType,
                 mediaId!,
                 enriched?.CreatedTime ?? UnixSeconds(entry, "time") ?? DateTime.UtcNow,
+                enriched?.Post,
                 cancellationToken);
 
             var existing = await _store!.GetCommentByExternalIdAsync(commentId, cancellationToken);

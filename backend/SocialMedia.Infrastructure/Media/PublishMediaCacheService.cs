@@ -55,7 +55,9 @@ public sealed class PublishMediaCacheService : IPublishMediaCacheService
         try
         {
             var client = _httpClientFactory.CreateClient();
-            using var response = await client.GetAsync(remoteUrl, cancellationToken);
+            using var request = new HttpRequestMessage(HttpMethod.Get, remoteUrl);
+            request.Headers.TryAddWithoutValidation("User-Agent", "SocialHub/1.0");
+            using var response = await client.SendAsync(request, cancellationToken);
             if (!response.IsSuccessStatusCode)
                 return null;
 

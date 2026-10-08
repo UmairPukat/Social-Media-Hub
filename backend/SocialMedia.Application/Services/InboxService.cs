@@ -191,7 +191,8 @@ public class InboxService : IInboxService
 
         var platform = await store.GetPlatformByIdAsync(account.PlatformId, cancellationToken);
         var imageUrl = ProcessEntityNav.FirstMediaUrl(post);
-        if (string.IsNullOrWhiteSpace(imageUrl) && InstagramConnectionResolver.IsInstagramPlatform(platform?.Code))
+        if (InstagramConnectionResolver.IsInstagramPlatform(platform?.Code)
+            && !ProcessEntityNav.IsBrowserDisplayableUrl(imageUrl))
         {
             var auth = await store.GetSocialAuthByAccountIdAsync(account.Id, cancellationToken);
             var tokens = auth is null ? [] : CandidateTokens(auth);
