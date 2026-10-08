@@ -256,27 +256,15 @@ public class InboxService : IInboxService
                 RemotePostSnapshot? snapshot = null;
                 if (InstagramConnectionResolver.IsInstagramPlatform(row.Platform.Code))
                 {
-                    var preferred = InstagramConnectionResolver.FromProfile(row.Profile, row.Platform.Code);
-                    foreach (var connectionType in new[]
-                             {
-                                 preferred,
-                                 preferred == InstagramConnectionType.InstagramLogin
-                                     ? InstagramConnectionType.FacebookLogin
-                                     : InstagramConnectionType.InstagramLogin
-                             })
+                    var connectionType = InstagramConnectionResolver.FromProfile(row.Profile, row.Platform.Code);
+                    foreach (var token in tokens)
                     {
-                        foreach (var token in tokens)
-                        {
-                            snapshot = await _instagramService.GetMediaSnapshotAsync(
-                                token, row.Post.ExternalPostId!, connectionType, cancellationToken);
-                            if (snapshot is not null
-                                && (!string.IsNullOrWhiteSpace(snapshot.Text)
-                                    || !string.IsNullOrWhiteSpace(snapshot.MediaUrl)
-                                    || !string.IsNullOrWhiteSpace(snapshot.ThumbnailUrl)))
-                                break;
-                        }
-
-                        if (snapshot is not null)
+                        snapshot = await _instagramService.GetMediaSnapshotAsync(
+                            token, row.Post.ExternalPostId!, connectionType, cancellationToken);
+                        if (snapshot is not null
+                            && (!string.IsNullOrWhiteSpace(snapshot.Text)
+                                || !string.IsNullOrWhiteSpace(snapshot.MediaUrl)
+                                || !string.IsNullOrWhiteSpace(snapshot.ThumbnailUrl)))
                             break;
                     }
                 }

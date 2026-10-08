@@ -408,6 +408,13 @@ public class InstagramService : IInstagramService
             "Instagram is still processing the media. Wait a moment and try publishing again.");
     }
 
+    /// <summary>
+    /// Facebook equivalent of <c>full_picture</c>: Instagram <c>media_url</c> / <c>thumbnail_url</c>.
+    /// Counts are omitted so a missing permission cannot fail the whole media read.
+    /// </summary>
+    private const string InstagramMediaPictureFields =
+        "id,caption,media_type,media_url,thumbnail_url,permalink,timestamp,children{id,media_type,media_url,thumbnail_url}";
+
     public async Task<RemotePostSnapshot?> GetMediaSnapshotAsync(
         string accessToken,
         string mediaId,
@@ -417,67 +424,180 @@ public class InstagramService : IInstagramService
         if (string.IsNullOrWhiteSpace(accessToken) || string.IsNullOrWhiteSpace(mediaId))
             return null;
 
-        return await TryGetMediaSnapshotAsync(accessToken, mediaId, connectionType, cancellationToken);
+        return await GetMediaByIdAsync(accessToken, mediaId, connectionType, cancellationToken);
     }
 
-    private async Task<RemotePostSnapshot?> GetMediaSnapshotWithTokensAsync(
+    /// <summary>
+    /// Facebook pattern: one token, one Graph host, load the post (caption + picture), then store it.
+    /// Instagram Login uses graph.instagram.com only. Facebook Login Instagram uses graph.facebook.com.
+    /// </summary>
+    private async Task<PostEntityBase> ResolveInstagramPostAsync(
+        SocialProfileEntityBase profile,
+        SocialAccountEntityBase account,
+        InstagramConnectionType connectionType,
+        string mediaId,
+        DateTime publishedAt,
+        string? commentId,
+        CancellationToken cancellationToken)
+    {
+        var tokens = await ResolveAccessTokensAsync(account, connectionType, cancellationToken);
+        return await MetaPostStore.ResolveAsync(
+            _store!,
+            profile,
+            account.PlatformId,
+            mediaId,
+            publishedAt,
+            ct => FetchOwnedMediaSnapshotAsync(tokens, mediaId, commentId, profile, connectionType, ct),
+            "Instagram post",
+            requireMedia: true,
+            cancellationToken: cancellationToken);
+    }
+
+    private async Task<RemotePostSnapshot?> FetchOwnedMediaSnapshotAsync(
         IReadOnlyList<string> accessTokens,
         string mediaId,
-        InstagramConnectionType preferredType,
+        string? commentId,
+        SocialProfileEntityBase profile,
+        InstagramConnectionType connectionType,
         CancellationToken cancellationToken)
     {
         Exception? lastError = null;
         foreach (var accessToken in accessTokens)
         {
-            foreach (var connectionType in AlternateConnectionTypes(preferredType))
+            try
             {
-                try
+                var snapshot = await GetMediaByIdAsync(accessToken, mediaId, connectionType, cancellationToken);
+                if (HasPicture(snapshot))
+                    return snapshot;
+
+                if (!string.IsNullOrWhiteSpace(commentId))
                 {
-                    var snapshot = await TryGetMediaSnapshotAsync(accessToken, mediaId, connectionType, cancellationToken);
-                    if (snapshot is not null)
-                        return snapshot;
+                    var fromComment = await GetMediaFromCommentAsync(
+                        accessToken, commentId, mediaId, connectionType, cancellationToken);
+                    if (HasPicture(fromComment))
+                        return fromComment;
+                    snapshot ??= fromComment;
                 }
-                catch (Exception ex)
-                {
-                    lastError = ex;
-                    LogApiDecision(null, connectionType, "GetPost", success: false, metaError: ex.Message);
-                }
+
+                var fromFeed = await FindMediaInOwnedFeedAsync(
+                    accessToken, mediaId, profile, connectionType, cancellationToken);
+                if (HasPicture(fromFeed) || fromFeed is not null)
+                    return fromFeed ?? snapshot;
+
+                if (snapshot is not null)
+                    return snapshot;
+            }
+            catch (Exception ex)
+            {
+                lastError = ex;
+                LogApiDecision(profile.ExternalProfileId, connectionType, "GetPost", success: false, metaError: ex.Message);
             }
         }
 
         if (lastError is not null)
-            _logger.LogWarning(lastError, "Instagram Graph could not load media {MediaId}.", mediaId);
+            _logger.LogWarning(
+                lastError,
+                "Instagram {ConnectionType} could not load media {MediaId} from {Host}.",
+                InstagramConnectionResolver.ToLogLabel(connectionType),
+                mediaId,
+                connectionType == InstagramConnectionType.InstagramLogin
+                    ? "graph.instagram.com"
+                    : "graph.facebook.com");
         return null;
     }
 
-    private async Task<RemotePostSnapshot?> TryGetMediaSnapshotAsync(
+    private async Task<RemotePostSnapshot?> GetMediaByIdAsync(
         string accessToken,
         string mediaId,
         InstagramConnectionType connectionType,
         CancellationToken cancellationToken)
     {
-        string[] fieldSets =
-        [
-            "id,caption,media_type,media_product_type,media_url,thumbnail_url,permalink,timestamp,like_count,comments_count,children{id,media_type,media_url,thumbnail_url}",
-            "id,caption,media_type,media_url,thumbnail_url,permalink,timestamp",
-            "id,caption,media_type,permalink,timestamp"
-        ];
+        try
+        {
+            using var doc = await GetGraphJsonAsync(
+                connectionType, mediaId, accessToken, InstagramMediaPictureFields, cancellationToken);
+            var snapshot = ParseMediaSnapshot(doc.RootElement, mediaId);
+            if (snapshot is not null)
+                LogApiDecision(null, connectionType, "GetPost", success: true);
+            return snapshot;
+        }
+        catch (Exception ex)
+        {
+            LogApiDecision(null, connectionType, "GetPost", success: false, metaError: ex.Message);
+            return null;
+        }
+    }
 
-        foreach (var fields in fieldSets)
+    private async Task<RemotePostSnapshot?> GetMediaFromCommentAsync(
+        string accessToken,
+        string commentId,
+        string mediaId,
+        InstagramConnectionType connectionType,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var doc = await GetGraphJsonAsync(
+                connectionType,
+                commentId,
+                accessToken,
+                $"media{{{InstagramMediaPictureFields}}}",
+                cancellationToken);
+            if (!doc.RootElement.TryGetProperty("media", out var media))
+                return null;
+            return ParseMediaSnapshot(media, mediaId);
+        }
+        catch (Exception ex)
+        {
+            LogApiDecision(null, connectionType, "GetCommentMedia", success: false, metaError: ex.Message);
+            return null;
+        }
+    }
+
+    private async Task<RemotePostSnapshot?> FindMediaInOwnedFeedAsync(
+        string accessToken,
+        string mediaId,
+        SocialProfileEntityBase profile,
+        InstagramConnectionType connectionType,
+        CancellationToken cancellationToken)
+    {
+        var owners = new List<string> { "me" };
+        if (!string.IsNullOrWhiteSpace(profile.ExternalProfileId))
+            owners.Add(profile.ExternalProfileId);
+        owners.AddRange(ReadAlternateIds(profile.MetadataJson));
+
+        foreach (var ownerId in owners.Distinct(StringComparer.Ordinal))
         {
             try
             {
-                using var doc = await GetGraphJsonAsync(connectionType, mediaId, accessToken, fields, cancellationToken);
-                var snapshot = ParseMediaSnapshot(doc.RootElement, mediaId);
-                if (snapshot is not null)
+                using var doc = await GetGraphJsonAsync(
+                    connectionType,
+                    $"{ownerId}/media",
+                    accessToken,
+                    InstagramMediaPictureFields,
+                    cancellationToken,
+                    ("limit", "50"));
+                if (!doc.RootElement.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Array)
+                    continue;
+
+                foreach (var item in data.EnumerateArray())
                 {
-                    LogApiDecision(null, connectionType, "GetPost", success: true);
-                    return snapshot;
+                    var id = item.TryGetProperty("id", out var idEl) ? idEl.GetString() : null;
+                    if (string.Equals(id, mediaId, StringComparison.Ordinal))
+                        return ParseMediaSnapshot(item, mediaId);
+
+                    if (item.TryGetProperty("children", out var children) &&
+                        children.TryGetProperty("data", out var childData) &&
+                        childData.ValueKind == JsonValueKind.Array &&
+                        childData.EnumerateArray().Any(child =>
+                            child.TryGetProperty("id", out var childId) &&
+                            string.Equals(childId.GetString(), mediaId, StringComparison.Ordinal)))
+                        return ParseMediaSnapshot(item, mediaId);
                 }
             }
             catch (Exception ex)
             {
-                LogApiDecision(null, connectionType, "GetPost", success: false, metaError: ex.Message);
+                LogApiDecision(ownerId, connectionType, "ListMedia", success: false, metaError: ex.Message);
             }
         }
 
@@ -489,57 +609,22 @@ public class InstagramService : IInstagramService
         string path,
         string accessToken,
         string fields,
-        CancellationToken cancellationToken)
-        => connectionType == InstagramConnectionType.InstagramLogin
-            ? await _graph.GetInstagramAsync(InstagramLoginGraphVersion, path, accessToken, cancellationToken, ("fields", fields))
-            : await _graph.GetAsync(GraphVersion, path, accessToken, cancellationToken, ("fields", fields));
-
-    private static IEnumerable<InstagramConnectionType> AlternateConnectionTypes(InstagramConnectionType preferred)
+        CancellationToken cancellationToken,
+        params (string Key, string Value)[] extra)
     {
-        yield return preferred;
-        yield return preferred == InstagramConnectionType.InstagramLogin
-            ? InstagramConnectionType.FacebookLogin
-            : InstagramConnectionType.InstagramLogin;
+        var query = extra.Length == 0
+            ? new (string Key, string Value)[] { ("fields", fields) }
+            : extra.Prepend(("fields", fields)).ToArray();
+
+        return connectionType == InstagramConnectionType.InstagramLogin
+            ? await _graph.GetInstagramAsync(InstagramLoginGraphVersion, path, accessToken, cancellationToken, query)
+            : await _graph.GetAsync(GraphVersion, path, accessToken, cancellationToken, query);
     }
 
-    private async Task<RemotePostSnapshot?> ResolveInstagramPostSnapshotAsync(
-        RemotePostSnapshot? knownPost,
-        IReadOnlyList<string> accessTokens,
-        string mediaId,
-        InstagramConnectionType connectionType,
-        CancellationToken cancellationToken)
-    {
-        if (HasUsableInstagramPost(knownPost))
-            return knownPost;
-
-        var fetched = await GetMediaSnapshotWithTokensAsync(accessTokens, mediaId, connectionType, cancellationToken);
-        return MergePostSnapshots(knownPost, fetched);
-    }
-
-    private static bool HasUsableInstagramPost(RemotePostSnapshot? snapshot)
+    private static bool HasPicture(RemotePostSnapshot? snapshot)
         => snapshot is not null
            && (!string.IsNullOrWhiteSpace(snapshot.MediaUrl)
-               || !string.IsNullOrWhiteSpace(snapshot.ThumbnailUrl)
-               || !string.IsNullOrWhiteSpace(snapshot.Text));
-
-    private static RemotePostSnapshot? MergePostSnapshots(RemotePostSnapshot? first, RemotePostSnapshot? second)
-    {
-        if (first is null) return second;
-        if (second is null) return first;
-        return new RemotePostSnapshot
-        {
-            ExternalId = FirstNonEmpty(first.ExternalId, second.ExternalId),
-            Text = FirstNonEmpty(first.Text, second.Text),
-            Permalink = FirstNonEmpty(first.Permalink, second.Permalink),
-            MediaUrl = FirstNonEmpty(first.MediaUrl, second.MediaUrl),
-            ThumbnailUrl = FirstNonEmpty(first.ThumbnailUrl, second.ThumbnailUrl),
-            IsVideo = first.IsVideo || second.IsVideo,
-            LikeCount = Math.Max(first.LikeCount, second.LikeCount),
-            CommentCount = Math.Max(first.CommentCount, second.CommentCount),
-            ShareCount = Math.Max(first.ShareCount, second.ShareCount),
-            CreatedTime = first.CreatedTime ?? second.CreatedTime
-        };
-    }
+               || !string.IsNullOrWhiteSpace(snapshot.ThumbnailUrl));
 
     private static RemotePostSnapshot? ParseMediaSnapshot(JsonElement root, string fallbackId)
     {
@@ -604,8 +689,21 @@ public class InstagramService : IInstagramService
 
     public async Task<IReadOnlyList<PostDto>> GetPostsAsync(MetaCallContext context, CancellationToken cancellationToken = default)
     {
-        using var doc = await _graph.GetAsync(GraphVersion, $"{context.ProfileExternalId}/media", context.AccessToken, cancellationToken,
-            ("fields", "id,caption,permalink,timestamp"), ("limit", "25"));
+        using var doc = context.InstagramConnectionType == InstagramConnectionType.InstagramLogin
+            ? await _graph.GetInstagramAsync(
+                InstagramLoginGraphVersion,
+                $"{context.ProfileExternalId}/media",
+                context.AccessToken,
+                cancellationToken,
+                ("fields", "id,caption,permalink,timestamp"),
+                ("limit", "25"))
+            : await _graph.GetAsync(
+                GraphVersion,
+                $"{context.ProfileExternalId}/media",
+                context.AccessToken,
+                cancellationToken,
+                ("fields", "id,caption,permalink,timestamp"),
+                ("limit", "25"));
 
         var results = new List<PostDto>();
         if (!doc.RootElement.TryGetProperty("data", out var data)) return results;
@@ -1049,33 +1147,27 @@ public class InstagramService : IInstagramService
                 continue;
             }
 
+            // Facebook: webhook post_id → Graph GET post (full_picture) → save → map comment.
+            // Instagram: webhook media.id → Instagram/Facebook Graph GET media (media_url) → save → map comment.
+            var mediaId = MetaWebhookPayloadNormalizer.ReadMediaId(value);
             var accessTokens = await ResolveAccessTokensAsync(account, connectionType, cancellationToken);
             RemoteCommentSnapshot? enriched = null;
             foreach (var accessToken in accessTokens)
             {
-                foreach (var hostType in AlternateConnectionTypes(connectionType))
+                try
                 {
-                    try
-                    {
-                        enriched = await GetCommentSnapshotAsync(accessToken, commentId!, hostType, cancellationToken);
-                        if (enriched is not null)
-                            break;
-                    }
-                    catch (Exception ex)
-                    {
-                        LogApiDecision(profile.ExternalProfileId, hostType, "GetComment", success: false, metaError: ex.Message);
-                        result.Skip($"Graph comment enrich failed for '{commentId}': {ex.Message}");
-                    }
+                    enriched = await GetCommentSnapshotAsync(accessToken, commentId!, connectionType, cancellationToken);
+                    if (enriched is not null)
+                        break;
                 }
-
-                if (enriched is not null)
-                    break;
+                catch (Exception ex)
+                {
+                    LogApiDecision(profile.ExternalProfileId, connectionType, "GetComment", success: false, metaError: ex.Message);
+                    result.Skip($"Graph comment enrich failed for '{commentId}': {ex.Message}");
+                }
             }
 
-            var mediaId = FirstNonEmpty(
-                enriched?.Post?.ExternalId,
-                enriched?.PostExternalId,
-                MetaWebhookPayloadNormalizer.ReadMediaId(value));
+            mediaId = FirstNonEmpty(mediaId, enriched?.Post?.ExternalId, enriched?.PostExternalId);
             if (string.IsNullOrWhiteSpace(mediaId))
             {
                 result.Skip("Comment change is missing media.id.");
@@ -1086,19 +1178,14 @@ public class InstagramService : IInstagramService
                 enriched?.Message,
                 MetaWebhookPayloadNormalizer.ReadCommentText(value)) ?? string.Empty;
 
-            // Same order as Facebook: use the post Graph returned on the comment, then fetch
-            // the media object so Inbox shows caption + image/video instead of "Instagram post".
-            var knownPost = enriched?.Post;
-            var post = await MetaPostStore.ResolveAsync(
-                _store!,
+            var post = await ResolveInstagramPostAsync(
                 profile,
-                account.PlatformId,
+                account,
+                connectionType,
                 mediaId!,
                 enriched?.CreatedTime ?? UnixSeconds(entry, "time") ?? DateTime.UtcNow,
-                ct => ResolveInstagramPostSnapshotAsync(knownPost, accessTokens, mediaId!, connectionType, ct),
-                "Instagram post",
-                requireMedia: true,
-                cancellationToken: cancellationToken);
+                commentId,
+                cancellationToken);
 
             var existing = await _store!.GetCommentByExternalIdAsync(commentId, cancellationToken);
             if (existing is not null)
