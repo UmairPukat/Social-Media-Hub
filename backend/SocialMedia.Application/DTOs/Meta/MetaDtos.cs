@@ -80,6 +80,9 @@ public class RemoteCommentSnapshot
     public int LikeCount { get; set; }
     public DateTime? CreatedTime { get; set; }
     public bool IsHidden { get; set; }
+
+    /// <summary>Post/media Graph returns on the comment, matching Facebook's inline <c>post</c> object.</summary>
+    public RemotePostSnapshot? Post { get; set; }
 }
 
 /// <summary>

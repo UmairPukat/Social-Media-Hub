@@ -234,9 +234,9 @@ public class InboxService : IInboxService
         CancellationToken cancellationToken)
     {
         var missing = rows
-            .Where(row => !ProcessEntityNav.HasDisplayableMedia(row.Post)
-                          && string.IsNullOrWhiteSpace(row.PostImageUrl)
-                          && !string.IsNullOrWhiteSpace(row.Post.ExternalPostId))
+            .Where(row => !string.IsNullOrWhiteSpace(row.Post.ExternalPostId)
+                          && (MetaPostMediaWriter.NeedsGraphRefresh(row.Post)
+                              || string.IsNullOrWhiteSpace(row.PostImageUrl)))
             .GroupBy(row => row.Post.Id)
             .Select(group => group.First())
             .ToList();
@@ -256,14 +256,27 @@ public class InboxService : IInboxService
                 RemotePostSnapshot? snapshot = null;
                 if (InstagramConnectionResolver.IsInstagramPlatform(row.Platform.Code))
                 {
-                    var connectionType = InstagramConnectionResolver.FromProfile(row.Profile, row.Platform.Code);
-                    foreach (var token in tokens)
+                    var preferred = InstagramConnectionResolver.FromProfile(row.Profile, row.Platform.Code);
+                    foreach (var connectionType in new[]
+                             {
+                                 preferred,
+                                 preferred == InstagramConnectionType.InstagramLogin
+                                     ? InstagramConnectionType.FacebookLogin
+                                     : InstagramConnectionType.InstagramLogin
+                             })
                     {
-                        snapshot = await _instagramService.GetMediaSnapshotAsync(
-                            token, row.Post.ExternalPostId!, connectionType, cancellationToken);
-                        if (snapshot is not null
-                            && (!string.IsNullOrWhiteSpace(snapshot.MediaUrl)
-                                || !string.IsNullOrWhiteSpace(snapshot.ThumbnailUrl)))
+                        foreach (var token in tokens)
+                        {
+                            snapshot = await _instagramService.GetMediaSnapshotAsync(
+                                token, row.Post.ExternalPostId!, connectionType, cancellationToken);
+                            if (snapshot is not null
+                                && (!string.IsNullOrWhiteSpace(snapshot.Text)
+                                    || !string.IsNullOrWhiteSpace(snapshot.MediaUrl)
+                                    || !string.IsNullOrWhiteSpace(snapshot.ThumbnailUrl)))
+                                break;
+                        }
+
+                        if (snapshot is not null)
                             break;
                     }
                 }
@@ -275,12 +288,13 @@ public class InboxService : IInboxService
                             token, row.Post.ExternalPostId!, cancellationToken);
                         if (snapshot is not null
                             && (!string.IsNullOrWhiteSpace(snapshot.MediaUrl)
-                                || !string.IsNullOrWhiteSpace(snapshot.ThumbnailUrl)))
+                                || !string.IsNullOrWhiteSpace(snapshot.ThumbnailUrl)
+                                || !string.IsNullOrWhiteSpace(snapshot.Text)))
                             break;
                     }
                 }
 
-                await MetaPostMediaWriter.PersistAsync(store, row.Post, snapshot, cancellationToken);
+                await MetaPostMediaWriter.ApplySnapshotAsync(store, row.Post, snapshot, cancellationToken);
             }
             catch
             {
@@ -1254,10 +1268,7 @@ public class InboxService : IInboxService
     private static string DisplayPostText(PostEntityBase post)
     {
         var text = FirstNonEmpty(post.Caption, post.Text);
-        return !string.IsNullOrWhiteSpace(post.ExternalPostId) &&
-               string.Equals(text, $"Facebook post {post.ExternalPostId}", StringComparison.Ordinal)
-            ? "Facebook post"
-            : text;
+        return MetaPostMediaWriter.IsPlaceholderText(text) ? string.Empty : text;
     }
 
     private static string FirstNonEmpty(params string?[] values)

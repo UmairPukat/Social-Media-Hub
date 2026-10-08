@@ -11,6 +11,75 @@ namespace SocialMedia.Application.Meta;
 /// </summary>
 public static class MetaPostMediaWriter
 {
+    public static bool IsPlaceholderText(string? text)
+        => string.IsNullOrWhiteSpace(text)
+           || string.Equals(text, "Instagram post", StringComparison.OrdinalIgnoreCase)
+           || string.Equals(text, "Facebook post", StringComparison.OrdinalIgnoreCase)
+           || text.StartsWith("Instagram post ", StringComparison.OrdinalIgnoreCase)
+           || text.StartsWith("Facebook post ", StringComparison.OrdinalIgnoreCase);
+
+    public static bool NeedsGraphRefresh(PostEntityBase post)
+        => IsPlaceholderText(post.Text)
+           || IsPlaceholderText(post.Caption)
+           || !ProcessEntityNav.HasDisplayableMedia(post);
+
+    public static async Task ApplySnapshotAsync(
+        IProcessDataStore store,
+        PostEntityBase post,
+        RemotePostSnapshot? snapshot,
+        CancellationToken cancellationToken = default)
+    {
+        if (snapshot is null)
+            return;
+
+        var changed = false;
+        if (!string.IsNullOrWhiteSpace(snapshot.Text) &&
+            (IsPlaceholderText(post.Text) || IsPlaceholderText(post.Caption)))
+        {
+            post.Text = snapshot.Text;
+            post.Caption = snapshot.Text;
+            changed = true;
+        }
+
+        if (snapshot.LikeCount > post.LikeCount)
+        {
+            post.LikeCount = snapshot.LikeCount;
+            changed = true;
+        }
+
+        if (snapshot.ShareCount > post.ShareCount)
+        {
+            post.ShareCount = snapshot.ShareCount;
+            changed = true;
+        }
+
+        if (snapshot.CommentCount > post.CommentCount)
+        {
+            post.CommentCount = snapshot.CommentCount;
+            changed = true;
+        }
+
+        if (snapshot.CreatedTime.HasValue && post.PublishedAt is null)
+        {
+            post.PublishedAt = snapshot.CreatedTime;
+            changed = true;
+        }
+
+        if (snapshot.IsVideo)
+            post.Type = ContentPostType.Video;
+        else if (!string.IsNullOrWhiteSpace(snapshot.MediaUrl) || !string.IsNullOrWhiteSpace(snapshot.ThumbnailUrl))
+            post.Type = ContentPostType.Image;
+
+        if (changed)
+        {
+            post.UpdatedAt = DateTime.UtcNow;
+            store.UpdatePost(post);
+            await store.SaveChangesAsync(cancellationToken);
+        }
+
+        await PersistAsync(store, post, snapshot, cancellationToken);
+    }
+
     public static async Task<bool> PersistAsync(
         IProcessDataStore store,
         PostEntityBase post,

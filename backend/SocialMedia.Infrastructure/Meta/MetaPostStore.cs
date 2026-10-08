@@ -36,13 +36,17 @@ internal static class MetaPostStore
                    ?? await store.FindPostByExternalIdAsync(externalPostId, cancellationToken);
         if (post is not null)
         {
-            if (IsAwaitingGraphFetch(post) || (requireMedia && !ProcessEntityNav.HasDisplayableMedia(post)))
+            if (IsAwaitingGraphFetch(post) || (requireMedia && MetaPostMediaWriter.NeedsGraphRefresh(post)))
                 await EnrichAsync(store, post, fetchSnapshot, cancellationToken);
             return post;
         }
 
         var snapshot = await TryFetchAsync(fetchSnapshot, cancellationToken);
-        var text = string.IsNullOrWhiteSpace(snapshot?.Text) ? placeholderText : snapshot!.Text!;
+        // Only use the stub label when Graph did not return a post. A real snapshot with
+        // no caption (image-only) must stay empty so Inbox can show the media like Facebook.
+        var text = snapshot is null
+            ? placeholderText
+            : (string.IsNullOrWhiteSpace(snapshot.Text) ? string.Empty : snapshot.Text!);
 
         post = store.NewPost();
         post.SocialProfileId = profile.Id;
@@ -59,7 +63,7 @@ internal static class MetaPostStore
 
         await store.AddPostAsync(post, cancellationToken);
         await store.SaveChangesAsync(cancellationToken);
-        await MetaPostMediaWriter.PersistAsync(store, post, snapshot, cancellationToken);
+        await MetaPostMediaWriter.ApplySnapshotAsync(store, post, snapshot, cancellationToken);
         return post;
     }
 
@@ -89,7 +93,7 @@ internal static class MetaPostStore
         post.UpdatedAt = DateTime.UtcNow;
         store.UpdatePost(post);
         await store.SaveChangesAsync(cancellationToken);
-        await MetaPostMediaWriter.PersistAsync(store, post, snapshot, cancellationToken);
+        await MetaPostMediaWriter.ApplySnapshotAsync(store, post, snapshot, cancellationToken);
     }
 
     private static async Task<RemotePostSnapshot?> TryFetchAsync(
@@ -108,6 +112,9 @@ internal static class MetaPostStore
 
     private static bool IsAwaitingGraphFetch(PostEntityBase post)
     {
+        if (MetaPostMediaWriter.IsPlaceholderText(post.Text) || MetaPostMediaWriter.IsPlaceholderText(post.Caption))
+            return true;
+
         if (string.IsNullOrWhiteSpace(post.MetadataJson))
             return string.IsNullOrWhiteSpace(post.Text);
 
