@@ -389,7 +389,7 @@ export class InboxComponent implements OnInit, OnDestroy {
 
   setPlatform(code: string | null): void {
     this.platformCode.set(code);
-    if (code === 'whatsapp') this.mode.set('messages');
+    if (code === 'whatsapp' || code === 'instagram') this.mode.set('messages');
     if (code === 'youtube') this.mode.set('comments');
     this.selectedKey.set(null);
     queueMicrotask(() => this.autoSelectFirst());

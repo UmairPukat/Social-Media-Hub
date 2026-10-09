@@ -87,6 +87,11 @@ public interface IProcessDataStore
     // Webhooks
     Task AddWebhookEventAsync(WebhookEventEntityBase webhookEvent, CancellationToken cancellationToken = default);
     void UpdateWebhookEvent(WebhookEventEntityBase webhookEvent);
+    Task<WebhookEventEntityBase?> GetWebhookEventByIdAsync(Guid id, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<WebhookEventEntityBase>> GetRecentWebhookEventsAsync(
+        int take,
+        DateTime? sinceUtc = null,
+        CancellationToken cancellationToken = default);
     Task AddWebhookLogAsync(WebhookLogEntityBase webhookLog, CancellationToken cancellationToken = default);
 
     // Sync jobs

@@ -49,4 +49,17 @@ public interface IWebhookService
         string? headersJson,
         bool signatureValid = true,
         CancellationToken cancellationToken = default);
+
+    /// <summary>Lists recent stored webhook rows so ignored Instagram DMs can be diagnosed.</summary>
+    Task<ApiResponse<object>> ListStoredAsync(
+        string menuType,
+        int take = 20,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>Re-runs inbox processing for stored webhook events that were ignored or stored 0 rows.</summary>
+    Task<ApiResponse<object>> ReplayStoredAsync(
+        string menuType,
+        Guid? eventId = null,
+        int take = 25,
+        CancellationToken cancellationToken = default);
 }

@@ -927,6 +927,49 @@ public sealed class ProcessDataStore : IProcessDataStore
         }
     }
 
+    public async Task<WebhookEventEntityBase?> GetWebhookEventByIdAsync(Guid id, CancellationToken cancellationToken = default)
+        => _menuType switch
+        {
+            MenuTypes.AppConnection => await _context.AppConnectionWebhookEvents
+                .FirstOrDefaultAsync(e => e.Id == id, cancellationToken),
+            MenuTypes.DeveloperApp => await _context.DeveloperAppWebhookEvents
+                .FirstOrDefaultAsync(e => e.Id == id, cancellationToken),
+            _ => await _context.IntegrationWebhookEvents
+                .FirstOrDefaultAsync(e => e.Id == id, cancellationToken)
+        };
+
+    public async Task<IReadOnlyList<WebhookEventEntityBase>> GetRecentWebhookEventsAsync(
+        int take,
+        DateTime? sinceUtc = null,
+        CancellationToken cancellationToken = default)
+    {
+        take = Math.Clamp(take, 1, 100);
+        switch (_menuType)
+        {
+            case MenuTypes.AppConnection:
+            {
+                var query = _context.AppConnectionWebhookEvents.AsQueryable();
+                if (sinceUtc.HasValue)
+                    query = query.Where(e => e.ReceivedAt >= sinceUtc.Value);
+                return await query.OrderByDescending(e => e.ReceivedAt).Take(take).ToListAsync(cancellationToken);
+            }
+            case MenuTypes.DeveloperApp:
+            {
+                var query = _context.DeveloperAppWebhookEvents.AsQueryable();
+                if (sinceUtc.HasValue)
+                    query = query.Where(e => e.ReceivedAt >= sinceUtc.Value);
+                return await query.OrderByDescending(e => e.ReceivedAt).Take(take).ToListAsync(cancellationToken);
+            }
+            default:
+            {
+                var query = _context.IntegrationWebhookEvents.AsQueryable();
+                if (sinceUtc.HasValue)
+                    query = query.Where(e => e.ReceivedAt >= sinceUtc.Value);
+                return await query.OrderByDescending(e => e.ReceivedAt).Take(take).ToListAsync(cancellationToken);
+            }
+        }
+    }
+
     public async Task AddWebhookLogAsync(WebhookLogEntityBase webhookLog, CancellationToken cancellationToken = default)
     {
         switch (_menuType)

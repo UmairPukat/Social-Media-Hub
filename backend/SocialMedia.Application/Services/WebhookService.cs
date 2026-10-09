@@ -273,12 +273,16 @@ public class WebhookService : IWebhookService
             store.UpdateWebhookEvent(webhookEvent);
             await store.SaveChangesAsync(cancellationToken);
 
+            var replayed = await ReplayRecentUnprocessedAsync(
+                store, effectiveMenu, webhookEvent.Id, 8, cancellationToken);
+
             _logger.LogInformation(
-                "Webhook processed for module {MenuType}. WebhookEventId={WebhookEventId}, Handled={Handled}, Error={Error}",
+                "Webhook processed for module {MenuType}. WebhookEventId={WebhookEventId}, Handled={Handled}, Error={Error}, Replayed={Replayed}",
                 normalizedMenu,
                 webhookEvent.Id,
                 result?.Handled ?? 0,
-                webhookEvent.Error);
+                webhookEvent.Error,
+                replayed);
 
             return ApiResponse<object>.Ok(new
             {
@@ -286,13 +290,196 @@ public class WebhookService : IWebhookService
                 logId = log.Id,
                 webhookEventId = webhookEvent.Id,
                 webhookEvent.Status,
-                handled = result?.Handled ?? 0
+                handled = result?.Handled ?? 0,
+                replayed
             }, "Webhook received.");
         }
         catch (Exception ex)
         {
             return ApiResponse<object>.Fail(ex.Message);
         }
+    }
+
+    public async Task<ApiResponse<object>> ListStoredAsync(
+        string menuType,
+        int take = 20,
+        CancellationToken cancellationToken = default)
+    {
+        var store = _processData.ForMenu(MenuTypes.Normalize(menuType));
+        var events = await store.GetRecentWebhookEventsAsync(take, null, cancellationToken);
+        var rows = events.Select(ev => new
+        {
+            ev.Id,
+            ev.Status,
+            ev.Error,
+            ev.ObjectType,
+            ev.ExternalObjectId,
+            ev.EventType,
+            ev.ReceivedAt,
+            ev.ProcessedAt,
+            summary = MetaWebhookContentClassifier.DescribePayload(ev.PayloadJson),
+            shouldProcess = MetaWebhookContentClassifier.ShouldProcessForInbox(ev.PayloadJson),
+            instagramApiVersion = ReadHeader(ev.HeadersJson, "Instagram-Api-Version")
+        }).ToList();
+
+        return ApiResponse<object>.Ok(rows, $"Loaded {rows.Count} webhook event(s).");
+    }
+
+    public async Task<ApiResponse<object>> ReplayStoredAsync(
+        string menuType,
+        Guid? eventId = null,
+        int take = 25,
+        CancellationToken cancellationToken = default)
+    {
+        var normalizedMenu = MenuTypes.Normalize(menuType);
+        var store = _processData.ForMenu(normalizedMenu);
+        var events = new List<WebhookEventEntityBase>();
+
+        if (eventId.HasValue)
+        {
+            var match = await store.GetWebhookEventByIdAsync(eventId.Value, cancellationToken);
+            if (match is null)
+                return ApiResponse<object>.Fail("Webhook event was not found.");
+            events.Add(match);
+        }
+        else
+        {
+            events.AddRange(
+                (await store.GetRecentWebhookEventsAsync(take, DateTime.UtcNow.AddDays(-14), cancellationToken))
+                .Where(ShouldReplay));
+        }
+
+        var results = new List<object>();
+        var handledTotal = 0;
+        foreach (var ev in events)
+        {
+            var handled = await ReplayOneAsync(store, ev, normalizedMenu, cancellationToken);
+            handledTotal += handled;
+            results.Add(new
+            {
+                ev.Id,
+                handled,
+                ev.Status,
+                ev.Error,
+                summary = MetaWebhookContentClassifier.DescribePayload(ev.PayloadJson)
+            });
+        }
+
+        return ApiResponse<object>.Ok(new
+        {
+            replayed = results.Count,
+            handled = handledTotal,
+            results
+        }, handledTotal > 0
+            ? $"Replayed {results.Count} webhook(s) and stored {handledTotal} inbox row(s)."
+            : $"Replayed {results.Count} webhook(s); nothing new was stored.");
+    }
+
+    private async Task<int> ReplayRecentUnprocessedAsync(
+        IProcessDataStore store,
+        string menuType,
+        Guid excludeEventId,
+        int take,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var pending = (await store.GetRecentWebhookEventsAsync(take + 4, DateTime.UtcNow.AddDays(-14), cancellationToken))
+                .Where(ev => ev.Id != excludeEventId && ShouldReplay(ev))
+                .Take(take)
+                .ToList();
+
+            var handled = 0;
+            foreach (var ev in pending)
+                handled += await ReplayOneAsync(store, ev, menuType, cancellationToken);
+
+            return handled;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Stored webhook replay failed for module {MenuType}.", menuType);
+            return 0;
+        }
+    }
+
+    private async Task<int> ReplayOneAsync(
+        IProcessDataStore store,
+        WebhookEventEntityBase webhookEvent,
+        string menuType,
+        CancellationToken cancellationToken)
+    {
+        webhookEvent.PayloadJson = MetaWebhookPayloadNormalizer.NormalizeForProcessing(webhookEvent.PayloadJson);
+        webhookEvent.Status = WebhookEventStatus.Processing;
+        webhookEvent.RetryCount += 1;
+        store.UpdateWebhookEvent(webhookEvent);
+        await store.SaveChangesAsync(cancellationToken);
+
+        WebhookProcessResult? result;
+        try
+        {
+            var targetCode = string.IsNullOrWhiteSpace(webhookEvent.ObjectType)
+                             || string.Equals(webhookEvent.ObjectType, "meta", StringComparison.OrdinalIgnoreCase)
+                ? DetectPlatformFromPayload(webhookEvent.PayloadJson) ?? "instagram"
+                : webhookEvent.ObjectType;
+
+            result = await ProcessMetaPayloadAsync(webhookEvent, menuType, targetCode, cancellationToken);
+            webhookEvent.Status = WebhookEventStatus.Processed;
+            webhookEvent.ProcessedAt = DateTime.UtcNow;
+            webhookEvent.Error = result is null
+                ? $"No processor is registered for platform '{targetCode}'."
+                : result.Handled == 0 && result.Notes.Count > 0
+                    ? "Nothing stored. " + string.Join(" | ", result.Notes)
+                    : null;
+        }
+        catch (Exception ex)
+        {
+            webhookEvent.Status = WebhookEventStatus.Failed;
+            webhookEvent.Error = ex.Message;
+            webhookEvent.ProcessedAt = DateTime.UtcNow;
+            result = null;
+        }
+
+        store.UpdateWebhookEvent(webhookEvent);
+        await store.SaveChangesAsync(cancellationToken);
+        return result?.Handled ?? 0;
+    }
+
+    private static bool ShouldReplay(WebhookEventEntityBase ev)
+    {
+        if (string.IsNullOrWhiteSpace(ev.PayloadJson) || ev.RetryCount >= 5)
+            return false;
+
+        if (!string.IsNullOrWhiteSpace(ev.Error)
+            && ev.Error.Contains("Invalid webhook signature", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        if (!MetaWebhookContentClassifier.ShouldProcessForInbox(ev.PayloadJson))
+            return false;
+
+        return ev.Status is WebhookEventStatus.Failed or WebhookEventStatus.Received
+               || !string.IsNullOrWhiteSpace(ev.Error);
+    }
+
+    private static string? ReadHeader(string? headersJson, string name)
+    {
+        if (string.IsNullOrWhiteSpace(headersJson))
+            return null;
+
+        try
+        {
+            using var doc = JsonDocument.Parse(headersJson);
+            foreach (var property in doc.RootElement.EnumerateObject())
+            {
+                if (string.Equals(property.Name, name, StringComparison.OrdinalIgnoreCase))
+                    return property.Value.ToString();
+            }
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+
+        return null;
     }
 
     private async Task<WebhookProcessResult?> ProcessMetaPayloadAsync(

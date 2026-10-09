@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 
@@ -121,13 +122,22 @@ public static class MetaWebhookPayloadNormalizer
 
     /// <summary>
     /// Messenger Platform wraps DMs as <c>{ sender, recipient, message: { mid, text } }</c>.
-    /// Instagram Graph webhooks (Facebook Login Instagram card) send a flat
-    /// <c>changes[field=messages].value</c> with <c>id</c>/<c>from</c>/<c>to</c>/<c>text</c>.
+    /// Instagram Graph v26 (Facebook Login Instagram card) often sends
+    /// <c>changes[field=messages].value</c> where <c>message</c> has <c>text</c>/<c>admin_text</c>
+    /// and the id lives on the parent, or <c>message</c> is a plain string.
     /// </summary>
     public static bool TryGetMessageEnvelope(JsonElement item, out JsonElement message)
     {
         if (item.TryGetProperty("message", out message) && message.ValueKind == JsonValueKind.Object)
             return true;
+
+        if (item.TryGetProperty("message", out var rawMessage)
+            && rawMessage.ValueKind is JsonValueKind.String or JsonValueKind.Number
+            && HasMessagingPeer(item))
+        {
+            message = item;
+            return true;
+        }
 
         if (HasInstagramGraphMessageShape(item))
         {
@@ -139,6 +149,12 @@ public static class MetaWebhookPayloadNormalizer
         return false;
     }
 
+    public static bool HasMessagingPeer(JsonElement value)
+        => ReadActorId(value, "from") is not null
+           || ReadActorId(value, "sender") is not null
+           || ReadActorId(value, "to") is not null
+           || ReadActorId(value, "recipient") is not null;
+
     public static bool HasInstagramGraphMessageShape(JsonElement value)
     {
         if (value.TryGetProperty("media", out _)
@@ -146,51 +162,106 @@ public static class MetaWebhookPayloadNormalizer
             || value.TryGetProperty("comment_id", out _))
             return false;
 
-        var messageId = ReadMessageId(value);
-        if (string.IsNullOrWhiteSpace(messageId))
+        if (!HasMessagingPeer(value))
             return false;
 
-        var hasPeer = ReadActorId(value, "from") is not null
-                      || ReadActorId(value, "sender") is not null
-                      || ReadActorId(value, "to") is not null
-                      || ReadActorId(value, "recipient") is not null;
-        if (!hasPeer)
-            return false;
-
-        return value.TryGetProperty("text", out _)
-               || value.TryGetProperty("attachments", out _)
-               || value.TryGetProperty("story", out _)
-               || value.TryGetProperty("mid", out _);
+        return HasMessageBody(value, value) || !string.IsNullOrWhiteSpace(ReadMessageId(value));
     }
+
+    public static bool HasMessageBody(JsonElement item, JsonElement message)
+    {
+        if (HasTextProperty(message, "text")
+            || HasTextProperty(message, "admin_text")
+            || HasTextProperty(item, "text")
+            || HasTextProperty(item, "admin_text"))
+            return true;
+
+        if (item.TryGetProperty("message", out var raw)
+            && raw.ValueKind is JsonValueKind.String or JsonValueKind.Number
+            && !string.IsNullOrWhiteSpace(raw.ToString()))
+            return true;
+
+        return HasProperty(message, "attachments")
+               || HasProperty(item, "attachments")
+               || HasProperty(message, "story")
+               || HasProperty(item, "story")
+               || HasProperty(message, "mid")
+               || HasProperty(item, "mid");
+    }
+
+    private static bool HasProperty(JsonElement element, string name)
+        => element.ValueKind == JsonValueKind.Object && element.TryGetProperty(name, out _);
 
     public static string? ReadMessageId(JsonElement message)
     {
+        if (message.ValueKind != JsonValueKind.Object)
+            return null;
+
         foreach (var name in new[] { "mid", "message_id", "id" })
         {
-            if (message.TryGetProperty(name, out var id) && !string.IsNullOrWhiteSpace(id.ToString()))
+            if (message.TryGetProperty(name, out var id)
+                && id.ValueKind is not JsonValueKind.Object and not JsonValueKind.Array
+                && !string.IsNullOrWhiteSpace(id.ToString()))
                 return id.ToString();
         }
 
         return null;
     }
 
+    public static string ResolveMessageId(JsonElement item, JsonElement message, string? senderId, string? receiverId)
+    {
+        var existing = ReadMessageId(message) ?? ReadMessageId(item);
+        if (!string.IsNullOrWhiteSpace(existing))
+            return existing;
+
+        var text = ReadMessageText(item, message) ?? string.Empty;
+        var timestamp = item.TryGetProperty("timestamp", out var ts) ? ts.ToString()
+            : item.TryGetProperty("created_time", out var created) ? created.ToString()
+            : string.Empty;
+        var raw = $"{senderId}|{receiverId}|{timestamp}|{text}";
+        var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(raw)))[..20].ToLowerInvariant();
+        return $"ig-fallback:{hash}";
+    }
+
     public static string? ReadMessageText(JsonElement item, JsonElement message)
     {
-        if (message.ValueKind == JsonValueKind.Object
-            && message.TryGetProperty("text", out var nested)
-            && nested.ValueKind is JsonValueKind.String or JsonValueKind.Number
-            && !string.IsNullOrWhiteSpace(nested.ToString()))
-            return nested.ToString();
+        if (message.ValueKind is JsonValueKind.String or JsonValueKind.Number
+            && !string.IsNullOrWhiteSpace(message.ToString()))
+            return message.ToString();
 
-        if (item.TryGetProperty("text", out var text)
-            && text.ValueKind is JsonValueKind.String or JsonValueKind.Number
-            && !string.IsNullOrWhiteSpace(text.ToString()))
-            return text.ToString();
+        foreach (var name in new[] { "text", "admin_text" })
+        {
+            if (HasTextProperty(message, name, out var nested))
+                return nested;
+            if (HasTextProperty(item, name, out var flat))
+                return flat;
+        }
 
-        if (message.TryGetProperty("attachments", out _) || item.TryGetProperty("attachments", out _))
+        if (item.TryGetProperty("message", out var raw)
+            && raw.ValueKind is JsonValueKind.String or JsonValueKind.Number
+            && !string.IsNullOrWhiteSpace(raw.ToString()))
+            return raw.ToString();
+
+        if (HasProperty(message, "attachments") || HasProperty(item, "attachments"))
             return "[Instagram attachment]";
 
         return string.Empty;
+    }
+
+    private static bool HasTextProperty(JsonElement element, string name)
+        => HasTextProperty(element, name, out _);
+
+    private static bool HasTextProperty(JsonElement element, string name, out string? value)
+    {
+        value = null;
+        if (element.ValueKind != JsonValueKind.Object
+            || !element.TryGetProperty(name, out var text)
+            || text.ValueKind is not (JsonValueKind.String or JsonValueKind.Number)
+            || string.IsNullOrWhiteSpace(text.ToString()))
+            return false;
+
+        value = text.ToString();
+        return true;
     }
 
     public static string? ReadMediaId(JsonElement value)

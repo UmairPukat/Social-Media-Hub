@@ -1366,7 +1366,8 @@ public class InstagramService : IInstagramService
         var result = new WebhookProcessResult();
         try
         {
-            using var doc = JsonDocument.Parse(webhookEvent.PayloadJson);
+            var payload = MetaWebhookPayloadNormalizer.NormalizeForProcessing(webhookEvent.PayloadJson);
+            using var doc = JsonDocument.Parse(payload);
             if (!doc.RootElement.TryGetProperty("entry", out _))
             {
                 result.Skip("Payload has no 'entry' array — not a Meta webhook delivery.");
@@ -1417,6 +1418,18 @@ public class InstagramService : IInstagramService
             }
 
             await _store.SaveChangesAsync(cancellationToken);
+            if (result.Handled == 0)
+            {
+                var preview = webhookEvent.PayloadJson.Length > 800
+                    ? webhookEvent.PayloadJson[..800]
+                    : webhookEvent.PayloadJson;
+                _logger.LogWarning(
+                    "Instagram webhook stored 0 inbox rows. WebhookEventId={WebhookEventId} Notes={Notes} PayloadPreview={PayloadPreview}",
+                    webhookEvent.Id,
+                    string.Join(" | ", result.Notes),
+                    preview);
+            }
+
             return result;
         }
         catch (Exception ex)
@@ -1527,7 +1540,7 @@ public class InstagramService : IInstagramService
             }
 
             // Instagram messaging can arrive as a change with field=messages rather than entry.messaging.
-            if (field is "messages" or "messaging" or "messaging_postbacks" or "message_reactions")
+            if (field is "messages" or "message" or "messaging" or "messaging_postbacks" or "message_reactions")
             {
                 var entryId = entry.TryGetProperty("id", out var idEl) ? idEl.ToString() : profile.ExternalProfileId;
                 if (MetaWebhookPayloadNormalizer.TryGetMessageEnvelope(value, out _))
@@ -1793,8 +1806,14 @@ public class InstagramService : IInstagramService
             return;
         }
 
-        var messageId = MetaMessagingHelper.ReadMessageId(message)
-                        ?? MetaWebhookPayloadNormalizer.ReadMessageId(item);
+        var senderId = FirstNonEmpty(
+            MetaWebhookPayloadNormalizer.ReadActorId(item, "sender"),
+            MetaWebhookPayloadNormalizer.ReadActorId(item, "from"));
+        var receiverId = FirstNonEmpty(
+            MetaWebhookPayloadNormalizer.ReadActorId(item, "recipient"),
+            MetaWebhookPayloadNormalizer.ReadActorId(item, "to"));
+
+        var messageId = MetaWebhookPayloadNormalizer.ResolveMessageId(item, message, senderId, receiverId);
         if (string.IsNullOrWhiteSpace(messageId))
         {
             result.Skip("Message has no mid.");
@@ -1805,13 +1824,6 @@ public class InstagramService : IInstagramService
             result.Skip($"Message '{messageId}' already stored.");
             return;
         }
-
-        var senderId = FirstNonEmpty(
-            MetaWebhookPayloadNormalizer.ReadActorId(item, "sender"),
-            MetaWebhookPayloadNormalizer.ReadActorId(item, "from"));
-        var receiverId = FirstNonEmpty(
-            MetaWebhookPayloadNormalizer.ReadActorId(item, "recipient"),
-            MetaWebhookPayloadNormalizer.ReadActorId(item, "to"));
 
         var outbound = MetaWebhookEchoHelper.IsEcho(item, message)
             || MetaMessagingHelper.ProfileOwnsSenderId(profile, senderId)

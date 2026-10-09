@@ -130,11 +130,11 @@ public static class MetaWebhookContentClassifier
                 if (field is "comments" or "live_comments" or "mentions" or "comment")
                     return true;
 
-                if (field is not ("messages" or "messaging" or "messaging_postbacks") ||
+                if (field is not ("messages" or "message" or "messaging" or "messaging_postbacks") ||
                     !change.TryGetProperty("value", out var value))
                     continue;
 
-                if (IsInboxMessageCandidate(value))
+                if (IsInboxMessageCandidate(value) || HasMessagingChangeShape(value))
                     return true;
 
                 if (value.TryGetProperty("messaging", out var nested) && nested.ValueKind == JsonValueKind.Array)
@@ -158,14 +158,39 @@ public static class MetaWebhookContentClassifier
 
     private static bool IsInboxMessageCandidate(JsonElement item)
     {
-        if (!MetaWebhookPayloadNormalizer.TryGetMessageEnvelope(item, out var message))
+        if (item.TryGetProperty("read", out _) || item.TryGetProperty("delivery", out _))
             return false;
 
-        if (string.IsNullOrWhiteSpace(MetaWebhookPayloadNormalizer.ReadMessageId(message)))
+        if (!MetaWebhookPayloadNormalizer.TryGetMessageEnvelope(item, out var message)
+            && !HasMessagingChangeShape(item))
             return false;
 
-        return !(message.TryGetProperty("is_deleted", out var deleted) && deleted.ValueKind == JsonValueKind.True);
+        if (message.ValueKind == JsonValueKind.Undefined)
+            message = item;
+
+        if (IsDeleted(message) || IsDeleted(item))
+            return false;
+
+        return !string.IsNullOrWhiteSpace(MetaWebhookPayloadNormalizer.ReadMessageId(message))
+               || !string.IsNullOrWhiteSpace(MetaWebhookPayloadNormalizer.ReadMessageId(item))
+               || MetaWebhookPayloadNormalizer.HasMessageBody(item, message);
     }
+
+    private static bool HasMessagingChangeShape(JsonElement value)
+    {
+        if (value.TryGetProperty("read", out _) || value.TryGetProperty("delivery", out _))
+            return false;
+
+        if (value.TryGetProperty("message", out _))
+            return true;
+
+        return MetaWebhookPayloadNormalizer.HasInstagramGraphMessageShape(value);
+    }
+
+    private static bool IsDeleted(JsonElement element)
+        => element.ValueKind == JsonValueKind.Object
+           && element.TryGetProperty("is_deleted", out var deleted)
+           && deleted.ValueKind == JsonValueKind.True;
 
     private static string DescribeMessagingItemKinds(JsonElement item)
     {
@@ -202,7 +227,7 @@ public static class MetaWebhookContentClassifier
         foreach (var change in MetaWebhookPayloadNormalizer.EnumerateChanges(entry))
         {
             var field = change.TryGetProperty("field", out var fieldElement) ? fieldElement.GetString() : null;
-            if (field is not ("messages" or "messaging" or "messaging_postbacks"))
+            if (field is not ("messages" or "message" or "messaging" or "messaging_postbacks"))
                 continue;
 
             if (!change.TryGetProperty("value", out var value))
@@ -224,7 +249,7 @@ public static class MetaWebhookContentClassifier
     {
         var field = change.TryGetProperty("field", out var fieldElement) ? fieldElement.GetString() : null;
 
-        if (field is "messages" or "messaging" or "messaging_postbacks")
+        if (field is "messages" or "message" or "messaging" or "messaging_postbacks")
         {
             if (IsRealUserMessageItem(value, entryId))
                 return true;
@@ -258,7 +283,7 @@ public static class MetaWebhookContentClassifier
 
     private static bool IsRealUserDirectField(string? fieldName, JsonElement value, string? entryId)
     {
-        if (fieldName is "messages" or "messaging")
+        if (fieldName is "messages" or "message" or "messaging")
         {
             if (IsRealUserMessageItem(value, entryId))
                 return true;
@@ -284,16 +309,22 @@ public static class MetaWebhookContentClassifier
 
     private static bool IsRealUserMessageItem(JsonElement item, string? entryId)
     {
-        if (!MetaWebhookPayloadNormalizer.TryGetMessageEnvelope(item, out var message))
+        if (!MetaWebhookPayloadNormalizer.TryGetMessageEnvelope(item, out var message)
+            && !HasMessagingChangeShape(item))
             return false;
 
-        if (string.IsNullOrWhiteSpace(MetaWebhookPayloadNormalizer.ReadMessageId(message)))
+        if (message.ValueKind == JsonValueKind.Undefined)
+            message = item;
+
+        if (string.IsNullOrWhiteSpace(MetaWebhookPayloadNormalizer.ReadMessageId(message))
+            && string.IsNullOrWhiteSpace(MetaWebhookPayloadNormalizer.ReadMessageId(item))
+            && !MetaWebhookPayloadNormalizer.HasMessageBody(item, message))
             return false;
 
         if (MetaWebhookEchoHelper.IsEcho(item, message))
             return false;
 
-        if (message.TryGetProperty("is_deleted", out var deleted) && deleted.ValueKind == JsonValueKind.True)
+        if (IsDeleted(message) || IsDeleted(item))
             return false;
 
         if (HasMarketingTag(message) || HasMarketingTag(item))
@@ -383,7 +414,9 @@ public static class MetaWebhookContentClassifier
 
     private static bool HasMarketingTag(JsonElement element)
     {
-        if (!element.TryGetProperty("tags", out var tags) || tags.ValueKind != JsonValueKind.Array)
+        if (element.ValueKind != JsonValueKind.Object
+            || !element.TryGetProperty("tags", out var tags)
+            || tags.ValueKind != JsonValueKind.Array)
             return false;
 
         foreach (var tag in tags.EnumerateArray())

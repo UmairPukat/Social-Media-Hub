@@ -75,6 +75,22 @@ public abstract class ProcessWebhooksControllerBase : ControllerBase
     }
 
     [Authorize]
+    [HttpGet("webhooks/events")]
+    public async Task<IActionResult> ListEvents([FromQuery] int take = 20)
+    {
+        var response = await _webhookService.ListStoredAsync(MenuType, take);
+        return response.Success ? Ok(response) : BadRequest(response);
+    }
+
+    [Authorize]
+    [HttpPost("webhooks/replay")]
+    public async Task<IActionResult> Replay([FromQuery] Guid? eventId = null, [FromQuery] int take = 25)
+    {
+        var response = await _webhookService.ReplayStoredAsync(MenuType, eventId, take);
+        return response.Success ? Ok(response) : BadRequest(response);
+    }
+
+    [Authorize]
     [HttpPost("webhooks/subscribe")]
     public async Task<IActionResult> Subscribe(string platformCode, [FromQuery] string? callbackUrl = null)
     {

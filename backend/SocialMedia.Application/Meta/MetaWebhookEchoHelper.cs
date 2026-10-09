@@ -9,15 +9,14 @@ public static class MetaWebhookEchoHelper
 {
     public static bool IsEcho(JsonElement item, JsonElement message)
     {
-        if (message.TryGetProperty("is_echo", out var echo) && echo.ValueKind == JsonValueKind.True)
+        if (HasTrueFlag(message, "is_echo") || HasTrueFlag(item, "is_echo"))
             return true;
 
-        if (item.TryGetProperty("is_echo", out var itemEcho) && itemEcho.ValueKind == JsonValueKind.True)
-            return true;
-
-        if (message.TryGetProperty("is_self", out var self) && self.ValueKind == JsonValueKind.True)
-            return true;
-
-        return item.TryGetProperty("is_self", out var itemSelf) && itemSelf.ValueKind == JsonValueKind.True;
+        return HasTrueFlag(message, "is_self") || HasTrueFlag(item, "is_self");
     }
+
+    private static bool HasTrueFlag(JsonElement element, string name)
+        => element.ValueKind == JsonValueKind.Object
+           && element.TryGetProperty(name, out var flag)
+           && flag.ValueKind == JsonValueKind.True;
 }
