@@ -1353,13 +1353,6 @@ public class InstagramService : IInstagramService
     public Task SubscribePageWebhooksAsync(string pageId, string pageAccessToken, CancellationToken cancellationToken = default)
         => _graph.SubscribePageAsync(GraphVersion, pageId, pageAccessToken, MetaGraphClient.InstagramPageSubscribedFields, cancellationToken);
 
-    /// <summary>
-    /// Subscribe the Instagram Business account itself so DMs arrive as <c>object=instagram</c>
-    /// (Page <c>subscribed_apps</c> alone only covers Messenger).
-    /// </summary>
-    public Task SubscribeInstagramMessagingAsync(string instagramBusinessId, string pageAccessToken, CancellationToken cancellationToken = default)
-        => _graph.SubscribePageAsync(GraphVersion, instagramBusinessId, pageAccessToken, "messages", cancellationToken);
-
     public Task UnsubscribePageWebhooksAsync(string pageId, string pageAccessToken, CancellationToken cancellationToken = default)
         => _graph.UnsubscribePageAsync(GraphVersion, pageId, pageAccessToken, cancellationToken);
 

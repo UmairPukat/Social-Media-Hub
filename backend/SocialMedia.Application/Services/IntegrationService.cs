@@ -1315,11 +1315,7 @@ public class IntegrationService : IIntegrationService
         try
         {
             if (platformCode == "instagram")
-            {
                 await _instagramService.SubscribePageWebhooksAsync(page.PageId, page.PageAccessToken!, cancellationToken);
-                if (!string.IsNullOrWhiteSpace(page.InstagramId))
-                    await _instagramService.SubscribeInstagramMessagingAsync(page.InstagramId!, page.PageAccessToken!, cancellationToken);
-            }
             else
                 await _facebookService.SubscribePageWebhooksAsync(page.PageId, page.PageAccessToken!, cancellationToken);
 
