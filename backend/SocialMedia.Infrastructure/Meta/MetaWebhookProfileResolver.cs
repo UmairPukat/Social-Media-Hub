@@ -69,6 +69,44 @@ internal static class MetaWebhookProfileResolver
     }
 
     /// <summary>
+    /// Instagram-via-Facebook-Login DMs often arrive with the Facebook Page id. Prefer the
+    /// Instagram Business profile linked to that page so inbox rows land on the Instagram card.
+    /// </summary>
+    public static async Task<SocialProfileEntityBase> PreferInstagramBusinessAsync(
+        IProcessDataStore store,
+        SocialProfileEntityBase profile,
+        CancellationToken cancellationToken)
+    {
+        if (profile.ProfileType is ProfileType.InstagramBusiness or ProfileType.InstagramLogin)
+            return profile;
+
+        var pageId = profile.ExternalProfileId;
+        if (string.IsNullOrWhiteSpace(pageId))
+            return profile;
+
+        var accounts = await store.FindConnectedSocialAccountsAsync(cancellationToken);
+        foreach (var accountSnapshot in accounts)
+        {
+            var profiles = await store.GetProfilesByAccountAsync(accountSnapshot.Id, cancellationToken);
+            foreach (var snapshot in profiles)
+            {
+                if (snapshot.ProfileType is not (ProfileType.InstagramBusiness or ProfileType.InstagramLogin))
+                    continue;
+                if (!PageIdMatches(snapshot.MetadataJson, pageId)
+                    && !SelectedPageIdMatches(accountSnapshot.MetadataJson, pageId)
+                    && !ReadAlternateIds(snapshot.MetadataJson).Contains(pageId))
+                    continue;
+
+                return await store.GetProfileByIdAsync(snapshot.Id, cancellationToken)
+                       ?? await store.GetProfileByExternalIdAsync(snapshot.ExternalProfileId, cancellationToken)
+                       ?? profile;
+            }
+        }
+
+        return profile;
+    }
+
+    /// <summary>
     /// Instagram Login webhooks often key <c>entry.id</c> on a professional user_id or Meta's
     /// test id <c>0</c>. When this module has exactly one Instagram profile, use it.
     /// </summary>

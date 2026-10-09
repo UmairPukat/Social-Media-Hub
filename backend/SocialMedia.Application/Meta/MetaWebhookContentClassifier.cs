@@ -158,10 +158,10 @@ public static class MetaWebhookContentClassifier
 
     private static bool IsInboxMessageCandidate(JsonElement item)
     {
-        if (!item.TryGetProperty("message", out var message))
+        if (!MetaWebhookPayloadNormalizer.TryGetMessageEnvelope(item, out var message))
             return false;
 
-        if (string.IsNullOrWhiteSpace(ReadMessageId(message)))
+        if (string.IsNullOrWhiteSpace(MetaWebhookPayloadNormalizer.ReadMessageId(message)))
             return false;
 
         return !(message.TryGetProperty("is_deleted", out var deleted) && deleted.ValueKind == JsonValueKind.True);
@@ -169,7 +169,7 @@ public static class MetaWebhookContentClassifier
 
     private static string DescribeMessagingItemKinds(JsonElement item)
     {
-        if (item.TryGetProperty("message", out _))
+        if (item.TryGetProperty("message", out _) || MetaWebhookPayloadNormalizer.HasInstagramGraphMessageShape(item))
             return "message";
 
         if (item.TryGetProperty("read", out _))
@@ -284,10 +284,10 @@ public static class MetaWebhookContentClassifier
 
     private static bool IsRealUserMessageItem(JsonElement item, string? entryId)
     {
-        if (!item.TryGetProperty("message", out var message))
+        if (!MetaWebhookPayloadNormalizer.TryGetMessageEnvelope(item, out var message))
             return false;
 
-        if (string.IsNullOrWhiteSpace(ReadMessageId(message)))
+        if (string.IsNullOrWhiteSpace(MetaWebhookPayloadNormalizer.ReadMessageId(message)))
             return false;
 
         if (MetaWebhookEchoHelper.IsEcho(item, message))
@@ -299,8 +299,10 @@ public static class MetaWebhookContentClassifier
         if (HasMarketingTag(message) || HasMarketingTag(item))
             return false;
 
-        var senderId = ReadActorId(item, "sender") ?? ReadActorId(item, "from");
-        var recipientId = ReadActorId(item, "recipient") ?? ReadActorId(item, "to");
+        var senderId = MetaWebhookPayloadNormalizer.ReadActorId(item, "sender")
+                       ?? MetaWebhookPayloadNormalizer.ReadActorId(item, "from");
+        var recipientId = MetaWebhookPayloadNormalizer.ReadActorId(item, "recipient")
+                          ?? MetaWebhookPayloadNormalizer.ReadActorId(item, "to");
 
         if (!string.IsNullOrWhiteSpace(entryId) &&
             !string.IsNullOrWhiteSpace(senderId) &&

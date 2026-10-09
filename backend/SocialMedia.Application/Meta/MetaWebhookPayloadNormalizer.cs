@@ -99,13 +99,98 @@ public static class MetaWebhookPayloadNormalizer
         if (!element.TryGetProperty(propertyName, out var actor))
             return null;
 
-        if (actor.TryGetProperty("id", out var id))
+        if (actor.TryGetProperty("id", out var id) && !string.IsNullOrWhiteSpace(id.ToString()))
             return id.ToString();
+
+        if (actor.TryGetProperty("data", out var data) && data.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in data.EnumerateArray())
+            {
+                if (item.TryGetProperty("id", out var nestedId) && !string.IsNullOrWhiteSpace(nestedId.ToString()))
+                    return nestedId.ToString();
+                if (item.ValueKind is JsonValueKind.String or JsonValueKind.Number)
+                    return item.ToString();
+            }
+        }
 
         if (actor.ValueKind is JsonValueKind.String or JsonValueKind.Number)
             return actor.ToString();
 
         return null;
+    }
+
+    /// <summary>
+    /// Messenger Platform wraps DMs as <c>{ sender, recipient, message: { mid, text } }</c>.
+    /// Instagram Graph webhooks (Facebook Login Instagram card) send a flat
+    /// <c>changes[field=messages].value</c> with <c>id</c>/<c>from</c>/<c>to</c>/<c>text</c>.
+    /// </summary>
+    public static bool TryGetMessageEnvelope(JsonElement item, out JsonElement message)
+    {
+        if (item.TryGetProperty("message", out message) && message.ValueKind == JsonValueKind.Object)
+            return true;
+
+        if (HasInstagramGraphMessageShape(item))
+        {
+            message = item;
+            return true;
+        }
+
+        message = default;
+        return false;
+    }
+
+    public static bool HasInstagramGraphMessageShape(JsonElement value)
+    {
+        if (value.TryGetProperty("media", out _)
+            || value.TryGetProperty("media_id", out _)
+            || value.TryGetProperty("comment_id", out _))
+            return false;
+
+        var messageId = ReadMessageId(value);
+        if (string.IsNullOrWhiteSpace(messageId))
+            return false;
+
+        var hasPeer = ReadActorId(value, "from") is not null
+                      || ReadActorId(value, "sender") is not null
+                      || ReadActorId(value, "to") is not null
+                      || ReadActorId(value, "recipient") is not null;
+        if (!hasPeer)
+            return false;
+
+        return value.TryGetProperty("text", out _)
+               || value.TryGetProperty("attachments", out _)
+               || value.TryGetProperty("story", out _)
+               || value.TryGetProperty("mid", out _);
+    }
+
+    public static string? ReadMessageId(JsonElement message)
+    {
+        foreach (var name in new[] { "mid", "message_id", "id" })
+        {
+            if (message.TryGetProperty(name, out var id) && !string.IsNullOrWhiteSpace(id.ToString()))
+                return id.ToString();
+        }
+
+        return null;
+    }
+
+    public static string? ReadMessageText(JsonElement item, JsonElement message)
+    {
+        if (message.ValueKind == JsonValueKind.Object
+            && message.TryGetProperty("text", out var nested)
+            && nested.ValueKind is JsonValueKind.String or JsonValueKind.Number
+            && !string.IsNullOrWhiteSpace(nested.ToString()))
+            return nested.ToString();
+
+        if (item.TryGetProperty("text", out var text)
+            && text.ValueKind is JsonValueKind.String or JsonValueKind.Number
+            && !string.IsNullOrWhiteSpace(text.ToString()))
+            return text.ToString();
+
+        if (message.TryGetProperty("attachments", out _) || item.TryGetProperty("attachments", out _))
+            return "[Instagram attachment]";
+
+        return string.Empty;
     }
 
     public static string? ReadMediaId(JsonElement value)

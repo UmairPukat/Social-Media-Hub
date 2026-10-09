@@ -1353,6 +1353,13 @@ public class InstagramService : IInstagramService
     public Task SubscribePageWebhooksAsync(string pageId, string pageAccessToken, CancellationToken cancellationToken = default)
         => _graph.SubscribePageAsync(GraphVersion, pageId, pageAccessToken, MetaGraphClient.InstagramPageSubscribedFields, cancellationToken);
 
+    /// <summary>
+    /// Subscribe the Instagram Business account itself so DMs arrive as <c>object=instagram</c>
+    /// (Page <c>subscribed_apps</c> alone only covers Messenger).
+    /// </summary>
+    public Task SubscribeInstagramMessagingAsync(string instagramBusinessId, string pageAccessToken, CancellationToken cancellationToken = default)
+        => _graph.SubscribePageAsync(GraphVersion, instagramBusinessId, pageAccessToken, "messages", cancellationToken);
+
     public Task UnsubscribePageWebhooksAsync(string pageId, string pageAccessToken, CancellationToken cancellationToken = default)
         => _graph.UnsubscribePageAsync(GraphVersion, pageId, pageAccessToken, cancellationToken);
 
@@ -1383,6 +1390,9 @@ public class InstagramService : IInstagramService
                         _store, cancellationToken);
                 if (profile is null)
                     continue;
+
+                profile = await MetaWebhookProfileResolver.PreferInstagramBusinessAsync(
+                    _store, profile, cancellationToken);
 
                 var account = await _store.GetSocialAccountByIdAsync(profile.SocialAccountId, cancellationToken);
                 if (account is null)
@@ -1527,11 +1537,17 @@ public class InstagramService : IInstagramService
             if (field is "messages" or "messaging" or "messaging_postbacks" or "message_reactions")
             {
                 var entryId = entry.TryGetProperty("id", out var idEl) ? idEl.ToString() : profile.ExternalProfileId;
-                if (value.TryGetProperty("message", out _))
+                if (MetaWebhookPayloadNormalizer.TryGetMessageEnvelope(value, out _))
                     await ProcessMessageAsync(profile, account, entryId, value, result, cancellationToken);
                 else if (value.TryGetProperty("messaging", out var nestedMessaging) &&
                          nestedMessaging.ValueKind == JsonValueKind.Array)
                     await ProcessMessagesAsync(profile, entryId, nestedMessaging, result, cancellationToken);
+                else if (value.TryGetProperty("messages", out var cloudMessages) &&
+                         cloudMessages.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var cloudItem in cloudMessages.EnumerateArray())
+                        await ProcessMessageAsync(profile, account, entryId, cloudItem, result, cancellationToken);
+                }
                 else
                     result.Skip($"Change '{field}' value has no message envelope.");
                 continue;
@@ -1778,13 +1794,14 @@ public class InstagramService : IInstagramService
         WebhookProcessResult result,
         CancellationToken cancellationToken)
     {
-        if (!item.TryGetProperty("message", out var message))
+        if (!MetaWebhookPayloadNormalizer.TryGetMessageEnvelope(item, out var message))
         {
             result.Skip("Messaging item has no message object.");
             return;
         }
 
-        var messageId = MetaMessagingHelper.ReadMessageId(message);
+        var messageId = MetaMessagingHelper.ReadMessageId(message)
+                        ?? MetaWebhookPayloadNormalizer.ReadMessageId(item);
         if (string.IsNullOrWhiteSpace(messageId))
         {
             result.Skip("Message has no mid.");
@@ -1848,10 +1865,8 @@ public class InstagramService : IInstagramService
             await _store!.AddConversationAsync(conversation, cancellationToken);
         }
 
-        var receivedAt = ReadTimestamp(item) ?? DateTime.UtcNow;
-        var body = message.TryGetProperty("text", out var text)
-            ? text.GetString()
-            : message.TryGetProperty("attachments", out _) ? "[Instagram attachment]" : string.Empty;
+        var receivedAt = ReadTimestamp(item) ?? ReadTimestamp(message) ?? DateTime.UtcNow;
+        var body = MetaWebhookPayloadNormalizer.ReadMessageText(item, message);
 
         var replyToMid = message.TryGetProperty("reply_to", out var replyTo) &&
                          replyTo.ValueKind == JsonValueKind.Object &&
@@ -1934,7 +1949,8 @@ public class InstagramService : IInstagramService
     /// </summary>
     private static DateTime? ReadTimestamp(JsonElement element)
     {
-        if (!element.TryGetProperty("timestamp", out var value))
+        if (!element.TryGetProperty("timestamp", out var value)
+            && !element.TryGetProperty("created_time", out value))
             return null;
 
         long raw;
@@ -1942,7 +1958,19 @@ public class InstagramService : IInstagramService
         {
             if (!value.TryGetInt64(out raw)) return null;
         }
-        else if (value.ValueKind != JsonValueKind.String || !long.TryParse(value.GetString(), out raw))
+        else if (value.ValueKind == JsonValueKind.String)
+        {
+            var text = value.GetString();
+            if (string.IsNullOrWhiteSpace(text))
+                return null;
+            if (!long.TryParse(text, out raw))
+            {
+                return DateTimeOffset.TryParse(text, out var parsed)
+                    ? parsed.UtcDateTime
+                    : null;
+            }
+        }
+        else
         {
             return null;
         }
