@@ -63,7 +63,11 @@ public interface IFacebookService
     Task<IReadOnlyList<SocialProfileDraft>> DiscoverProfilesAsync(string userAccessToken, CancellationToken cancellationToken = default);
 
     /// <summary>Lists the Facebook Pages the user granted, so one can be chosen before connecting.</summary>
-    Task<IReadOnlyList<MetaPageInfo>> ListPagesAsync(string userAccessToken, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<MetaPageInfo>> ListPagesAsync(
+        string userAccessToken,
+        CancellationToken cancellationToken = default,
+        string? graphApiVersion = null,
+        string? appAccessToken = null);
 
     /// <summary>POST {pageId}/subscribed_apps — subscribes the selected page to webhook fields.</summary>
     Task SubscribePageWebhooksAsync(string pageId, string pageAccessToken, CancellationToken cancellationToken = default);
@@ -137,7 +141,11 @@ public interface IInstagramService
     Task<IReadOnlyList<SocialProfileDraft>> DiscoverInstagramLoginProfilesAsync(string accessToken, CancellationToken cancellationToken = default);
 
     /// <summary>Lists Facebook Pages with their linked Instagram Business account, for page selection.</summary>
-    Task<IReadOnlyList<MetaPageInfo>> ListPagesAsync(string userAccessToken, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<MetaPageInfo>> ListPagesAsync(
+        string userAccessToken,
+        CancellationToken cancellationToken = default,
+        string? graphApiVersion = null,
+        string? appAccessToken = null);
 
     /// <summary>POST {pageId}/subscribed_apps — subscribes the selected page to webhook fields.</summary>
     Task SubscribePageWebhooksAsync(string pageId, string pageAccessToken, CancellationToken cancellationToken = default);

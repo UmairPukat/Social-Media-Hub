@@ -77,50 +77,279 @@ public class MetaGraphClient
             (int)response.StatusCode);
     }
 
+    private const string PageListFields =
+        "id,name,access_token,picture{url},instagram_business_account{id,username,name,profile_picture_url}";
+    private const string PageListFieldsBasic = "id,name,access_token";
+
     /// <summary>
     /// GET me/accounts — the Facebook Pages granted by the user, with any linked Instagram
     /// Business account. Shared by Facebook and Instagram page selection.
+    /// Falls back to debug_token granular page ids when Facebook Login for Business
+    /// returns an empty accounts list.
     /// </summary>
     public async Task<IReadOnlyList<MetaPageInfo>> ListPagesAsync(
         string version,
         string userAccessToken,
+        CancellationToken cancellationToken,
+        string? appAccessToken = null)
+    {
+        string? lastError = null;
+        var (pages, accountsError) = await TryListAccountPagesAsync(
+            version, userAccessToken, PageListFields, cancellationToken);
+        lastError = accountsError;
+        if (pages.Count > 0)
+            return pages;
+
+        (pages, accountsError) = await TryListAccountPagesAsync(
+            version, userAccessToken, PageListFieldsBasic, cancellationToken);
+        lastError ??= accountsError;
+        if (pages.Count > 0)
+            return pages;
+
+        if (!string.IsNullOrWhiteSpace(appAccessToken))
+        {
+            try
+            {
+                pages = await ListPagesFromGrantedIdsAsync(
+                    version, userAccessToken, appAccessToken, cancellationToken);
+                if (pages.Count > 0)
+                    return pages;
+            }
+            catch (Exception ex)
+            {
+                lastError ??= ex.Message;
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(lastError) && pages.Count == 0)
+            throw new InvalidOperationException(lastError);
+
+        return pages;
+    }
+
+    private async Task<(List<MetaPageInfo> Pages, string? Error)> TryListAccountPagesAsync(
+        string version,
+        string userAccessToken,
+        string fields,
         CancellationToken cancellationToken)
     {
-        using var doc = await GetAsync(
+        var pages = new List<MetaPageInfo>();
+        var result = await TryGetFacebookAsync(
             version,
             "me/accounts",
             userAccessToken,
             cancellationToken,
-            ("fields", "id,name,access_token,picture{url},instagram_business_account{id,username,name,profile_picture_url}"),
+            ("fields", fields),
             ("limit", "100"));
 
-        var pages = new List<MetaPageInfo>();
-        if (!doc.RootElement.TryGetProperty("data", out var data))
-            return pages;
+        if (result.Status is < 200 or >= 300)
+            return (pages, ReadGraphErrorMessage(result.Body) ?? $"Facebook Pages lookup failed ({result.Status}).");
 
-        foreach (var page in data.EnumerateArray())
+        AppendPagesFromBody(result.Body, pages);
+        await FollowAccountPagesPagingAsync(result.Body, pages, cancellationToken);
+        return (pages, null);
+    }
+
+    private async Task FollowAccountPagesPagingAsync(
+        string body,
+        List<MetaPageInfo> pages,
+        CancellationToken cancellationToken)
+    {
+        var next = ReadPagingNext(body);
+        var hops = 0;
+        while (!string.IsNullOrWhiteSpace(next) && hops++ < 10)
         {
-            var info = new MetaPageInfo
-            {
-                PageId = page.TryGetProperty("id", out var id) ? id.GetString() ?? string.Empty : string.Empty,
-                PageName = page.TryGetProperty("name", out var name) ? name.GetString() ?? "Facebook Page" : "Facebook Page",
-                PageAccessToken = page.TryGetProperty("access_token", out var token) ? token.GetString() : null,
-                PageImage = ReadPictureUrl(page)
-            };
+            var pageResult = await TryGetUrlAsync(next, cancellationToken);
+            if (pageResult.Status is < 200 or >= 300)
+                break;
+            AppendPagesFromBody(pageResult.Body, pages);
+            next = ReadPagingNext(pageResult.Body);
+        }
+    }
 
-            if (page.TryGetProperty("instagram_business_account", out var ig))
+    private async Task<List<MetaPageInfo>> ListPagesFromGrantedIdsAsync(
+        string version,
+        string userAccessToken,
+        string appAccessToken,
+        CancellationToken cancellationToken)
+    {
+        var pages = new List<MetaPageInfo>();
+        var debug = await TryGetFacebookAsync(
+            version,
+            "debug_token",
+            appAccessToken,
+            cancellationToken,
+            ("input_token", userAccessToken));
+
+        if (debug.Status is < 200 or >= 300)
+            throw new InvalidOperationException(ReadGraphErrorMessage(debug.Body) ?? "Could not inspect the Meta login token.");
+
+        foreach (var pageId in ReadGrantedPageIds(debug.Body))
+        {
+            if (pages.Any(p => p.PageId == pageId))
+                continue;
+
+            var pageResult = await TryGetFacebookAsync(
+                version,
+                pageId,
+                userAccessToken,
+                cancellationToken,
+                ("fields", PageListFields));
+            if (pageResult.Status is < 200 or >= 300)
             {
-                info.InstagramId = ig.TryGetProperty("id", out var igId) ? igId.GetString() : null;
-                info.InstagramUsername = ig.TryGetProperty("username", out var igUser) ? igUser.GetString() : null;
-                info.InstagramName = ig.TryGetProperty("name", out var igName) ? igName.GetString() : null;
-                info.InstagramImage = ig.TryGetProperty("profile_picture_url", out var igPic) ? igPic.GetString() : null;
+                pageResult = await TryGetFacebookAsync(
+                    version,
+                    pageId,
+                    userAccessToken,
+                    cancellationToken,
+                    ("fields", PageListFieldsBasic));
             }
 
-            if (!string.IsNullOrWhiteSpace(info.PageId))
-                pages.Add(info);
+            if (pageResult.Status is >= 200 and < 300)
+            {
+                var parsed = ParsePageNode(pageResult.Body);
+                if (parsed is not null)
+                    pages.Add(parsed);
+            }
+            else
+            {
+                pages.Add(new MetaPageInfo { PageId = pageId, PageName = pageId });
+            }
         }
 
         return pages;
+    }
+
+    private static void AppendPagesFromBody(string body, List<MetaPageInfo> pages)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(body);
+            if (!doc.RootElement.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Array)
+                return;
+
+            foreach (var page in data.EnumerateArray())
+            {
+                var info = ParsePageElement(page);
+                if (info is null || pages.Any(p => p.PageId == info.PageId))
+                    continue;
+                pages.Add(info);
+            }
+        }
+        catch (JsonException)
+        {
+            // Ignore malformed paging payloads.
+        }
+    }
+
+    private static MetaPageInfo? ParsePageNode(string body)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(body);
+            return ParsePageElement(doc.RootElement);
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    private static MetaPageInfo? ParsePageElement(JsonElement page)
+    {
+        var pageId = page.TryGetProperty("id", out var id) ? id.GetString() ?? string.Empty : string.Empty;
+        if (string.IsNullOrWhiteSpace(pageId))
+            return null;
+
+        var info = new MetaPageInfo
+        {
+            PageId = pageId,
+            PageName = page.TryGetProperty("name", out var name) ? name.GetString() ?? "Facebook Page" : "Facebook Page",
+            PageAccessToken = page.TryGetProperty("access_token", out var token) ? token.GetString() : null,
+            PageImage = ReadPictureUrl(page)
+        };
+
+        if (page.TryGetProperty("instagram_business_account", out var ig))
+        {
+            info.InstagramId = ig.TryGetProperty("id", out var igId) ? igId.GetString() : null;
+            info.InstagramUsername = ig.TryGetProperty("username", out var igUser) ? igUser.GetString() : null;
+            info.InstagramName = ig.TryGetProperty("name", out var igName) ? igName.GetString() : null;
+            info.InstagramImage = ig.TryGetProperty("profile_picture_url", out var igPic) ? igPic.GetString() : null;
+        }
+
+        return info;
+    }
+
+    private static IReadOnlyList<string> ReadGrantedPageIds(string debugTokenBody)
+    {
+        var ids = new HashSet<string>(StringComparer.Ordinal);
+        try
+        {
+            using var doc = JsonDocument.Parse(debugTokenBody);
+            if (!doc.RootElement.TryGetProperty("data", out var data))
+                return ids.ToList();
+
+            if (data.TryGetProperty("granular_scopes", out var scopes) && scopes.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var scope in scopes.EnumerateArray())
+                {
+                    if (!scope.TryGetProperty("target_ids", out var targets) || targets.ValueKind != JsonValueKind.Array)
+                        continue;
+                    foreach (var target in targets.EnumerateArray())
+                    {
+                        var value = target.GetString();
+                        if (!string.IsNullOrWhiteSpace(value))
+                            ids.Add(value);
+                    }
+                }
+            }
+        }
+        catch (JsonException)
+        {
+            return ids.ToList();
+        }
+
+        return ids.ToList();
+    }
+
+    private static string? ReadPagingNext(string body)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(body);
+            if (doc.RootElement.TryGetProperty("paging", out var paging)
+                && paging.TryGetProperty("next", out var next)
+                && next.ValueKind == JsonValueKind.String)
+            {
+                return next.GetString();
+            }
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+
+        return null;
+    }
+
+    private static string? ReadGraphErrorMessage(string body)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(body);
+            if (doc.RootElement.TryGetProperty("error", out var error)
+                && error.TryGetProperty("message", out var message)
+                && !string.IsNullOrWhiteSpace(message.GetString()))
+            {
+                return message.GetString();
+            }
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+
+        return string.IsNullOrWhiteSpace(body) ? null : body;
     }
 
     private static string? ReadPictureUrl(JsonElement page) =>

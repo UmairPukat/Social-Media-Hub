@@ -265,8 +265,15 @@ public class InstagramService : IInstagramService
         return list;
     }
 
-    public Task<IReadOnlyList<MetaPageInfo>> ListPagesAsync(string userAccessToken, CancellationToken cancellationToken = default)
-        => _graph.ListPagesAsync(GraphVersion, userAccessToken, cancellationToken);
+    public Task<IReadOnlyList<MetaPageInfo>> ListPagesAsync(
+        string userAccessToken,
+        CancellationToken cancellationToken = default,
+        string? graphApiVersion = null,
+        string? appAccessToken = null)
+    {
+        var version = FirstNonEmpty(graphApiVersion, GraphVersion, "v21.0");
+        return _graph.ListPagesAsync(version, userAccessToken, cancellationToken, appAccessToken);
+    }
 
     public async Task<PostDto> CreatePostAsync(
         MetaCallContext context,

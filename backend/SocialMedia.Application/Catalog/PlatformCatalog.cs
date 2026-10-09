@@ -271,6 +271,21 @@ public static class PlatformCatalog
     public static string NormalizeFacebookScopes(string? scopes)
         => NormalizeCommaSeparatedScopes(scopes, string.Join(',', FacebookOAuthScopes));
 
+    /// <summary>
+    /// Page picker needs <c>pages_show_list</c> even when a Developer App saved a custom scope list.
+    /// </summary>
+    public static string EnsurePagePickerScopes(string? scopes)
+    {
+        var tokens = DistinctScopeTokens(NormalizeFacebookScopes(scopes));
+        foreach (var required in new[] { "pages_show_list", "pages_read_engagement" })
+        {
+            if (!tokens.Exists(token => token.Equals(required, StringComparison.OrdinalIgnoreCase)))
+                tokens.Add(required);
+        }
+
+        return string.Join(',', tokens);
+    }
+
     public static string NormalizeCommaSeparatedScopes(string? scopes, string? fallback = null)
     {
         var tokens = DistinctScopeTokens(scopes);

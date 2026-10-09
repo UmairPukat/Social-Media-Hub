@@ -220,6 +220,13 @@
             <textarea matInput rows="3" [ngModel]="configForm().scopes" name="scopes" (ngModelChange)="updateConfigField('scopes', $event)"></textarea>
           </mat-form-field>
 
+          @if (usesMetaWebhooks(configPlatformCode())) {
+            <mat-form-field appearance="outline">
+              <mat-label>Webhook URL (App Connections)</mat-label>
+              <input matInput [ngModel]="moduleWebhookUri" name="webhookUrl" readonly />
+            </mat-form-field>
+          }
+
           @if (!usesStandaloneOAuthConfig(configPlatformCode())) {
             <mat-form-field appearance="outline">
               <mat-label>Webhook verify token</mat-label>

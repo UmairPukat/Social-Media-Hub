@@ -19,7 +19,15 @@ import {
 } from '../../core/models/api.models';
 import { PROCESS_MODULES } from '../../core/config/process.config';
 import { defaultOAuthRedirectUri, defaultWebhookRedirectUri } from '../../core/config/oauth-redirect.config';
-import { formatPlatformOAuthScopes, youtubeDefaultScopeString, tiktokDefaultScopeString } from '../../core/config/oauth-scopes.config';
+import {
+  formatPlatformOAuthScopes,
+  youtubeDefaultScopeString,
+  tiktokDefaultScopeString,
+  facebookDefaultScopeString,
+  INSTAGRAM_OAUTH_SCOPES,
+  INSTAGRAM_LOGIN_OAUTH_SCOPES,
+  WHATSAPP_OAUTH_SCOPES
+} from '../../core/config/oauth-scopes.config';
 import { instagramAccountName, instagramDisplayName } from '../../core/utils/connection-details.util';
 
 export interface IntegrationCategoryGroup {
@@ -73,6 +81,10 @@ const DEFAULT_BASE_URLS: Record<string, string> = {
 };
 
 const DEFAULT_SCOPES: Record<string, string> = {
+  facebook: facebookDefaultScopeString(),
+  instagram: INSTAGRAM_OAUTH_SCOPES.join(','),
+  instagram_login: INSTAGRAM_LOGIN_OAUTH_SCOPES.join(','),
+  whatsapp: WHATSAPP_OAUTH_SCOPES.join(','),
   youtube: youtubeDefaultScopeString(),
   tiktok: tiktokDefaultScopeString()
 };
@@ -372,14 +384,13 @@ export class IntegrationsComponent implements OnInit {
         return;
       }
 
-      this.reload();
-
       if (this.supportsPageSelection(code)) {
         this.message.set(`Signed in with Meta. Choose the ${card.displayName} page you want to manage.`);
         this.openPagePicker(card);
       } else {
         this.message.set(`${card.displayName} connected.`);
       }
+      this.reload();
     } catch (err) {
       this.message.set(err instanceof Error ? err.message : 'Connection failed');
     } finally {
@@ -425,8 +436,10 @@ export class IntegrationsComponent implements OnInit {
     this.pickerTitle.set(card.displayName);
     this.loadPages();
 
-    const dialog = this.pickerDialog()?.nativeElement;
-    if (dialog && !dialog.open) dialog.showModal();
+    queueMicrotask(() => {
+      const dialog = this.pickerDialog()?.nativeElement;
+      if (dialog && !dialog.open) dialog.showModal();
+    });
   }
 
   closePagePicker(): void {

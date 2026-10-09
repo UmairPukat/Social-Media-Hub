@@ -18,8 +18,16 @@ import {
   SaveAppConnectionConfigRequest
 } from '../../core/models/api.models';
 import { IntegrationCategoryGroup } from '../integrations/integrations.component';
-import { defaultOAuthRedirectUri } from '../../core/config/oauth-redirect.config';
-import { formatPlatformOAuthScopes, youtubeDefaultScopeString, tiktokDefaultScopeString } from '../../core/config/oauth-scopes.config';
+import { defaultOAuthRedirectUri, defaultWebhookRedirectUri } from '../../core/config/oauth-redirect.config';
+import {
+  formatPlatformOAuthScopes,
+  youtubeDefaultScopeString,
+  tiktokDefaultScopeString,
+  facebookDefaultScopeString,
+  INSTAGRAM_OAUTH_SCOPES,
+  INSTAGRAM_LOGIN_OAUTH_SCOPES,
+  WHATSAPP_OAUTH_SCOPES
+} from '../../core/config/oauth-scopes.config';
 import { instagramAccountName, instagramDisplayName } from '../../core/utils/connection-details.util';
 
 const CATEGORY_META: Record<string, { accent: string; icon: string }> = {
@@ -63,6 +71,10 @@ const DEFAULT_BASE_URLS: Record<string, string> = {
 };
 
 const DEFAULT_SCOPES: Record<string, string> = {
+  facebook: facebookDefaultScopeString(),
+  instagram: INSTAGRAM_OAUTH_SCOPES.join(','),
+  instagram_login: INSTAGRAM_LOGIN_OAUTH_SCOPES.join(','),
+  whatsapp: WHATSAPP_OAUTH_SCOPES.join(','),
   youtube: youtubeDefaultScopeString(),
   tiktok: tiktokDefaultScopeString()
 };
@@ -87,6 +99,7 @@ export class AppConnectionsComponent implements OnInit {
   private readonly metaAuth = inject(MetaAuthUrlService);
   private readonly menuType = MENU_TYPES.appConnection;
   readonly moduleRedirectUri = defaultOAuthRedirectUri(MENU_TYPES.appConnection);
+  readonly moduleWebhookUri = defaultWebhookRedirectUri(MENU_TYPES.appConnection);
   readonly instagramAccountName = instagramAccountName;
   readonly instagramDisplayName = instagramDisplayName;
 
@@ -205,14 +218,13 @@ export class AppConnectionsComponent implements OnInit {
         return;
       }
 
-      this.reload();
-
       if (this.supportsPageSelection(code)) {
         this.message.set(`Signed in. Choose the ${card.displayName} page you want to manage.`);
         this.openPagePicker(card);
       } else {
         this.message.set(`${card.displayName} connected.`);
       }
+      this.reload();
     } catch (err) {
       this.message.set(err instanceof Error ? err.message : 'Connection failed');
     } finally {
@@ -252,6 +264,14 @@ export class AppConnectionsComponent implements OnInit {
 
   isWhatsAppPlatform(code: string | null | undefined): boolean {
     return (code || '').toLowerCase() === 'whatsapp';
+  }
+
+  usesMetaWebhooks(code: string | null | undefined): boolean {
+    const value = (code || '').toLowerCase();
+    return value === 'facebook'
+      || value === 'instagram'
+      || value === 'instagram_login'
+      || value === 'whatsapp';
   }
 
   isYouTubePlatform(code: string | null | undefined): boolean {
@@ -378,8 +398,10 @@ export class AppConnectionsComponent implements OnInit {
     this.pickerTitle.set(card.displayName);
     this.loadPages();
 
-    const dialog = this.pickerDialog()?.nativeElement;
-    if (dialog && !dialog.open) dialog.showModal();
+    queueMicrotask(() => {
+      const dialog = this.pickerDialog()?.nativeElement;
+      if (dialog && !dialog.open) dialog.showModal();
+    });
   }
 
   closePagePicker(): void {

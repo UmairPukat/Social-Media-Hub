@@ -174,8 +174,8 @@ public class IntegrationService : IIntegrationService
             scopes = PlatformCatalog.NormalizeYouTubeScopes(scopes);
         if (platformCode == "tiktok")
             scopes = PlatformCatalog.NormalizeTikTokScopes(scopes);
-        if (platformCode == "facebook")
-            scopes = PlatformCatalog.NormalizeFacebookScopes(scopes);
+        if (platformCode is "facebook" or "instagram")
+            scopes = PlatformCatalog.EnsurePagePickerScopes(scopes);
         var authBase = ResolveAuthBase(platformCode, config.AuthUrl, version);
 
         if (string.IsNullOrWhiteSpace(appId) || appId.StartsWith("YOUR_", StringComparison.OrdinalIgnoreCase))
@@ -900,11 +900,15 @@ public class IntegrationService : IIntegrationService
                 return ApiResponse<IReadOnlyList<MetaPageDto>>.Fail("Unknown platform.");
 
             var account = await store.GetSocialAccountByUserAndPlatformAsync(userId, platform.Id, cancellationToken);
-            var userToken = ResolveUserAccessToken(account);
+            var auth = account is null
+                ? null
+                : ProcessEntityNav.Auth(account)
+                  ?? await store.GetSocialAuthByAccountIdAsync(account.Id, cancellationToken);
+            var userToken = ResolveMetaUserLoginToken(auth);
             if (string.IsNullOrWhiteSpace(userToken))
                 return ApiResponse<IReadOnlyList<MetaPageDto>>.Fail("Sign in with Meta again — no stored login token was found.");
 
-            var pages = await ListPagesAsync(code, userToken!, cancellationToken);
+            var pages = await ListPagesAsync(userId, code, normalizedMenu, userToken!, cancellationToken);
             var connectedPageIds = ResolveConnectedPageIds(account, code);
             var data = pages
                 .Select(p => MapPage(p, code, connectedPageIds))
@@ -943,11 +947,11 @@ public class IntegrationService : IIntegrationService
             var account = await store.GetSocialAccountByUserAndPlatformAsync(userId, platform.Id, cancellationToken);
             var auth = account is null ? null : ProcessEntityNav.Auth(account)
                 ?? await store.GetSocialAuthByAccountIdAsync(account.Id, cancellationToken);
-            var userToken = ResolveUserAccessToken(account);
+            var userToken = ResolveMetaUserLoginToken(auth);
             if (account is null || auth is null || string.IsNullOrWhiteSpace(userToken))
                 return ApiResponse<SocialAccountDto>.Fail("Sign in with Meta before selecting a page.");
 
-            var pages = await ListPagesAsync(code, userToken!, cancellationToken);
+            var pages = await ListPagesAsync(userId, code, normalizedMenu, userToken!, cancellationToken);
             var page = pages.FirstOrDefault(p => p.PageId == request.PageId);
             if (page is null)
                 return ApiResponse<SocialAccountDto>.Fail("That page is no longer granted to this Meta login. Reconnect and try again.");
@@ -981,6 +985,8 @@ public class IntegrationService : IIntegrationService
 
             if (!string.IsNullOrWhiteSpace(page.PageAccessToken) && auth is not null)
             {
+                if (string.IsNullOrWhiteSpace(auth.RefreshToken) || auth.RefreshToken == page.PageAccessToken)
+                    auth.RefreshToken = auth.AccessToken;
                 auth.AccessToken = page.PageAccessToken!;
                 auth.UpdatedAt = DateTime.UtcNow;
                 store.UpdateSocialAuth(auth);
@@ -1366,21 +1372,30 @@ public class IntegrationService : IIntegrationService
     }
 
     private async Task<IReadOnlyList<MetaPageInfo>> ListPagesAsync(
+        Guid userId,
         string platformCode,
+        string menuType,
         string userAccessToken,
         CancellationToken cancellationToken)
     {
+        var config = await LoadStoredAppConfigAsync(userId, platformCode, menuType, cancellationToken);
+        var version = string.IsNullOrWhiteSpace(config?.GraphApiVersion) ? "v21.0" : config!.GraphApiVersion.Trim();
+        var appToken = config is null || string.IsNullOrWhiteSpace(config.ClientId) || string.IsNullOrWhiteSpace(config.ClientSecret)
+            ? null
+            : $"{config.ClientId.Trim()}|{config.ClientSecret.Trim()}";
+
         try
         {
             return platformCode == "instagram"
-                ? await _instagramService.ListPagesAsync(userAccessToken, cancellationToken)
-                : await _facebookService.ListPagesAsync(userAccessToken, cancellationToken);
+                ? await _instagramService.ListPagesAsync(userAccessToken, cancellationToken, version, appToken)
+                : await _facebookService.ListPagesAsync(userAccessToken, cancellationToken, version, appToken);
         }
         catch (Exception ex)
         {
-            // A stale token, or one stored before page selection existed, cannot list pages.
-            throw new InvalidOperationException(
-                "Could not read your Facebook Pages with the stored Meta login. Reconnect with Meta and try again.", ex);
+            var detail = string.IsNullOrWhiteSpace(ex.Message)
+                ? "Could not read your Facebook Pages with the stored Meta login. Reconnect with Meta and try again."
+                : ex.Message;
+            throw new InvalidOperationException(detail, ex);
         }
     }
 
@@ -1628,6 +1643,20 @@ public class IntegrationService : IIntegrationService
         if (!string.IsNullOrWhiteSpace(auth.AccessToken))
             return auth.AccessToken;
         return !string.IsNullOrWhiteSpace(auth.RefreshToken) ? auth.RefreshToken : null;
+    }
+
+    /// <summary>
+    /// <see cref="SocialAuthEntityBase.AccessToken"/> is replaced with the Page token after selection.
+    /// <see cref="SocialAuthEntityBase.RefreshToken"/> keeps the Meta user login needed for /me/accounts.
+    /// </summary>
+    private static string? ResolveMetaUserLoginToken(SocialAuthEntityBase? auth)
+    {
+        if (auth is null)
+            return null;
+
+        if (!string.IsNullOrWhiteSpace(auth.RefreshToken))
+            return auth.RefreshToken;
+        return string.IsNullOrWhiteSpace(auth.AccessToken) ? null : auth.AccessToken;
     }
 
     private static async Task<(SocialAccountEntityBase Account, bool IsNew)> ResolveOrCreateConnectedAccountAsync(

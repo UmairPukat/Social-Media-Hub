@@ -120,8 +120,15 @@ public class FacebookService : IFacebookService
         return list;
     }
 
-    public Task<IReadOnlyList<MetaPageInfo>> ListPagesAsync(string userAccessToken, CancellationToken cancellationToken = default)
-        => _graph.ListPagesAsync(_settings.GraphApiVersion, userAccessToken, cancellationToken);
+    public Task<IReadOnlyList<MetaPageInfo>> ListPagesAsync(
+        string userAccessToken,
+        CancellationToken cancellationToken = default,
+        string? graphApiVersion = null,
+        string? appAccessToken = null)
+    {
+        var version = FirstNonEmpty(graphApiVersion, _settings.GraphApiVersion, "v21.0");
+        return _graph.ListPagesAsync(version, userAccessToken, cancellationToken, appAccessToken);
+    }
 
     /// <summary>Subscribe the selected page to feed and messaging webhook fields.</summary>
     public Task SubscribePageWebhooksAsync(string pageId, string pageAccessToken, CancellationToken cancellationToken = default)
