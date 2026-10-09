@@ -321,35 +321,15 @@ public static class MetaWebhookContentClassifier
             && !MetaWebhookPayloadNormalizer.HasMessageBody(item, message))
             return false;
 
-        if (MetaWebhookEchoHelper.IsEcho(item, message))
-            return false;
-
         if (IsDeleted(message) || IsDeleted(item))
             return false;
 
         if (HasMarketingTag(message) || HasMarketingTag(item))
             return false;
 
-        var senderId = MetaWebhookPayloadNormalizer.ReadActorId(item, "sender")
-                       ?? MetaWebhookPayloadNormalizer.ReadActorId(item, "from");
-        var recipientId = MetaWebhookPayloadNormalizer.ReadActorId(item, "recipient")
-                          ?? MetaWebhookPayloadNormalizer.ReadActorId(item, "to");
-
-        if (!string.IsNullOrWhiteSpace(entryId) &&
-            !string.IsNullOrWhiteSpace(senderId) &&
-            string.Equals(senderId, entryId, StringComparison.Ordinal))
-            return false;
-
-        if (!string.IsNullOrWhiteSpace(entryId) &&
-            !string.IsNullOrWhiteSpace(recipientId) &&
-            string.Equals(recipientId, entryId, StringComparison.Ordinal))
-            return true;
-
-        if (!string.IsNullOrWhiteSpace(senderId) &&
-            (string.IsNullOrWhiteSpace(entryId) || !string.Equals(senderId, entryId, StringComparison.Ordinal)))
-            return true;
-
-        return string.IsNullOrWhiteSpace(senderId) && string.IsNullOrWhiteSpace(recipientId);
+        // Inbound DMs and business echoes (is_echo / sender == entry.id) both belong in Inbox.
+        _ = entryId;
+        return true;
     }
 
     private static bool IsRealUserComment(JsonElement value, string? entryId)

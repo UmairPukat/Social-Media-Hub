@@ -874,13 +874,15 @@ public class FacebookService : IFacebookService
             return;
         }
 
-        if (MetaWebhookEchoHelper.IsEcho(item, message))
-        {
-            result.Skip("Message is echo — not stored from webhook.");
-            return;
-        }
+        var senderId = item.TryGetProperty("sender", out var sender) && sender.TryGetProperty("id", out var senderValue)
+            ? senderValue.ToString()
+            : string.Empty;
+        var receiverId = item.TryGetProperty("recipient", out var recipient) && recipient.TryGetProperty("id", out var recipientValue)
+            ? recipientValue.ToString()
+            : string.Empty;
 
-        var messageId = MetaMessagingHelper.ReadMessageId(message);
+        var messageId = MetaMessagingHelper.ReadMessageId(message)
+                        ?? MetaWebhookPayloadNormalizer.ResolveMessageId(item, message, senderId, receiverId);
         if (string.IsNullOrWhiteSpace(messageId))
         {
             result.Skip("Message has no mid.");
@@ -892,21 +894,9 @@ public class FacebookService : IFacebookService
             return;
         }
 
-        var senderId = item.TryGetProperty("sender", out var sender) && sender.TryGetProperty("id", out var senderValue)
-            ? senderValue.ToString()
-            : string.Empty;
-        var receiverId = item.TryGetProperty("recipient", out var recipient) && recipient.TryGetProperty("id", out var recipientValue)
-            ? recipientValue.ToString()
-            : string.Empty;
-
-        if (MetaMessagingHelper.ProfileOwnsSenderId(profile, senderId))
-        {
-            result.Skip($"Message '{messageId}' is from connected profile — not stored from webhook.");
-            return;
-        }
-
-        var outbound = false;
-        var customerId = senderId;
+        var outbound = MetaWebhookEchoHelper.IsEcho(item, message)
+            || MetaMessagingHelper.ProfileOwnsSenderId(profile, senderId);
+        var customerId = outbound ? receiverId : senderId;
         if (string.IsNullOrWhiteSpace(customerId))
         {
             result.Skip($"Message '{messageId}' has no sender/recipient id.");
@@ -967,7 +957,7 @@ public class FacebookService : IFacebookService
             PlatformCode = "facebook",
             ExternalId = row.ExternalMessageId,
             AuthorName = outbound ? "You" : conversation.CustomerName ?? senderId,
-            AuthorId = senderId,
+            AuthorId = customerId,
             Content = body ?? string.Empty,
             IsHidden = false,
             IsRead = outbound,

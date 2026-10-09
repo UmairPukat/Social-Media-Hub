@@ -82,7 +82,7 @@ export class InboxComponent implements OnInit, OnDestroy {
 
   readonly items = signal<InboxItem[]>([]);
   readonly platformCode = signal<string | null>(null);
-  readonly mode = signal<'messages' | 'comments'>('comments');
+  readonly mode = signal<'messages' | 'comments'>('messages');
   readonly selectedKey = signal<string | null>(null);
   readonly listQuery = signal('');
   readonly replyText = signal('');
@@ -140,7 +140,7 @@ export class InboxComponent implements OnInit, OnDestroy {
         grouped.set(key, {
           key,
           authorName: item.isOutgoing
-            ? (customerNames.get(key) || 'Customer')
+            ? (customerNames.get(key) || item.authorId || 'Instagram user')
             : (item.authorName || 'Customer'),
           authorId: item.isOutgoing ? undefined : item.authorId,
           platformCode: item.platformCode,
@@ -376,6 +376,11 @@ export class InboxComponent implements OnInit, OnDestroy {
       return [normalized, ...list];
     });
 
+    if (normalized.itemKind === 'message' && this.mode() === 'comments' && this.showMessagesMode()) {
+      this.mode.set('messages');
+      this.selectedKey.set(null);
+    }
+
     if (!this.selectedKey()) {
       this.autoSelectFirst();
     }
@@ -409,6 +414,12 @@ export class InboxComponent implements OnInit, OnDestroy {
         const items = (res.data || []).map((item) => this.normalizeInboxItem(item));
         this.items.set(items);
         this.banner.set('');
+        if (this.mode() === 'comments'
+          && items.some(item => item.itemKind === 'message')
+          && !items.some(item => item.itemKind === 'comment')
+          && this.showMessagesMode()) {
+          this.mode.set('messages');
+        }
         this.autoSelectFirst();
         this.hydrateInstagramMedia(items);
       },

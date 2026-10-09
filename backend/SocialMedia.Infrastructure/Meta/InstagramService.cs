@@ -1911,7 +1911,7 @@ public class InstagramService : IInstagramService
             PlatformCode = "instagram",
             ExternalId = msg.ExternalMessageId,
             AuthorName = outbound ? "You" : conversation.CustomerName ?? senderId,
-            AuthorId = senderId,
+            AuthorId = customerId,
             Content = body ?? string.Empty,
             IsHidden = false,
             IsRead = outbound,

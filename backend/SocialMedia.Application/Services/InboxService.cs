@@ -144,7 +144,7 @@ public class InboxService : IInboxService
                         AuthorName = row.Message.Direction == MessageDirection.Outbound
                             ? "You"
                             : row.Conversation.CustomerName ?? row.Message.SenderId ?? "Instagram user",
-                        AuthorId = row.Message.SenderId,
+                        AuthorId = row.Conversation.CustomerId ?? row.Message.SenderId,
                         Content = row.Message.Body ?? string.Empty,
                         IsHidden = false,
                         IsRead = row.Message.Direction == MessageDirection.Outbound || row.Conversation.UnreadCount == 0,
@@ -1176,7 +1176,7 @@ public class InboxService : IInboxService
             AuthorName = message.Direction == MessageDirection.Outbound
                 ? "You"
                 : conversation.CustomerName ?? message.SenderId ?? "User",
-            AuthorId = message.SenderId,
+            AuthorId = conversation.CustomerId ?? message.SenderId,
             Content = message.Body ?? string.Empty,
             IsHidden = false,
             IsRead = true,
