@@ -20,11 +20,11 @@ public class MetaGraphClient
     public const string PageSubscribedFields = "feed,messages,messaging_postbacks";
 
     /// <summary>
-    /// Page-edge fields used when enabling Instagram via Facebook Login. Instagram <c>comments</c>
-    /// itself is subscribed on the Instagram object in the App Dashboard — Meta rejects it on
-    /// <c>/{page-id}/subscribed_apps</c>.
+    /// Facebook Page webhook fields for Instagram via Facebook Login.
+    /// POST /{page-id}/subscribed_apps?subscribed_fields=...&amp;access_token={page-token}
     /// </summary>
-    public const string InstagramPageSubscribedFields = "feed,messages,messaging_postbacks";
+    public const string InstagramPageSubscribedFields =
+        "messages,messaging_postbacks,messaging_optins,feed,mention";
 
     /// <summary>
     /// Fields Meta accepts on <c>/{ig-user-id}/subscribed_apps</c> for Facebook Login Instagram.
@@ -617,19 +617,34 @@ public class MetaGraphClient
     }
 
     /// <summary>
-    /// POST {pageId}/subscribed_apps?subscribed_fields=... — subscribes this app to the page's
-    /// webhook fields. The page token goes in the Authorization header, never the query string.
+    /// POST graph.facebook.com/{version}/{pageId}/subscribed_apps
+    /// ?subscribed_fields=...&amp;access_token={pageAccessToken}
+    /// Uses the Facebook Page id and Page token, matching Meta's subscribe curl.
     /// </summary>
-    public Task SubscribePageAsync(
+    public async Task SubscribePageAsync(
         string version,
         string pageId,
         string pageAccessToken,
         string subscribedFields,
         CancellationToken cancellationToken)
     {
-        var url = BuildUrl(FacebookGraphHost, version, $"{pageId}/subscribed_apps", string.Empty,
+        if (string.IsNullOrWhiteSpace(pageId))
+            throw new InvalidOperationException("A Facebook Page id is required to subscribe webhooks.");
+        if (string.IsNullOrWhiteSpace(pageAccessToken))
+            throw new InvalidOperationException("A Facebook Page access token is required to subscribe webhooks.");
+
+        var url = BuildUrl(
+            FacebookGraphHost,
+            version,
+            $"{pageId.Trim()}/subscribed_apps",
+            pageAccessToken,
             ("subscribed_fields", subscribedFields));
-        return SendWithBearerAsync(HttpMethod.Post, url, pageAccessToken, cancellationToken);
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, url);
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        if (!response.IsSuccessStatusCode)
+            throw new InvalidOperationException($"Meta Graph POST failed ({(int)response.StatusCode}): {body}");
     }
 
     /// <summary>DELETE {pageId}/subscribed_apps — removes this app's page subscription.</summary>
