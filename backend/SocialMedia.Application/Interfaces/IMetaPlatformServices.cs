@@ -150,6 +150,12 @@ public interface IInstagramService
     /// <summary>POST {pageId}/subscribed_apps — subscribes the selected page to webhook fields.</summary>
     Task SubscribePageWebhooksAsync(string pageId, string pageAccessToken, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// POST {ig-user-id}/subscribed_apps on graph.facebook.com with the Page token.
+    /// Facebook Login Instagram DMs use the Instagram professional id, not only the Page.
+    /// </summary>
+    Task SubscribeInstagramAccountWebhooksAsync(string instagramId, string pageAccessToken, CancellationToken cancellationToken = default);
+
     /// <summary>DELETE {pageId}/subscribed_apps — drops the page subscription on disconnect.</summary>
     Task UnsubscribePageWebhooksAsync(string pageId, string pageAccessToken, CancellationToken cancellationToken = default);
 

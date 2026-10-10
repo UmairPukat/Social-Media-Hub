@@ -1319,7 +1319,21 @@ public class IntegrationService : IIntegrationService
         try
         {
             if (platformCode == "instagram")
+            {
                 await _instagramService.SubscribePageWebhooksAsync(page.PageId, page.PageAccessToken!, cancellationToken);
+                if (!string.IsNullOrWhiteSpace(page.InstagramId))
+                {
+                    try
+                    {
+                        await _instagramService.SubscribeInstagramAccountWebhooksAsync(
+                            page.InstagramId!, page.PageAccessToken!, cancellationToken);
+                    }
+                    catch (Exception ex)
+                    {
+                        return "page subscribed, but Instagram account webhook subscription failed: " + ex.Message;
+                    }
+                }
+            }
             else
                 await _facebookService.SubscribePageWebhooksAsync(page.PageId, page.PageAccessToken!, cancellationToken);
 

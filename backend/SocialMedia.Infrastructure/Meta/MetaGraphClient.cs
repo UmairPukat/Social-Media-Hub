@@ -26,6 +26,11 @@ public class MetaGraphClient
     /// </summary>
     public const string InstagramPageSubscribedFields = "feed,messages,messaging_postbacks";
 
+    /// <summary>
+    /// Fields Meta accepts on <c>/{ig-user-id}/subscribed_apps</c> for Facebook Login Instagram.
+    /// </summary>
+    public const string InstagramAccountSubscribedFields = "messages,messaging_postbacks,comments,live_comments";
+
     private readonly HttpClient _httpClient;
     private static readonly JsonSerializerOptions JsonOptions = new()
     {

@@ -1250,56 +1250,103 @@ public class InstagramService : IInstagramService
         var connectionType = context.InstagramConnectionType;
         try
         {
-            // Instagram Login: POST graph.instagram.com/me/messages with the IG user bearer token.
-            // Facebook Login: POST graph.facebook.com/{page-id}/messages with the page access token.
-            var pathId = connectionType == InstagramConnectionType.InstagramLogin
-                ? "me"
-                : (!string.IsNullOrWhiteSpace(context.PageExternalId)
-                    ? context.PageExternalId
-                    : context.ProfileExternalId);
+            if (connectionType == InstagramConnectionType.InstagramLogin)
+            {
+                object loginPayload = string.IsNullOrWhiteSpace(replyToMid)
+                    ? new { recipient = new { id = recipientId }, message = new { text = message } }
+                    : new { recipient = new { id = recipientId }, message = new { text = message }, reply_to = new { mid = replyToMid } };
 
-            object payload = connectionType == InstagramConnectionType.InstagramLogin
-                ? (string.IsNullOrWhiteSpace(replyToMid)
-                    ? new
-                    {
-                        recipient = new { id = recipientId },
-                        message = new { text = message }
-                    }
-                    : new
-                    {
-                        recipient = new { id = recipientId },
-                        message = new { text = message },
-                        reply_to = new { mid = replyToMid }
-                    })
-                : (string.IsNullOrWhiteSpace(replyToMid)
-                    ? new
-                    {
-                        recipient = new { id = recipientId },
-                        messaging_type = "RESPONSE",
-                        message = new { text = message }
-                    }
-                    : new
-                    {
-                        recipient = new { id = recipientId },
-                        messaging_type = "RESPONSE",
-                        message = new { text = message },
-                        reply_to = new { mid = replyToMid }
-                    });
+                using var loginDoc = await _graph.PostInstagramJsonAsync(
+                    InstagramLoginGraphVersion, "me/messages", context.AccessToken, loginPayload, cancellationToken);
+                LogApiDecision(context.ProfileExternalId, connectionType, "SendMessage", success: true);
+                return ReadSentMessageId(loginDoc.RootElement);
+            }
 
-            using var doc = connectionType == InstagramConnectionType.InstagramLogin
-                ? await _graph.PostInstagramJsonAsync(InstagramLoginGraphVersion, $"{pathId}/messages", context.AccessToken, payload, cancellationToken)
-                : await _graph.PostJsonAsync(GraphVersion, $"{pathId}/messages", context.AccessToken, payload, cancellationToken);
+            // Facebook Login Instagram: POST graph.facebook.com/{IG_ID}/messages with the Page token.
+            // {page-id}/messages is Messenger and rejects Instagram IGSIDs.
+            Exception? lastError = null;
+            foreach (var pathId in FacebookLoginMessagePaths(context))
+            {
+                var messengerStyle = string.Equals(pathId, "me", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(pathId, context.PageExternalId, StringComparison.Ordinal);
+                object payload = BuildFacebookLoginMessagePayload(recipientId, message, replyToMid, messengerStyle);
+                try
+                {
+                    using var doc = await _graph.PostJsonAsync(
+                        GraphVersion, $"{pathId}/messages", context.AccessToken, payload, cancellationToken);
+                    LogApiDecision(context.ProfileExternalId, connectionType, "SendMessage", success: true);
+                    return ReadSentMessageId(doc.RootElement);
+                }
+                catch (Exception ex) when (IsRetryableFacebookLoginSendError(ex))
+                {
+                    lastError = ex;
+                }
+            }
 
-            LogApiDecision(context.ProfileExternalId, connectionType, "SendMessage", success: true);
-            if (doc.RootElement.TryGetProperty("message_id", out var messageId))
-                return messageId.GetString();
-            return doc.RootElement.TryGetProperty("id", out var id) ? id.GetString() : null;
+            throw lastError ?? new InvalidOperationException("Instagram (Facebook Login) could not send this DM.");
         }
         catch (Exception ex)
         {
             LogApiDecision(context.ProfileExternalId, connectionType, "SendMessage", success: false, metaError: ex.Message);
             throw;
         }
+    }
+
+    private static IReadOnlyList<string> FacebookLoginMessagePaths(MetaCallContext context)
+    {
+        var paths = new List<string>();
+        void Add(string? id)
+        {
+            if (!string.IsNullOrWhiteSpace(id) && !paths.Contains(id, StringComparer.Ordinal))
+                paths.Add(id);
+        }
+
+        Add(context.ProfileExternalId);
+        Add("me");
+        Add(context.PageExternalId);
+        return paths;
+    }
+
+    private static object BuildFacebookLoginMessagePayload(
+        string recipientId,
+        string message,
+        string? replyToMid,
+        bool messengerStyle)
+    {
+        if (messengerStyle)
+        {
+            return string.IsNullOrWhiteSpace(replyToMid)
+                ? new { recipient = new { id = recipientId }, messaging_type = "RESPONSE", message = new { text = message } }
+                : new { recipient = new { id = recipientId }, messaging_type = "RESPONSE", message = new { text = message }, reply_to = new { mid = replyToMid } };
+        }
+
+        return string.IsNullOrWhiteSpace(replyToMid)
+            ? new { recipient = new { id = recipientId }, message = new { text = message } }
+            : new { recipient = new { id = recipientId }, message = new { text = message }, reply_to = new { mid = replyToMid } };
+    }
+
+    private static string? ReadSentMessageId(JsonElement root)
+    {
+        if (root.TryGetProperty("message_id", out var messageId))
+            return messageId.GetString();
+        return root.TryGetProperty("id", out var id) ? id.GetString() : null;
+    }
+
+    private static bool IsRetryableFacebookLoginSendError(Exception ex)
+    {
+        var text = ex.Message ?? string.Empty;
+        if (text.Contains("2534014", StringComparison.OrdinalIgnoreCase)
+            || text.Contains("requested user cannot be found", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        return text.Contains("OAuthException", StringComparison.OrdinalIgnoreCase)
+            || text.Contains("Unsupported post request", StringComparison.OrdinalIgnoreCase)
+            || text.Contains("does not exist", StringComparison.OrdinalIgnoreCase)
+            || text.Contains("(#100)", StringComparison.OrdinalIgnoreCase)
+            || text.Contains("(#190)", StringComparison.OrdinalIgnoreCase)
+            || text.Contains("(#10)", StringComparison.OrdinalIgnoreCase)
+            || text.Contains("\"code\":100", StringComparison.OrdinalIgnoreCase)
+            || text.Contains("\"code\":190", StringComparison.OrdinalIgnoreCase);
     }
 
     public async Task DeleteMessageAsync(MetaCallContext context, string messageId, CancellationToken cancellationToken = default)
@@ -1352,6 +1399,17 @@ public class InstagramService : IInstagramService
     /// <summary>Subscribe the linked Facebook Page to comment and message webhook fields.</summary>
     public Task SubscribePageWebhooksAsync(string pageId, string pageAccessToken, CancellationToken cancellationToken = default)
         => _graph.SubscribePageAsync(GraphVersion, pageId, pageAccessToken, MetaGraphClient.InstagramPageSubscribedFields, cancellationToken);
+
+    public Task SubscribeInstagramAccountWebhooksAsync(
+        string instagramId,
+        string pageAccessToken,
+        CancellationToken cancellationToken = default)
+        => _graph.SubscribePageAsync(
+            GraphVersion,
+            instagramId,
+            pageAccessToken,
+            MetaGraphClient.InstagramAccountSubscribedFields,
+            cancellationToken);
 
     public Task UnsubscribePageWebhooksAsync(string pageId, string pageAccessToken, CancellationToken cancellationToken = default)
         => _graph.UnsubscribePageAsync(GraphVersion, pageId, pageAccessToken, cancellationToken);

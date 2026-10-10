@@ -790,6 +790,23 @@ public class InboxService : IInboxService
             InstagramConnectionType = connectionType
         };
 
+    private static string? ResolveCardInstagramId(SocialAccountEntityBase account, SocialProfileEntityBase profile)
+    {
+        foreach (var candidate in ProcessEntityNav.Profiles(account))
+        {
+            if (candidate.ProfileType is ProfileType.InstagramBusiness or ProfileType.InstagramLogin
+                && !string.IsNullOrWhiteSpace(candidate.ExternalProfileId)
+                && !string.Equals(candidate.ExternalProfileId, ReadPageId(candidate.MetadataJson), StringComparison.Ordinal))
+                return candidate.ExternalProfileId;
+        }
+
+        if (profile.ProfileType is ProfileType.InstagramBusiness or ProfileType.InstagramLogin
+            && !string.IsNullOrWhiteSpace(profile.ExternalProfileId))
+            return profile.ExternalProfileId;
+
+        return profile.ExternalProfileId;
+    }
+
     private static string? ResolveReplyPageId(SocialProfileEntityBase profile, SocialAccountEntityBase? account)
     {
         var fromProfile = ReadPageId(profile.MetadataJson);
@@ -1068,6 +1085,16 @@ public class InboxService : IInboxService
             || text.Contains("requested user cannot be found", StringComparison.OrdinalIgnoreCase);
     }
 
+    private static bool IsRetryableInstagramSendError(Exception ex)
+    {
+        var text = ex.Message ?? string.Empty;
+        return text.Contains("Unsupported post request", StringComparison.OrdinalIgnoreCase)
+            || text.Contains("does not exist", StringComparison.OrdinalIgnoreCase)
+            || text.Contains("(#100)", StringComparison.OrdinalIgnoreCase)
+            || text.Contains("(#10)", StringComparison.OrdinalIgnoreCase)
+            || text.Contains("\"code\":100", StringComparison.OrdinalIgnoreCase);
+    }
+
     private static string? ResolveGenericRecipientId(
         MessageEntityBase message,
         ConversationEntityBase conversation)
@@ -1288,7 +1315,7 @@ public class InboxService : IInboxService
                 var context = new MetaCallContext
                 {
                     AccessToken = token,
-                    ProfileExternalId = profile.ExternalProfileId,
+                    ProfileExternalId = ResolveCardInstagramId(account, profile),
                     PageExternalId = connectionType == InstagramConnectionType.FacebookLogin
                         ? (cardPageId ?? ResolveReplyPageId(profile, account))
                         : null,
@@ -1307,14 +1334,14 @@ public class InboxService : IInboxService
                     lastError = null;
                     break;
                 }
-                catch (Exception ex) when (IsOAuthTokenError(ex))
-                {
-                    lastError = ex;
-                }
                 catch (Exception ex) when (IsInstagramRecipientError(ex))
                 {
                     return ApiResponse<object>.Fail(
                         InstagramMessagingRecipient.FormatInstagramRecipientApiError(store.MenuType));
+                }
+                catch (Exception ex) when (IsOAuthTokenError(ex) || IsRetryableInstagramSendError(ex))
+                {
+                    lastError = ex;
                 }
             }
 

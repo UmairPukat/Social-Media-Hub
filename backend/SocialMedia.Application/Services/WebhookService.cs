@@ -555,25 +555,38 @@ public class WebhookService : IWebhookService
         if (!string.Equals(targetCode, platformCode, StringComparison.OrdinalIgnoreCase))
             platform = await store.GetPlatformByCodeAsync(targetCode, cancellationToken);
 
-        if (!string.Equals(targetCode, "instagram", StringComparison.OrdinalIgnoreCase))
-            return platform;
-
-        var instagramLogin = await store.GetPlatformByCodeAsync("instagram_login", cancellationToken);
-        if (instagramLogin is null)
-            return platform;
-
         if (!string.IsNullOrWhiteSpace(entryId))
         {
-            var profile = await store.GetProfileByExternalIdAsync(entryId, cancellationToken);
-            if (profile is not null)
+            var matched = await store.GetProfileByExternalIdAsync(entryId, cancellationToken);
+            if (matched is not null)
             {
-                var account = await store.GetSocialAccountByIdAsync(profile.SocialAccountId, cancellationToken);
-                if (account?.PlatformId == instagramLogin.Id)
-                    return instagramLogin;
+                var owner = await store.GetSocialAccountByIdAsync(matched.SocialAccountId, cancellationToken);
+                if (owner is not null)
+                {
+                    var ownedPlatform = await store.GetPlatformByIdAsync(owner.PlatformId, cancellationToken);
+                    if (ownedPlatform is not null)
+                        return ownedPlatform;
+                }
             }
         }
 
-        return platform ?? instagramLogin;
+        if (!string.Equals(targetCode, "instagram", StringComparison.OrdinalIgnoreCase))
+            return platform;
+
+        var instagram = await store.GetPlatformByCodeAsync("instagram", cancellationToken);
+        var instagramLogin = await store.GetPlatformByCodeAsync("instagram_login", cancellationToken);
+
+        if (instagram is not null)
+        {
+            var accounts = await store.FindConnectedSocialAccountsAsync(cancellationToken);
+            foreach (var account in accounts)
+            {
+                if (account.PlatformId == instagram.Id)
+                    return instagram;
+            }
+        }
+
+        return platform ?? instagram ?? instagramLogin;
     }
 
     /// <summary>
