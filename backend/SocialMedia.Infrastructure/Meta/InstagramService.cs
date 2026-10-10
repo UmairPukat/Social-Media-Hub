@@ -1262,14 +1262,12 @@ public class InstagramService : IInstagramService
                 return ReadSentMessageId(loginDoc.RootElement);
             }
 
-            // Facebook Login Instagram: POST graph.facebook.com/{IG_ID}/messages with the Page token.
-            // {page-id}/messages is Messenger and rejects Instagram IGSIDs.
+            // Facebook Login Instagram is subscribed on the Facebook Page. Send through
+            // that Page id (or me) with the Page token — the same pair as subscribed_apps.
             Exception? lastError = null;
             foreach (var pathId in FacebookLoginMessagePaths(context))
             {
-                var messengerStyle = string.Equals(pathId, "me", StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(pathId, context.PageExternalId, StringComparison.Ordinal);
-                object payload = BuildFacebookLoginMessagePayload(recipientId, message, replyToMid, messengerStyle);
+                object payload = BuildFacebookLoginMessagePayload(recipientId, message, replyToMid, messengerStyle: true);
                 try
                 {
                     using var doc = await _graph.PostJsonAsync(
@@ -1301,9 +1299,8 @@ public class InstagramService : IInstagramService
                 paths.Add(id);
         }
 
-        Add(context.ProfileExternalId);
-        Add("me");
         Add(context.PageExternalId);
+        Add("me");
         return paths;
     }
 

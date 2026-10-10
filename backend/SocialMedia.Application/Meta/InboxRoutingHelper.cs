@@ -16,16 +16,20 @@ public static class InboxRoutingHelper
         string menuType)
     {
         item.MenuType = menuType;
-        item.PageId = ResolvePageId(profile);
+        item.PageId = ResolvePageId(profile, account);
         item.AccountId = ResolveAccountId(profile);
     }
 
-    public static string? ResolvePageId(SocialProfileEntityBase profile)
+    public static string? ResolvePageId(SocialProfileEntityBase profile, SocialAccountEntityBase? account = null)
     {
         if (profile.ProfileType == ProfileType.FacebookPage)
             return profile.ExternalProfileId;
 
-        return ReadMetadataString(profile.MetadataJson, "pageId");
+        var fromProfile = ReadMetadataString(profile.MetadataJson, "pageId");
+        if (!string.IsNullOrWhiteSpace(fromProfile))
+            return fromProfile;
+
+        return account is null ? null : ReadMetadataString(account.MetadataJson, "selectedPageId");
     }
 
     public static string? ResolveAccountId(SocialProfileEntityBase profile)

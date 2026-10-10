@@ -790,6 +790,60 @@ public class InboxService : IInboxService
             InstagramConnectionType = connectionType
         };
 
+    private async Task<string?> FindSiblingFacebookPageIdAsync(
+        IProcessDataStore store,
+        Guid userId,
+        CancellationToken cancellationToken)
+    {
+        var facebook = await store.GetPlatformByCodeAsync("facebook", cancellationToken);
+        if (facebook is null)
+            return null;
+
+        var facebookAccount = await store.GetSocialAccountByUserAndPlatformAsync(userId, facebook.Id, cancellationToken);
+        return facebookAccount is null
+            ? null
+            : ProcessCardAuthResolver.ResolvePageId(facebookAccount, "facebook");
+    }
+
+    private async Task<(string? PageId, List<string> Tokens)> ResolveFacebookLoginPageSendAsync(
+        SocialAccountEntityBase account,
+        SocialAuthEntityBase? auth,
+        string? pageId,
+        string? instagramId,
+        CancellationToken cancellationToken)
+    {
+        var tokens = ProcessCardAuthResolver.CollectTokens(auth, account, InstagramConnectionResolver.FacebookLoginPlatformCode);
+        var userToken = auth is null
+            ? null
+            : (!string.IsNullOrWhiteSpace(auth.RefreshToken) ? auth.RefreshToken : auth.AccessToken);
+        if (string.IsNullOrWhiteSpace(userToken))
+            return (pageId, tokens);
+
+        try
+        {
+            var pages = await _instagramService.ListPagesAsync(userToken, cancellationToken);
+            var page = pages.FirstOrDefault(p =>
+                    (!string.IsNullOrWhiteSpace(pageId) && string.Equals(p.PageId, pageId, StringComparison.Ordinal))
+                    || (!string.IsNullOrWhiteSpace(instagramId)
+                        && string.Equals(p.InstagramId, instagramId, StringComparison.Ordinal)))
+                ?? (pages.Count == 1 ? pages[0] : null);
+
+            if (page is not null)
+            {
+                if (!string.IsNullOrWhiteSpace(page.PageId))
+                    pageId = page.PageId;
+                if (!string.IsNullOrWhiteSpace(page.PageAccessToken) && !tokens.Contains(page.PageAccessToken))
+                    tokens.Insert(0, page.PageAccessToken);
+            }
+        }
+        catch
+        {
+            // Keep the stored Page token when /me/accounts is temporarily unavailable.
+        }
+
+        return (pageId, tokens);
+    }
+
     private static string? ResolveCardInstagramId(SocialAccountEntityBase account, SocialProfileEntityBase profile)
     {
         foreach (var candidate in ProcessEntityNav.Profiles(account))
@@ -1305,6 +1359,27 @@ public class InboxService : IInboxService
             var tokens = cardTokens.Count > 0
                 ? cardTokens.ToList()
                 : ProcessCardAuthResolver.CollectTokens(auth, account, code);
+            if (connectionType == InstagramConnectionType.FacebookLogin)
+            {
+                cardPageId = FirstNonEmpty(
+                    cardPageId,
+                    request.PageId,
+                    ResolveReplyPageId(profile, account),
+                    await FindSiblingFacebookPageIdAsync(store, userId, cancellationToken));
+                var pageSend = await ResolveFacebookLoginPageSendAsync(
+                    account,
+                    auth,
+                    cardPageId,
+                    FirstNonEmpty(ResolveCardInstagramId(account, profile), request.AccountId),
+                    cancellationToken);
+                cardPageId = FirstNonEmpty(pageSend.PageId, cardPageId);
+                if (pageSend.Tokens.Count > 0)
+                    tokens = pageSend.Tokens;
+                if (string.IsNullOrWhiteSpace(cardPageId))
+                    return ApiResponse<object>.Fail(
+                        "No Facebook Page is selected on the Instagram card. Open the Instagram card, choose the linked Page, then reply again.");
+            }
+
             if (tokens.Count == 0)
                 return ApiResponse<object>.Fail("No access token is available. Reconnect the account.");
 
@@ -1315,9 +1390,9 @@ public class InboxService : IInboxService
                 var context = new MetaCallContext
                 {
                     AccessToken = token,
-                    ProfileExternalId = ResolveCardInstagramId(account, profile),
+                    ProfileExternalId = ResolveCardInstagramId(account, profile) ?? profile.ExternalProfileId,
                     PageExternalId = connectionType == InstagramConnectionType.FacebookLogin
-                        ? (cardPageId ?? ResolveReplyPageId(profile, account))
+                        ? cardPageId
                         : null,
                     InstagramConnectionType = connectionType
                 };

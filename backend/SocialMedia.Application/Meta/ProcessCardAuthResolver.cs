@@ -50,21 +50,34 @@ public static class ProcessCardAuthResolver
                 tokens.Add(token);
         }
 
+        if (account is not null)
+        {
+            foreach (var profile in ProcessEntityNav.Profiles(account))
+                Add(ReadJsonString(profile.MetadataJson, "pageAccessToken"));
+        }
+
         if (auth is not null)
         {
             Add(auth.AccessToken);
-            if (!(string.Equals(platformCode, InstagramConnectionResolver.InstagramLoginPlatformCode, StringComparison.OrdinalIgnoreCase)
+            var instagramLogin = string.Equals(
+                platformCode,
+                InstagramConnectionResolver.InstagramLoginPlatformCode,
+                StringComparison.OrdinalIgnoreCase);
+            var facebookLoginInstagram = string.Equals(
+                platformCode,
+                InstagramConnectionResolver.FacebookLoginPlatformCode,
+                StringComparison.OrdinalIgnoreCase);
+
+            // Facebook Login Instagram DMs must use the Page token, not the Meta user token.
+            if (facebookLoginInstagram)
+                return tokens;
+
+            if (!(instagramLogin
                   && !string.IsNullOrWhiteSpace(auth.AccessToken)
                   && !string.Equals(auth.RefreshToken, auth.AccessToken, StringComparison.Ordinal)))
             {
                 Add(auth.RefreshToken);
             }
-        }
-
-        if (account is not null)
-        {
-            foreach (var profile in ProcessEntityNav.Profiles(account))
-                Add(ReadJsonString(profile.MetadataJson, "pageAccessToken"));
         }
 
         return tokens;
