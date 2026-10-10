@@ -1480,16 +1480,30 @@ public class InstagramService : IInstagramService
 
         var accounts = await _store!.FindConnectedSocialAccountsAsync(cancellationToken);
         SocialAccountEntityBase? instagramAccount = null;
-        foreach (var account in accounts)
+        SocialAccountEntityBase? withTokens = null;
+        foreach (var account in accounts.OrderByDescending(a => a.ConnectedAt ?? a.UpdatedAt))
         {
             var platform = await _store.GetPlatformByIdAsync(account.PlatformId, cancellationToken);
             if (!InstagramConnectionResolver.IsInstagramPlatform(platform?.Code))
                 continue;
-            instagramAccount = await _store.GetSocialAccountByIdAsync(account.Id, cancellationToken);
-            if (instagramAccount is not null)
+
+            var loaded = await _store.GetSocialAccountWithAuthAndProfilesAsync(account.Id, cancellationToken)
+                         ?? await _store.GetSocialAccountByIdAsync(account.Id, cancellationToken);
+            if (loaded is null)
+                continue;
+
+            instagramAccount ??= loaded;
+            var auth = ProcessEntityNav.Auth(loaded)
+                       ?? await _store.GetSocialAuthByAccountIdAsync(loaded.Id, cancellationToken);
+            if (auth is not null
+                && (!string.IsNullOrWhiteSpace(auth.AccessToken) || !string.IsNullOrWhiteSpace(auth.RefreshToken)))
+            {
+                withTokens = loaded;
                 break;
+            }
         }
 
+        instagramAccount = withTokens ?? instagramAccount;
         if (instagramAccount is null || string.IsNullOrWhiteSpace(entryId))
         {
             result.Skip(
@@ -1504,6 +1518,12 @@ public class InstagramService : IInstagramService
         created.Name = instagramAccount.DisplayName ?? "Instagram";
         created.Username = instagramAccount.Username;
         created.ProfileType = ProfileType.InstagramBusiness;
+        var pageId = TryReadSelectedPageId(instagramAccount.MetadataJson)
+                     ?? ProcessEntityNav.Profiles(instagramAccount)
+                         .Select(p => TryReadPageId(p.MetadataJson))
+                         .FirstOrDefault(id => !string.IsNullOrWhiteSpace(id));
+        if (!string.IsNullOrWhiteSpace(pageId))
+            created.MetadataJson = JsonSerializer.Serialize(new { pageId });
         await _store.AddSocialProfileAsync(created, cancellationToken);
         await _store.SaveChangesAsync(cancellationToken);
         _logger.LogWarning(
@@ -2012,12 +2032,18 @@ public class InstagramService : IInstagramService
     }
 
     private static string? TryReadPageId(string? metadataJson)
+        => TryReadMetadataString(metadataJson, "pageId");
+
+    private static string? TryReadSelectedPageId(string? metadataJson)
+        => TryReadMetadataString(metadataJson, "selectedPageId");
+
+    private static string? TryReadMetadataString(string? metadataJson, string property)
     {
         if (string.IsNullOrWhiteSpace(metadataJson)) return null;
         try
         {
             using var meta = JsonDocument.Parse(metadataJson);
-            return meta.RootElement.TryGetProperty("pageId", out var pageId) ? pageId.GetString() : null;
+            return meta.RootElement.TryGetProperty(property, out var value) ? value.GetString() : null;
         }
         catch
         {
