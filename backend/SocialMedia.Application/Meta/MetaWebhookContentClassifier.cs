@@ -118,7 +118,20 @@ public static class MetaWebhookContentClassifier
         return false;
     }
 
-    private static bool HasMessagingEnvelope(JsonElement root)
+    public static bool HasMessagingEnvelope(string payloadJson)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(payloadJson);
+            return HasMessagingEnvelope(doc.RootElement);
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
+
+    public static bool HasMessagingEnvelope(JsonElement root)
     {
         foreach (var entry in MetaWebhookPayloadNormalizer.EnumerateEntries(root))
         {

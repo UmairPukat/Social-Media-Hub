@@ -186,7 +186,7 @@ public class InboxService : IInboxService
         {
             try
             {
-                await _webhookService.ReplayStoredAsync(menu, null, 25, cancellationToken);
+                await _webhookService.ImportStoredMessagingAsync(menu, 50, cancellationToken);
             }
             catch (Exception ex)
             {

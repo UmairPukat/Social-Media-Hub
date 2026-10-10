@@ -246,8 +246,9 @@ public class WebhookService : IWebhookService
             store.UpdateWebhookEvent(webhookEvent);
             await store.SaveChangesAsync(cancellationToken);
 
-            var replayed = await ReplayRecentUnprocessedAsync(
-                store, effectiveMenu, webhookEvent.Id, 8, cancellationToken);
+            var replayed = result?.Handled > 0
+                ? await ReplayRecentUnprocessedAsync(store, effectiveMenu, webhookEvent.Id, 8, cancellationToken)
+                : await ImportStoredMessagingAsync(effectiveMenu, 50, cancellationToken);
 
             _logger.LogInformation(
                 "Webhook processed for module {MenuType}. WebhookEventId={WebhookEventId}, Handled={Handled}, Error={Error}, Replayed={Replayed}",
@@ -348,6 +349,42 @@ public class WebhookService : IWebhookService
             : $"Replayed {results.Count} webhook(s); nothing new was stored.");
     }
 
+    public async Task<int> ImportStoredMessagingAsync(
+        string menuType,
+        int take = 50,
+        CancellationToken cancellationToken = default)
+    {
+        var normalizedMenu = MenuTypes.Normalize(menuType);
+        var store = _processData.ForMenu(normalizedMenu);
+        var events = await store.GetRecentWebhookEventsAsync(
+            Math.Clamp(take, 1, 100),
+            DateTime.UtcNow.AddDays(-30),
+            cancellationToken);
+
+        var imported = 0;
+        foreach (var ev in events)
+        {
+            if (string.IsNullOrWhiteSpace(ev.PayloadJson))
+                continue;
+            if (!string.IsNullOrWhiteSpace(ev.Error)
+                && ev.Error.Contains("Invalid webhook signature", StringComparison.OrdinalIgnoreCase))
+                continue;
+            if (!MetaWebhookContentClassifier.HasMessagingEnvelope(ev.PayloadJson)
+                && !MetaWebhookContentClassifier.ShouldProcessForInbox(ev.PayloadJson))
+                continue;
+
+            imported += await ReplayOneAsync(store, ev, normalizedMenu, cancellationToken);
+        }
+
+        if (imported > 0)
+            _logger.LogInformation(
+                "Imported {Count} Instagram inbox row(s) from stored webhooks for {MenuType}.",
+                imported,
+                normalizedMenu);
+
+        return imported;
+    }
+
     private async Task<int> ReplayRecentUnprocessedAsync(
         IProcessDataStore store,
         string menuType,
@@ -419,11 +456,17 @@ public class WebhookService : IWebhookService
 
     private static bool ShouldReplay(WebhookEventEntityBase ev)
     {
-        if (string.IsNullOrWhiteSpace(ev.PayloadJson) || ev.RetryCount >= 5)
+        if (string.IsNullOrWhiteSpace(ev.PayloadJson))
             return false;
 
         if (!string.IsNullOrWhiteSpace(ev.Error)
             && ev.Error.Contains("Invalid webhook signature", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        if (MetaWebhookContentClassifier.HasMessagingEnvelope(ev.PayloadJson))
+            return true;
+
+        if (ev.RetryCount >= 5)
             return false;
 
         if (!MetaWebhookContentClassifier.ShouldProcessForInbox(ev.PayloadJson))

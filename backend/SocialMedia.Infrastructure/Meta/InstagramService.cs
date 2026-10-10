@@ -1413,7 +1413,8 @@ public class InstagramService : IInstagramService
                     continue;
                 }
 
-                if (!WebhookProfileGuard.CanProcess(profile, account, _menuType, result))
+                var hasMessaging = MetaWebhookEntryHelper.EnumerateMessageArrays(entry).Any();
+                if (!hasMessaging && !WebhookProfileGuard.CanProcess(profile, account, _menuType, result))
                     continue;
 
                 var webhookPlatform = await _store.GetPlatformByIdAsync(account.PlatformId, cancellationToken);

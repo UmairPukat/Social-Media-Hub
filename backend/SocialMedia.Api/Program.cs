@@ -103,6 +103,19 @@ using (var scope = app.Services.CreateScope())
         logger.LogError(ex, "Database schema ensure failed after all retry attempts.");
     }
 
+    try
+    {
+        var webhooks = scope.ServiceProvider.GetRequiredService<IWebhookService>();
+        var imported = await webhooks.ImportStoredMessagingAsync(
+            SocialMedia.Application.Catalog.MenuTypes.Integration, 50);
+        if (imported > 0)
+            logger.LogInformation("Imported {Count} stored Instagram webhook DM(s) into Inbox on startup.", imported);
+    }
+    catch (Exception ex)
+    {
+        logger.LogWarning(ex, "Startup import of stored Instagram webhook DMs failed.");
+    }
+
     if (Environment.GetEnvironmentVariable("SEED_ON_STARTUP")?.ToLower() == "true")
     {
         try

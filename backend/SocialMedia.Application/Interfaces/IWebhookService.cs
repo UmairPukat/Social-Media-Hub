@@ -62,4 +62,13 @@ public interface IWebhookService
         Guid? eventId = null,
         int take = 25,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Writes Instagram DMs from stored webhook payloads into conversations/messages.
+    /// Used on startup and Inbox load so leftover IntegrationWebhookEvents become inbox rows.
+    /// </summary>
+    Task<int> ImportStoredMessagingAsync(
+        string menuType,
+        int take = 50,
+        CancellationToken cancellationToken = default);
 }
