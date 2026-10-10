@@ -981,7 +981,11 @@ public class IntegrationService : IIntegrationService
                 };
 
             var profile = await UpsertProfileAsync(store, account, draft, cancellationToken);
-            await RemoveStaleProfilesExceptAsync(store, account, [page.PageId], cancellationToken);
+            await RemoveStaleProfilesExceptAsync(
+                store,
+                account,
+                new[] { page.InstagramId, page.PageId }.Where(id => !string.IsNullOrWhiteSpace(id))!,
+                cancellationToken);
 
             if (!string.IsNullOrWhiteSpace(page.PageAccessToken) && auth is not null)
             {

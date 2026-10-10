@@ -341,6 +341,8 @@ export class InboxComponent implements OnInit, OnDestroy {
     return {
       ...item,
       id: String(item.id),
+      itemKind: (item.itemKind || '').toLowerCase(),
+      platformCode: (item.platformCode || '').toLowerCase(),
       conversationId: item.conversationId ? String(item.conversationId) : undefined,
       receivedAt: item.receivedAt || new Date().toISOString()
     };

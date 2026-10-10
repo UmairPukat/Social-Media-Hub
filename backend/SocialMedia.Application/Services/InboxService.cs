@@ -19,6 +19,7 @@ public class InboxService : IInboxService
     private readonly IYouTubeService _youTubeService;
     private readonly IInboxRealtimeNotifier _inboxRealtime;
     private readonly IPublishMediaCacheService _mediaCache;
+    private readonly IWebhookService _webhookService;
     private readonly ILogger<InboxService> _logger;
 
     public InboxService(
@@ -29,6 +30,7 @@ public class InboxService : IInboxService
         IYouTubeService youTubeService,
         IInboxRealtimeNotifier inboxRealtime,
         IPublishMediaCacheService mediaCache,
+        IWebhookService webhookService,
         ILogger<InboxService> logger)
     {
         _processData = processData;
@@ -38,6 +40,7 @@ public class InboxService : IInboxService
         _youTubeService = youTubeService;
         _inboxRealtime = inboxRealtime;
         _mediaCache = mediaCache;
+        _webhookService = webhookService;
         _logger = logger;
     }
 
@@ -52,6 +55,8 @@ public class InboxService : IInboxService
             IReadOnlyList<Guid>? platformIds = null;
             var processMenu = string.IsNullOrWhiteSpace(filter?.MenuType) ? null : MenuTypes.Normalize(filter!.MenuType);
             var stores = ResolveStores(processMenu);
+
+            await ReplayPendingWebhooksAsync(processMenu, cancellationToken);
 
             if (!string.IsNullOrWhiteSpace(filter?.PlatformCode))
             {
@@ -168,6 +173,25 @@ public class InboxService : IInboxService
         catch (Exception ex)
         {
             return ApiResponse<IReadOnlyList<InboxItemDto>>.Fail(ex.Message);
+        }
+    }
+
+    private async Task ReplayPendingWebhooksAsync(string? processMenu, CancellationToken cancellationToken)
+    {
+        var menus = string.IsNullOrWhiteSpace(processMenu)
+            ? ProcessModules.AllMenuTypes
+            : [processMenu];
+
+        foreach (var menu in menus)
+        {
+            try
+            {
+                await _webhookService.ReplayStoredAsync(menu, null, 25, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Inbox could not replay stored webhooks for {MenuType}.", menu);
+            }
         }
     }
 

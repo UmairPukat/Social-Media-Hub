@@ -1381,12 +1381,30 @@ public class InstagramService : IInstagramService
                 var profile = await MetaWebhookEntryHelper.ResolveProfileForEntryAsync(
                     _store, entry, result, cancellationToken)
                     ?? await MetaWebhookProfileResolver.TryResolveSoleInstagramAsync(
+                        _store, cancellationToken)
+                    ?? await MetaWebhookProfileResolver.TryResolveAnyInstagramAsync(
+                        _store, cancellationToken)
+                    ?? await MetaWebhookProfileResolver.TryResolveInstagramCardProfileAsync(
                         _store, cancellationToken);
+
+                profile = profile is null
+                    ? null
+                    : await MetaWebhookProfileResolver.PreferInstagramBusinessAsync(
+                        _store, profile, cancellationToken);
+
+                if (profile is null || profile.ProfileType == ProfileType.FacebookPage)
+                {
+                    var instagram = await MetaWebhookProfileResolver.TryResolveInstagramCardProfileAsync(
+                        _store, cancellationToken)
+                        ?? await MetaWebhookProfileResolver.TryResolveAnyInstagramAsync(
+                            _store, cancellationToken);
+                    if (instagram is not null)
+                        profile = instagram;
+                }
+
+                profile = await EnsureWebhookProfileAsync(profile, igUserId, result, cancellationToken);
                 if (profile is null)
                     continue;
-
-                profile = await MetaWebhookProfileResolver.PreferInstagramBusinessAsync(
-                    _store, profile, cancellationToken);
 
                 var account = await _store.GetSocialAccountByIdAsync(profile.SocialAccountId, cancellationToken);
                 if (account is null)
@@ -1400,7 +1418,8 @@ public class InstagramService : IInstagramService
 
                 var webhookPlatform = await _store.GetPlatformByIdAsync(account.PlatformId, cancellationToken);
                 if (string.Equals(webhookPlatform?.Code, "facebook", StringComparison.OrdinalIgnoreCase)
-                    || profile.ProfileType == ProfileType.FacebookPage)
+                    && profile.ProfileType == ProfileType.FacebookPage
+                    && !MetaWebhookEntryHelper.EnumerateMessageArrays(entry).Any())
                 {
                     result.Skip("Facebook deliveries use the Facebook card token.");
                     continue;
@@ -1442,6 +1461,55 @@ public class InstagramService : IInstagramService
             _store = null;
             _menuType = string.Empty;
         }
+    }
+
+    private async Task<SocialProfileEntityBase?> EnsureWebhookProfileAsync(
+        SocialProfileEntityBase? profile,
+        string? entryId,
+        WebhookProcessResult result,
+        CancellationToken cancellationToken)
+    {
+        if (profile is not null)
+            return profile;
+
+        var card = await MetaWebhookProfileResolver.TryResolveInstagramCardProfileAsync(
+            _store!, cancellationToken);
+        if (card is not null)
+            return card;
+
+        var accounts = await _store!.FindConnectedSocialAccountsAsync(cancellationToken);
+        SocialAccountEntityBase? instagramAccount = null;
+        foreach (var account in accounts)
+        {
+            var platform = await _store.GetPlatformByIdAsync(account.PlatformId, cancellationToken);
+            if (!InstagramConnectionResolver.IsInstagramPlatform(platform?.Code))
+                continue;
+            instagramAccount = await _store.GetSocialAccountByIdAsync(account.Id, cancellationToken);
+            if (instagramAccount is not null)
+                break;
+        }
+
+        if (instagramAccount is null || string.IsNullOrWhiteSpace(entryId))
+        {
+            result.Skip(
+                "No connected Instagram card/profile is available to store this DM. " +
+                "Reconnect the Instagram card in Integrations.");
+            return null;
+        }
+
+        var created = _store.NewSocialProfile();
+        created.SocialAccountId = instagramAccount.Id;
+        created.ExternalProfileId = entryId;
+        created.Name = instagramAccount.DisplayName ?? "Instagram";
+        created.Username = instagramAccount.Username;
+        created.ProfileType = ProfileType.InstagramBusiness;
+        await _store.AddSocialProfileAsync(created, cancellationToken);
+        await _store.SaveChangesAsync(cancellationToken);
+        _logger.LogWarning(
+            "Created Instagram webhook profile {ExternalProfileId} on account {AccountId} so DMs can be stored.",
+            entryId,
+            instagramAccount.Id);
+        return created;
     }
 
     private static IReadOnlyList<string> ReadAlternateIds(string? metadataJson)
@@ -1819,6 +1887,9 @@ public class InstagramService : IInstagramService
             result.Skip("Message has no mid.");
             return;
         }
+
+        if (messageId.Length > 512)
+            messageId = messageId[..512];
         if (await _store!.GetMessageByExternalIdAsync(messageId, cancellationToken) is not null)
         {
             result.Skip($"Message '{messageId}' already stored.");
@@ -1901,7 +1972,17 @@ public class InstagramService : IInstagramService
         if (!outbound) conversation.UnreadCount += 1;
         if (!isNewConversation) _store!.UpdateConversation(conversation);
 
-        await _store!.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await _store!.SaveChangesAsync(cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            result.Skip($"Failed to save message '{messageId}': {ex.Message}");
+            _logger.LogError(ex, "Instagram DM persist failed. Mid={MessageId}", messageId);
+            return;
+        }
+
         result.Handled++;
 
         var inboxItem = new InboxItemDto

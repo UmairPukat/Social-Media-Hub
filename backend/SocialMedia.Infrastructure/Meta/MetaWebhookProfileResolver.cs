@@ -1,5 +1,6 @@
 using System.Text.Json;
 using SocialMedia.Application.Interfaces;
+using SocialMedia.Application.Meta;
 using SocialMedia.Domain.Enums;
 using SocialMedia.Domain.Modules.Common.Entities;
 
@@ -139,6 +140,68 @@ internal static class MetaWebhookProfileResolver
         }
 
         return count == 1 ? match : null;
+    }
+
+    /// <summary>
+    /// Last-resort inbox routing: any connected Instagram Business/Login profile in this module.
+    /// Used when Meta keys entry.id on an id we have not stored yet.
+    /// </summary>
+    public static async Task<SocialProfileEntityBase?> TryResolveAnyInstagramAsync(
+        IProcessDataStore store,
+        CancellationToken cancellationToken)
+    {
+        var accounts = await store.FindConnectedSocialAccountsAsync(cancellationToken);
+        SocialProfileEntityBase? best = null;
+        DateTime bestAt = DateTime.MinValue;
+
+        foreach (var account in accounts)
+        {
+            var profiles = await store.GetProfilesByAccountAsync(account.Id, cancellationToken);
+            foreach (var snapshot in profiles)
+            {
+                if (snapshot.ProfileType is not (ProfileType.InstagramLogin or ProfileType.InstagramBusiness))
+                    continue;
+
+                var at = snapshot.UpdatedAt ?? snapshot.CreatedAt;
+                if (best is not null && at <= bestAt)
+                    continue;
+
+                best = await store.GetProfileByIdAsync(snapshot.Id, cancellationToken)
+                       ?? await store.GetProfileByExternalIdAsync(snapshot.ExternalProfileId, cancellationToken);
+                bestAt = at;
+            }
+        }
+
+        return best;
+    }
+
+    /// <summary>
+    /// Finds a profile on a connected Instagram / Instagram Login card, even if the
+    /// leftover row is not typed InstagramBusiness (page-select can leave a Page profile).
+    /// </summary>
+    public static async Task<SocialProfileEntityBase?> TryResolveInstagramCardProfileAsync(
+        IProcessDataStore store,
+        CancellationToken cancellationToken)
+    {
+        var accounts = await store.FindConnectedSocialAccountsAsync(cancellationToken);
+        foreach (var account in accounts.OrderByDescending(a => a.ConnectedAt ?? a.UpdatedAt))
+        {
+            var platform = await store.GetPlatformByIdAsync(account.PlatformId, cancellationToken);
+            if (!InstagramConnectionResolver.IsInstagramPlatform(platform?.Code))
+                continue;
+
+            var profiles = await store.GetProfilesByAccountAsync(account.Id, cancellationToken);
+            var snapshot = profiles.FirstOrDefault(p =>
+                               p.ProfileType is ProfileType.InstagramBusiness or ProfileType.InstagramLogin)
+                           ?? profiles.FirstOrDefault();
+            if (snapshot is null)
+                continue;
+
+            return await store.GetProfileByIdAsync(snapshot.Id, cancellationToken)
+                   ?? await store.GetProfileByExternalIdAsync(snapshot.ExternalProfileId, cancellationToken);
+        }
+
+        return null;
     }
 
     private static async Task<SocialProfileEntityBase?> ScanConnectedProfilesAsync(

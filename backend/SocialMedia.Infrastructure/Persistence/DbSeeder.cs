@@ -111,6 +111,7 @@ public static class DbSeeder
         await ModuleSchemaEnsurer.EnsureAsync(db, logger);
         await ModuleTableMigration.MigrateAndDropLegacyAsync(db, logger);
         await EnsureMediaUrlLengthAsync(db, logger);
+        await EnsureMessageIdLengthAsync(db, logger);
         await EnsureMultiSocialAccountPerPlatformIndexAsync(db, logger);
         await SeedModulePlatformsAsync(db);
         await db.SaveChangesAsync();
@@ -533,6 +534,27 @@ public static class DbSeeder
             await db.Database.ExecuteSqlRawAsync($"""
                 ALTER TABLE "{table}" ADD COLUMN IF NOT EXISTS "WebhookUrl" character varying(2000) NULL;
                 """);
+        }
+    }
+
+    private static async Task EnsureMessageIdLengthAsync(AppDbContext db, ILogger? logger)
+    {
+        foreach (var table in new[] { "IntegrationMessages", "AppConnectionMessages", "DeveloperAppMessages" })
+        {
+            try
+            {
+                await db.Database.ExecuteSqlRawAsync($"""
+                    ALTER TABLE "{table}" ALTER COLUMN "ExternalMessageId" TYPE character varying(512);
+                    """);
+                await db.Database.ExecuteSqlRawAsync($"""
+                    ALTER TABLE "{table}" ALTER COLUMN "ReplyToExternalId" TYPE character varying(512);
+                    """);
+                logger?.LogInformation("Widened {Table} Instagram message ids to 512 characters.", table);
+            }
+            catch (Exception ex)
+            {
+                logger?.LogWarning(ex, "Could not widen {Table} message id columns.", table);
+            }
         }
     }
 

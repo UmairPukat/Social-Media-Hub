@@ -120,9 +120,9 @@ public class IntegrationMessageConfiguration : IEntityTypeConfiguration<Integrat
     {
         builder.ToTable("IntegrationMessages");
         builder.HasKey(x => x.Id);
-        builder.Property(x => x.ExternalMessageId).IsRequired().HasMaxLength(200);
+        builder.Property(x => x.ExternalMessageId).IsRequired().HasMaxLength(512);
         builder.Property(x => x.Body).HasMaxLength(5000);
-        builder.Property(x => x.ReplyToExternalId).HasMaxLength(200);
+        builder.Property(x => x.ReplyToExternalId).HasMaxLength(512);
         builder.HasIndex(x => x.ExternalMessageId).IsUnique();
         builder.HasOne(x => x.Conversation).WithMany(x => x.Messages).HasForeignKey(x => x.ConversationId).OnDelete(DeleteBehavior.Cascade);
     }
@@ -288,9 +288,9 @@ public class AppConnectionMessageConfiguration : IEntityTypeConfiguration<AppCon
     {
         builder.ToTable("AppConnectionMessages");
         builder.HasKey(x => x.Id);
-        builder.Property(x => x.ExternalMessageId).IsRequired().HasMaxLength(200);
+        builder.Property(x => x.ExternalMessageId).IsRequired().HasMaxLength(512);
         builder.Property(x => x.Body).HasMaxLength(5000);
-        builder.Property(x => x.ReplyToExternalId).HasMaxLength(200);
+        builder.Property(x => x.ReplyToExternalId).HasMaxLength(512);
         builder.HasIndex(x => x.ExternalMessageId).IsUnique();
         builder.HasOne(x => x.Conversation).WithMany(x => x.Messages).HasForeignKey(x => x.ConversationId).OnDelete(DeleteBehavior.Cascade);
     }
@@ -456,9 +456,9 @@ public class DeveloperAppMessageConfiguration : IEntityTypeConfiguration<Develop
     {
         builder.ToTable("DeveloperAppMessages");
         builder.HasKey(x => x.Id);
-        builder.Property(x => x.ExternalMessageId).IsRequired().HasMaxLength(200);
+        builder.Property(x => x.ExternalMessageId).IsRequired().HasMaxLength(512);
         builder.Property(x => x.Body).HasMaxLength(5000);
-        builder.Property(x => x.ReplyToExternalId).HasMaxLength(200);
+        builder.Property(x => x.ReplyToExternalId).HasMaxLength(512);
         builder.HasIndex(x => x.ExternalMessageId).IsUnique();
         builder.HasOne(x => x.Conversation).WithMany(x => x.Messages).HasForeignKey(x => x.ConversationId).OnDelete(DeleteBehavior.Cascade);
     }

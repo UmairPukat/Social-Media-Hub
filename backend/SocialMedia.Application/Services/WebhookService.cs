@@ -212,33 +212,6 @@ public class WebhookService : IWebhookService
                 descriptor.EntryId,
                 MetaWebhookContentClassifier.DescribePayload(payloadJson));
 
-            if (!MetaWebhookContentClassifier.ShouldProcessForInbox(payloadJson))
-            {
-                webhookEvent.Status = WebhookEventStatus.Processed;
-                webhookEvent.ProcessedAt = DateTime.UtcNow;
-                webhookEvent.Error =
-                    "Ignored — not an inbox message/comment payload. " +
-                    MetaWebhookContentClassifier.DescribePayload(payloadJson);
-                store.UpdateWebhookEvent(webhookEvent);
-                await store.SaveChangesAsync(cancellationToken);
-
-                _logger.LogInformation(
-                    "Webhook ignored for module {MenuType} after storing audit row. Object={ObjectType}, EntryId={EntryId}, Summary={Summary}",
-                    normalizedMenu,
-                    descriptor.PlatformCode ?? platformCode,
-                    descriptor.EntryId,
-                    MetaWebhookContentClassifier.DescribePayload(payloadJson));
-
-                return ApiResponse<object>.Ok(new
-                {
-                    stored = true,
-                    webhookEventId = webhookEvent.Id,
-                    logId = log.Id,
-                    handled = 0,
-                    note = webhookEvent.Error
-                }, "Webhook stored — not processed for inbox.");
-            }
-
             webhookEvent.Status = WebhookEventStatus.Processing;
             store.UpdateWebhookEvent(webhookEvent);
             await store.SaveChangesAsync(cancellationToken);

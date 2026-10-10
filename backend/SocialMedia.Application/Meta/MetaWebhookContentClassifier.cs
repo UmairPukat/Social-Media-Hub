@@ -45,7 +45,11 @@ public static class MetaWebhookContentClassifier
             if (ContainsRealUserInboundContent(doc.RootElement))
                 return true;
 
-            return HasInboxCandidatePayload(doc.RootElement);
+            if (HasInboxCandidatePayload(doc.RootElement))
+                return true;
+
+            // Instagram echoes (business sent the DM) still belong in Inbox Messages.
+            return HasMessagingEnvelope(doc.RootElement);
         }
         catch (JsonException)
         {
@@ -108,6 +112,28 @@ public static class MetaWebhookContentClassifier
 
                 if (IsRealUserChange(change, value, entryId))
                     return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool HasMessagingEnvelope(JsonElement root)
+    {
+        foreach (var entry in MetaWebhookPayloadNormalizer.EnumerateEntries(root))
+        {
+            foreach (var propertyName in new[] { "messaging", "standby" })
+            {
+                if (!entry.TryGetProperty(propertyName, out var items) ||
+                    items.ValueKind != JsonValueKind.Array)
+                    continue;
+
+                foreach (var item in items.EnumerateArray())
+                {
+                    if (item.TryGetProperty("message", out _)
+                        || MetaWebhookPayloadNormalizer.HasInstagramGraphMessageShape(item))
+                        return true;
+                }
             }
         }
 
