@@ -101,10 +101,10 @@ internal static class MetaWebhookEntryHelper
                 ids.Add(id);
         }
 
+        // Only the connected account ids. Sender/from is the customer and must
+        // not resolve the conversation onto their profile (that flips left/right).
         Add(SocialMedia.Application.Meta.MetaWebhookPayloadNormalizer.ReadActorId(item, "recipient"));
-        Add(SocialMedia.Application.Meta.MetaWebhookPayloadNormalizer.ReadActorId(item, "sender"));
         Add(SocialMedia.Application.Meta.MetaWebhookPayloadNormalizer.ReadActorId(item, "to"));
-        Add(SocialMedia.Application.Meta.MetaWebhookPayloadNormalizer.ReadActorId(item, "from"));
 
         if (item.TryGetProperty("metadata", out var metadata) &&
             metadata.TryGetProperty("phone_number_id", out var phoneNumberId))

@@ -894,9 +894,22 @@ public class FacebookService : IFacebookService
             return;
         }
 
-        var outbound = MetaWebhookEchoHelper.IsEcho(item, message)
-            || MetaMessagingHelper.ProfileOwnsSenderId(profile, senderId);
-        var customerId = outbound ? receiverId : senderId;
+        var cardProfiles = await _store!.GetProfilesByAccountAsync(account.Id, cancellationToken);
+        if (cardProfiles.Count == 0)
+            cardProfiles = [profile];
+        var storedOutbound = MetaWebhookEchoHelper.IsEcho(item, message);
+        var outbound = MetaConversationSide.IsOutgoing(
+            account,
+            cardProfiles,
+            senderId,
+            receiverId,
+            storedOutbound);
+        var customerId = MetaConversationSide.ResolveCustomerId(
+            account,
+            cardProfiles,
+            senderId,
+            receiverId,
+            outbound);
         if (string.IsNullOrWhiteSpace(customerId))
         {
             result.Skip($"Message '{messageId}' has no sender/recipient id.");

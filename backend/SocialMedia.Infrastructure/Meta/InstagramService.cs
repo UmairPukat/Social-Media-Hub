@@ -1917,29 +1917,25 @@ public class InstagramService : IInstagramService
             return;
         }
 
-        var outbound = MetaWebhookEchoHelper.IsEcho(item, message)
-            || MetaMessagingHelper.ProfileOwnsSenderId(profile, senderId)
-            || IdsMatchEntryBusiness(senderId, entryBusinessId, profile);
+        var cardProfiles = await _store!.GetProfilesByAccountAsync(account.Id, cancellationToken);
+        if (cardProfiles.Count == 0)
+            cardProfiles = [profile];
+        var storedOutbound = MetaWebhookEchoHelper.IsEcho(item, message);
+        var outbound = MetaConversationSide.IsOutgoing(
+            account,
+            cardProfiles,
+            senderId,
+            receiverId,
+            storedOutbound,
+            entryBusinessId);
 
-        var customerId = outbound
-            ? FirstNonEmpty(
-                !MetaMessagingHelper.ProfileOwnsSenderId(profile, receiverId)
-                && !IdsMatchEntryBusiness(receiverId, entryBusinessId, profile)
-                    ? receiverId
-                    : null,
-                receiverId)
-            : senderId;
-        if (string.IsNullOrWhiteSpace(customerId) && !outbound)
-        {
-            if (!string.IsNullOrWhiteSpace(receiverId) &&
-                !MetaMessagingHelper.ProfileOwnsSenderId(profile, receiverId) &&
-                !IdsMatchEntryBusiness(receiverId, entryBusinessId, profile))
-                customerId = receiverId;
-            else if (!string.IsNullOrWhiteSpace(senderId) &&
-                     !MetaMessagingHelper.ProfileOwnsSenderId(profile, senderId) &&
-                     !IdsMatchEntryBusiness(senderId, entryBusinessId, profile))
-                customerId = senderId;
-        }
+        var customerId = MetaConversationSide.ResolveCustomerId(
+            account,
+            cardProfiles,
+            senderId,
+            receiverId,
+            outbound,
+            entryBusinessId);
 
         if (string.IsNullOrWhiteSpace(customerId))
         {

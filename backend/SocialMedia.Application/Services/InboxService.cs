@@ -140,20 +140,40 @@ public class InboxService : IInboxService
                 {
                     var menuType = FindMenuTypeForAccount(userAccounts, row.Account) ?? processMenu ?? MenuTypes.Integration;
                     var routingAccount = PickRoutingAccount(row.Profile, row.Account, userAccounts.Select(a => a.Account).ToList(), processMenu) ?? row.Account;
+                    var connectedProfiles = userAccounts
+                        .SelectMany(a => ProcessEntityNav.Profiles(a.Account))
+                        .GroupBy(p => p.Id)
+                        .Select(g => g.First())
+                        .ToList();
+                    if (connectedProfiles.Count == 0)
+                        connectedProfiles.Add(row.Profile);
+                    var connectedAccounts = userAccounts.Select(a => a.Account).ToList();
+                    var outgoing = MetaConversationSide.IsOutgoing(
+                        connectedAccounts,
+                        connectedProfiles,
+                        row.Message.SenderId,
+                        row.Message.ReceiverId,
+                        row.Message.Direction == MessageDirection.Outbound);
+                    var peerId = MetaConversationSide.ResolvePeerId(
+                        routingAccount,
+                        connectedProfiles,
+                        row.Conversation.CustomerId,
+                        row.Message.SenderId,
+                        row.Message.ReceiverId);
                     var item = new InboxItemDto
                     {
                         Id = row.Message.Id,
                         ItemKind = "message",
                         PlatformCode = InstagramConnectionResolver.ToInboxPlatformCode(row.Platform.Code),
                         ExternalId = row.Message.ExternalMessageId,
-                        AuthorName = row.Message.Direction == MessageDirection.Outbound
+                        AuthorName = outgoing
                             ? "You"
-                            : row.Conversation.CustomerName ?? row.Message.SenderId ?? "Instagram user",
-                        AuthorId = row.Conversation.CustomerId ?? row.Message.SenderId,
+                            : FirstNonEmpty(row.Conversation.CustomerName, peerId, row.Message.SenderId, "Instagram user"),
+                        AuthorId = peerId ?? row.Conversation.CustomerId ?? row.Message.SenderId,
                         Content = row.Message.Body ?? string.Empty,
                         IsHidden = false,
-                        IsRead = row.Message.Direction == MessageDirection.Outbound || row.Conversation.UnreadCount == 0,
-                        IsOutgoing = row.Message.Direction == MessageDirection.Outbound,
+                        IsRead = outgoing || row.Conversation.UnreadCount == 0,
+                        IsOutgoing = outgoing,
                         ConversationId = row.Message.ConversationId,
                         ReceivedAt = row.Message.PlatformCreatedAt ?? row.Message.CreatedAt,
                         ReplyToId = row.Message.ReplyToMessageId,
@@ -1357,20 +1377,35 @@ public class InboxService : IInboxService
         string platformCode,
         MessageEntityBase? quoted = null)
     {
+        var connectedProfiles = ProcessEntityNav.Profiles(account);
+        if (connectedProfiles.Count == 0)
+            connectedProfiles = [profile];
+        var outgoing = MetaConversationSide.IsOutgoing(
+            account,
+            connectedProfiles,
+            message.SenderId,
+            message.ReceiverId,
+            message.Direction == MessageDirection.Outbound);
+        var peerId = MetaConversationSide.ResolvePeerId(
+            account,
+            connectedProfiles,
+            conversation.CustomerId,
+            message.SenderId,
+            message.ReceiverId);
         var item = new InboxItemDto
         {
             Id = message.Id,
             ItemKind = "message",
             PlatformCode = platformCode,
             ExternalId = message.ExternalMessageId,
-            AuthorName = message.Direction == MessageDirection.Outbound
+            AuthorName = outgoing
                 ? "You"
-                : conversation.CustomerName ?? message.SenderId ?? "User",
-            AuthorId = conversation.CustomerId ?? message.SenderId,
+                : conversation.CustomerName ?? peerId ?? message.SenderId ?? "User",
+            AuthorId = peerId ?? conversation.CustomerId ?? message.SenderId,
             Content = message.Body ?? string.Empty,
             IsHidden = false,
             IsRead = true,
-            IsOutgoing = message.Direction == MessageDirection.Outbound,
+            IsOutgoing = outgoing,
             ConversationId = conversation.Id,
             ReceivedAt = message.PlatformCreatedAt ?? message.CreatedAt,
             ReplyToId = quoted?.Id ?? message.ReplyToMessageId,
