@@ -12,11 +12,14 @@ public static class InstagramMessagingRecipient
     public static string? Resolve(
         MessageEntityBase message,
         ConversationEntityBase conversation,
-        SocialProfileEntityBase profile)
+        SocialAccountEntityBase account,
+        IEnumerable<SocialProfileEntityBase> profiles)
     {
         foreach (var candidate in CandidateIds(message, conversation))
         {
-            if (IsValidCustomerRecipient(profile, candidate))
+            if (string.IsNullOrWhiteSpace(candidate))
+                continue;
+            if (!MetaConversationSide.OwnsActor(account, profiles, candidate))
                 return candidate;
         }
 

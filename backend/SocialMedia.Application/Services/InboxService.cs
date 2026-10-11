@@ -822,9 +822,11 @@ public class InboxService : IInboxService
         {
             var pages = await _instagramService.ListPagesAsync(userToken, cancellationToken);
             var page = pages.FirstOrDefault(p =>
-                    (!string.IsNullOrWhiteSpace(pageId) && string.Equals(p.PageId, pageId, StringComparison.Ordinal))
-                    || (!string.IsNullOrWhiteSpace(instagramId)
-                        && string.Equals(p.InstagramId, instagramId, StringComparison.Ordinal)))
+                    !string.IsNullOrWhiteSpace(instagramId)
+                    && string.Equals(p.InstagramId, instagramId, StringComparison.Ordinal))
+                ?? pages.FirstOrDefault(p =>
+                    !string.IsNullOrWhiteSpace(pageId)
+                    && string.Equals(p.PageId, pageId, StringComparison.Ordinal))
                 ?? (pages.Count == 1 ? pages[0] : null);
 
             if (page is not null)
@@ -842,6 +844,86 @@ public class InboxService : IInboxService
 
         return (pageId, tokens);
     }
+
+    private async Task<List<InstagramReplySendAttempt>> BuildInstagramReplyAttemptsAsync(
+        IProcessDataStore store,
+        Guid userId,
+        SocialAccountEntityBase account,
+        SocialAuthEntityBase? auth,
+        SocialProfileEntityBase profile,
+        string primaryCode,
+        IReadOnlyList<string> primaryTokens,
+        string? primaryPageId,
+        string? requestPageId,
+        string? requestAccountId,
+        CancellationToken cancellationToken)
+    {
+        var attempts = new List<InstagramReplySendAttempt>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        async Task AddAsync(
+            string code,
+            SocialAccountEntityBase acc,
+            SocialAuthEntityBase? cardAuth,
+            IReadOnlyList<string> tokens,
+            string? pageId)
+        {
+            if (!seen.Add(code))
+                return;
+
+            var type = InstagramConnectionResolver.FromPlatformCode(code);
+            var tokenList = tokens.Count > 0
+                ? tokens.ToList()
+                : ProcessCardAuthResolver.CollectTokens(cardAuth, acc, code);
+            var igId = ResolveCardInstagramId(acc, profile) ?? requestAccountId ?? profile.ExternalProfileId;
+
+            if (type == InstagramConnectionType.FacebookLogin)
+            {
+                var resolvedPage = FirstNonEmpty(
+                    pageId,
+                    requestPageId,
+                    ResolveReplyPageId(profile, acc));
+                var pageSend = await ResolveFacebookLoginPageSendAsync(
+                    acc, cardAuth, resolvedPage, igId, cancellationToken);
+                resolvedPage = FirstNonEmpty(pageSend.PageId, resolvedPage);
+                if (pageSend.Tokens.Count > 0)
+                    tokenList = pageSend.Tokens;
+                pageId = string.IsNullOrWhiteSpace(resolvedPage) ? null : resolvedPage;
+            }
+
+            if (tokenList.Count == 0)
+                return;
+
+            attempts.Add(new InstagramReplySendAttempt(code, type, tokenList, pageId, igId));
+        }
+
+        await AddAsync(primaryCode, account, auth, primaryTokens, primaryPageId);
+
+        foreach (var other in new[]
+                 {
+                     InstagramConnectionResolver.FacebookLoginPlatformCode,
+                     InstagramConnectionResolver.InstagramLoginPlatformCode
+                 })
+        {
+            if (seen.Contains(other))
+                continue;
+
+            var card = await ProcessCardAuthResolver.ResolveAsync(store, userId, other, cancellationToken);
+            if (card is null)
+                continue;
+
+            await AddAsync(other, card.Account, card.Auth, card.Tokens, card.PageId);
+        }
+
+        return attempts;
+    }
+
+    private sealed record InstagramReplySendAttempt(
+        string PlatformCode,
+        InstagramConnectionType ConnectionType,
+        List<string> Tokens,
+        string? PageId,
+        string? InstagramId);
 
     private static string? ResolveCardInstagramId(SocialAccountEntityBase account, SocialProfileEntityBase profile)
     {
@@ -1138,6 +1220,13 @@ public class InboxService : IInboxService
             || text.Contains("requested user cannot be found", StringComparison.OrdinalIgnoreCase);
     }
 
+    private static bool IsInstagramUserNotFoundError(Exception ex)
+    {
+        var text = ex.Message ?? string.Empty;
+        return text.Contains("2018001", StringComparison.OrdinalIgnoreCase)
+            || text.Contains("No matching user found", StringComparison.OrdinalIgnoreCase);
+    }
+
     private static bool IsRetryableInstagramSendError(Exception ex)
     {
         var text = ex.Message ?? string.Empty;
@@ -1332,7 +1421,13 @@ public class InboxService : IInboxService
                 return ApiResponse<object>.Fail("Platform does not support messaging.");
 
             var recipientId = InstagramConnectionResolver.IsInstagramPlatform(code)
-                ? InstagramMessagingRecipient.Resolve(message, conversation, profile)
+                ? InstagramMessagingRecipient.Resolve(
+                    message,
+                    conversation,
+                    account,
+                    ProcessEntityNav.Profiles(account).Count > 0
+                        ? ProcessEntityNav.Profiles(account)
+                        : [profile])
                 : ResolveGenericRecipientId(message, conversation);
             if (string.IsNullOrWhiteSpace(recipientId))
             {
@@ -1354,73 +1449,79 @@ public class InboxService : IInboxService
                 ? quoted.ExternalMessageId
                 : null;
 
-            var connectionType = InstagramConnectionResolver.FromPlatformCode(code);
-            var tokens = cardTokens.Count > 0
-                ? cardTokens.ToList()
-                : ProcessCardAuthResolver.CollectTokens(auth, account, code);
-            if (connectionType == InstagramConnectionType.FacebookLogin)
-            {
-                cardPageId = FirstNonEmpty(
-                    cardPageId,
-                    request.PageId,
-                    ResolveReplyPageId(profile, account),
-                    await FindSiblingFacebookPageIdAsync(store, userId, cancellationToken));
-                var pageSend = await ResolveFacebookLoginPageSendAsync(
+            var sendAttempts = InstagramConnectionResolver.IsInstagramPlatform(code)
+                ? await BuildInstagramReplyAttemptsAsync(
+                    store,
+                    userId,
                     account,
                     auth,
+                    profile,
+                    code,
+                    cardTokens,
                     cardPageId,
-                    FirstNonEmpty(ResolveCardInstagramId(account, profile), request.AccountId),
-                    cancellationToken);
-                cardPageId = FirstNonEmpty(pageSend.PageId, cardPageId);
-                if (pageSend.Tokens.Count > 0)
-                    tokens = pageSend.Tokens;
-                if (string.IsNullOrWhiteSpace(cardPageId))
-                    return ApiResponse<object>.Fail(
-                        "No Facebook Page is selected on the Instagram card. Open the Instagram card, choose the linked Page, then reply again.");
-            }
+                    request.PageId,
+                    request.AccountId,
+                    cancellationToken)
+                : [new InstagramReplySendAttempt(
+                    code,
+                    InstagramConnectionResolver.FromPlatformCode(code),
+                    cardTokens.Count > 0
+                        ? cardTokens.ToList()
+                        : ProcessCardAuthResolver.CollectTokens(auth, account, code),
+                    cardPageId,
+                    ResolveCardInstagramId(account, profile) ?? profile.ExternalProfileId)];
 
-            if (tokens.Count == 0)
+            if (sendAttempts.Count == 0 || sendAttempts.All(a => a.Tokens.Count == 0))
                 return ApiResponse<object>.Fail("No access token is available. Reconnect the account.");
 
             string? remoteMessageId = null;
             Exception? lastError = null;
-            foreach (var token in tokens)
+            foreach (var attempt in sendAttempts)
             {
-                var context = new MetaCallContext
+                foreach (var token in attempt.Tokens)
                 {
-                    AccessToken = token,
-                    ProfileExternalId = ResolveCardInstagramId(account, profile) ?? profile.ExternalProfileId,
-                    PageExternalId = connectionType == InstagramConnectionType.FacebookLogin
-                        ? cardPageId
-                        : null,
-                    InstagramConnectionType = connectionType
-                };
-
-                try
-                {
-                    remoteMessageId = code switch
+                    var context = new MetaCallContext
                     {
-                        "facebook" => await _facebookService.SendMessageAsync(context, recipientId, request.Message.Trim(), replyToMid, cancellationToken),
-                        "instagram" or "instagram_login" => await _instagramService.SendMessageAsync(context, recipientId, request.Message.Trim(), replyToMid, cancellationToken),
-                        "whatsapp" => await _whatsAppService.SendMessageAsync(context, recipientId, request.Message.Trim(), replyToMid, cancellationToken),
-                        _ => null
+                        AccessToken = token,
+                        ProfileExternalId = attempt.InstagramId ?? profile.ExternalProfileId,
+                        PageExternalId = attempt.ConnectionType == InstagramConnectionType.FacebookLogin
+                            ? attempt.PageId
+                            : null,
+                        InstagramConnectionType = attempt.ConnectionType
                     };
-                    lastError = null;
+
+                    try
+                    {
+                        remoteMessageId = attempt.PlatformCode switch
+                        {
+                            "facebook" => await _facebookService.SendMessageAsync(context, recipientId, request.Message.Trim(), replyToMid, cancellationToken),
+                            "instagram" or "instagram_login" => await _instagramService.SendMessageAsync(context, recipientId, request.Message.Trim(), replyToMid, cancellationToken),
+                            "whatsapp" => await _whatsAppService.SendMessageAsync(context, recipientId, request.Message.Trim(), replyToMid, cancellationToken),
+                            _ => null
+                        };
+                        lastError = null;
+                        code = attempt.PlatformCode;
+                        break;
+                    }
+                    catch (Exception ex) when (
+                        IsInstagramRecipientError(ex)
+                        || IsInstagramUserNotFoundError(ex)
+                        || IsOAuthTokenError(ex)
+                        || IsRetryableInstagramSendError(ex))
+                    {
+                        lastError = ex;
+                    }
+                }
+
+                if (lastError is null)
                     break;
-                }
-                catch (Exception ex) when (IsInstagramRecipientError(ex))
-                {
-                    return ApiResponse<object>.Fail(
-                        InstagramMessagingRecipient.FormatInstagramRecipientApiError(store.MenuType));
-                }
-                catch (Exception ex) when (IsOAuthTokenError(ex) || IsRetryableInstagramSendError(ex))
-                {
-                    lastError = ex;
-                }
             }
 
             if (lastError is not null)
-                return ApiResponse<object>.Fail(lastError.Message);
+                return ApiResponse<object>.Fail(
+                    IsInstagramRecipientError(lastError)
+                        ? InstagramMessagingRecipient.FormatInstagramRecipientApiError(store.MenuType)
+                        : lastError.Message);
 
             var externalId = string.IsNullOrWhiteSpace(remoteMessageId)
                 ? $"local_msg_{Guid.NewGuid():N}"

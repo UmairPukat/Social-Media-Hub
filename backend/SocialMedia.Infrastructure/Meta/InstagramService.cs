@@ -1256,10 +1256,27 @@ public class InstagramService : IInstagramService
                     ? new { recipient = new { id = recipientId }, message = new { text = message } }
                     : new { recipient = new { id = recipientId }, message = new { text = message }, reply_to = new { mid = replyToMid } };
 
-                using var loginDoc = await _graph.PostInstagramJsonAsync(
-                    InstagramLoginGraphVersion, "me/messages", context.AccessToken, loginPayload, cancellationToken);
-                LogApiDecision(context.ProfileExternalId, connectionType, "SendMessage", success: true);
-                return ReadSentMessageId(loginDoc.RootElement);
+                Exception? loginError = null;
+                foreach (var pathId in InstagramLoginMessagePaths(context))
+                {
+                    try
+                    {
+                        using var loginDoc = await _graph.PostInstagramJsonAsync(
+                            InstagramLoginGraphVersion,
+                            $"{pathId}/messages",
+                            context.AccessToken,
+                            loginPayload,
+                            cancellationToken);
+                        LogApiDecision(context.ProfileExternalId, connectionType, "SendMessage", success: true);
+                        return ReadSentMessageId(loginDoc.RootElement);
+                    }
+                    catch (Exception ex) when (IsRetryableFacebookLoginSendError(ex))
+                    {
+                        loginError = ex;
+                    }
+                }
+
+                throw loginError ?? new InvalidOperationException("Instagram Login could not send this DM.");
             }
 
             // Facebook Login Instagram is subscribed on the Facebook Page. Send through
@@ -1288,6 +1305,20 @@ public class InstagramService : IInstagramService
             LogApiDecision(context.ProfileExternalId, connectionType, "SendMessage", success: false, metaError: ex.Message);
             throw;
         }
+    }
+
+    private static IReadOnlyList<string> InstagramLoginMessagePaths(MetaCallContext context)
+    {
+        var paths = new List<string>();
+        void Add(string? id)
+        {
+            if (!string.IsNullOrWhiteSpace(id) && !paths.Contains(id, StringComparer.Ordinal))
+                paths.Add(id);
+        }
+
+        Add(context.ProfileExternalId);
+        Add("me");
+        return paths;
     }
 
     private static IReadOnlyList<string> FacebookLoginMessagePaths(MetaCallContext context)
@@ -1432,14 +1463,17 @@ public class InstagramService : IInstagramService
             foreach (var entry in MetaWebhookPayloadNormalizer.EnumerateEntries(doc.RootElement))
             {
                 var igUserId = entry.TryGetProperty("id", out var idEl) ? idEl.ToString() : null;
+                var preferredCard = PreferInstagramLoginWebhook(webhookEvent.HeadersJson)
+                    ? InstagramConnectionResolver.InstagramLoginPlatformCode
+                    : InstagramConnectionResolver.FacebookLoginPlatformCode;
 
                 var profile = await MetaWebhookEntryHelper.ResolveProfileForEntryAsync(
                     _store, entry, result, cancellationToken)
+                    ?? await MetaWebhookProfileResolver.TryResolveInstagramCardProfileAsync(
+                        _store, cancellationToken, preferredCard)
                     ?? await MetaWebhookProfileResolver.TryResolveSoleInstagramAsync(
                         _store, cancellationToken)
                     ?? await MetaWebhookProfileResolver.TryResolveAnyInstagramAsync(
-                        _store, cancellationToken)
-                    ?? await MetaWebhookProfileResolver.TryResolveInstagramCardProfileAsync(
                         _store, cancellationToken);
 
                 profile = profile is null
@@ -1450,7 +1484,7 @@ public class InstagramService : IInstagramService
                 if (profile is null || profile.ProfileType == ProfileType.FacebookPage)
                 {
                     var instagram = await MetaWebhookProfileResolver.TryResolveInstagramCardProfileAsync(
-                        _store, cancellationToken)
+                        _store, cancellationToken, preferredCard)
                         ?? await MetaWebhookProfileResolver.TryResolveAnyInstagramAsync(
                             _store, cancellationToken);
                     if (instagram is not null)
@@ -2080,6 +2114,28 @@ public class InstagramService : IInstagramService
 
         InboxRoutingHelper.Apply(inboxItem, profile, account, _menuType);
         await _inboxRealtime.NotifyInboxItemAsync(account.UserId, inboxItem, cancellationToken);
+    }
+
+    private static bool PreferInstagramLoginWebhook(string? headersJson)
+    {
+        if (string.IsNullOrWhiteSpace(headersJson))
+            return false;
+
+        try
+        {
+            using var doc = JsonDocument.Parse(headersJson);
+            foreach (var property in doc.RootElement.EnumerateObject())
+            {
+                if (!property.Name.Equals("Instagram-Api-Version", StringComparison.OrdinalIgnoreCase))
+                    continue;
+                return !string.IsNullOrWhiteSpace(property.Value.GetString());
+            }
+        }
+        catch (JsonException)
+        {
+        }
+
+        return false;
     }
 
     private static string? TryReadPageId(string? metadataJson)

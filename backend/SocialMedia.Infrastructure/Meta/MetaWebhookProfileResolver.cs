@@ -181,6 +181,22 @@ internal static class MetaWebhookProfileResolver
     /// </summary>
     public static async Task<SocialProfileEntityBase?> TryResolveInstagramCardProfileAsync(
         IProcessDataStore store,
+        CancellationToken cancellationToken,
+        string? preferredPlatformCode = null)
+    {
+        var match = await FindInstagramCardProfileAsync(
+            store, preferredPlatformCode, requirePreferred: true, cancellationToken);
+        if (match is not null)
+            return match;
+
+        return await FindInstagramCardProfileAsync(
+            store, preferredPlatformCode, requirePreferred: false, cancellationToken);
+    }
+
+    private static async Task<SocialProfileEntityBase?> FindInstagramCardProfileAsync(
+        IProcessDataStore store,
+        string? preferredPlatformCode,
+        bool requirePreferred,
         CancellationToken cancellationToken)
     {
         var accounts = await store.FindConnectedSocialAccountsAsync(cancellationToken);
@@ -188,6 +204,10 @@ internal static class MetaWebhookProfileResolver
         {
             var platform = await store.GetPlatformByIdAsync(account.PlatformId, cancellationToken);
             if (!InstagramConnectionResolver.IsInstagramPlatform(platform?.Code))
+                continue;
+            if (requirePreferred
+                && !string.IsNullOrWhiteSpace(preferredPlatformCode)
+                && !string.Equals(platform!.Code, preferredPlatformCode, StringComparison.OrdinalIgnoreCase))
                 continue;
 
             var profiles = await store.GetProfilesByAccountAsync(account.Id, cancellationToken);
