@@ -219,7 +219,8 @@ public class WebhookService : IWebhookService
             WebhookProcessResult? result;
             try
             {
-                result = await ProcessMetaPayloadAsync(webhookEvent, effectiveMenu, targetCode, cancellationToken);
+                result = await ProcessRoutedPayloadAsync(
+                    webhookEvent, effectiveMenu, targetCode, payloadJson, cancellationToken);
 
                 webhookEvent.Status = WebhookEventStatus.Processed;
                 webhookEvent.ProcessedAt = DateTime.UtcNow;
@@ -432,7 +433,8 @@ public class WebhookService : IWebhookService
                 ? DetectPlatformFromPayload(webhookEvent.PayloadJson) ?? "instagram"
                 : webhookEvent.ObjectType;
 
-            result = await ProcessMetaPayloadAsync(webhookEvent, menuType, targetCode, cancellationToken);
+            result = await ProcessRoutedPayloadAsync(
+                webhookEvent, menuType, targetCode, webhookEvent.PayloadJson, cancellationToken);
             webhookEvent.Status = WebhookEventStatus.Processed;
             webhookEvent.ProcessedAt = DateTime.UtcNow;
             webhookEvent.Error = result is null
@@ -496,6 +498,46 @@ public class WebhookService : IWebhookService
         }
 
         return null;
+    }
+
+    private async Task<WebhookProcessResult?> ProcessRoutedPayloadAsync(
+        WebhookEventEntityBase webhookEvent,
+        string incomingMenu,
+        string targetCode,
+        string payloadJson,
+        CancellationToken cancellationToken)
+    {
+        var owners = await WebhookInboxRouter.ResolveOwningMenusAsync(
+            _processData, payloadJson, cancellationToken);
+        var menus = WebhookInboxRouter.MenusToProcess(incomingMenu, owners);
+        if (owners.Count > 0 && !owners.Contains(incomingMenu, StringComparer.OrdinalIgnoreCase))
+        {
+            _logger.LogInformation(
+                "Webhook received on {IncomingMenu} routed to {OwningMenus}. Entry={EntryId}",
+                incomingMenu,
+                string.Join(",", owners),
+                webhookEvent.ExternalObjectId);
+        }
+
+        WebhookProcessResult? merged = null;
+        foreach (var menu in menus)
+        {
+            var attempt = await ProcessMetaPayloadAsync(webhookEvent, menu, targetCode, cancellationToken);
+            if (attempt is null)
+                continue;
+
+            if (merged is null)
+            {
+                merged = attempt;
+                continue;
+            }
+
+            merged.Handled += attempt.Handled;
+            foreach (var note in attempt.Notes)
+                merged.Skip(note);
+        }
+
+        return merged;
     }
 
     private async Task<WebhookProcessResult?> ProcessMetaPayloadAsync(

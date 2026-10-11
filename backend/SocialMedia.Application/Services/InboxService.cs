@@ -56,7 +56,7 @@ public class InboxService : IInboxService
             var processMenu = string.IsNullOrWhiteSpace(filter?.MenuType) ? null : MenuTypes.Normalize(filter!.MenuType);
             var stores = ResolveStores(processMenu);
 
-            await ReplayPendingWebhooksAsync(processMenu, cancellationToken);
+            await ReplayPendingWebhooksAsync(cancellationToken);
 
             if (!string.IsNullOrWhiteSpace(filter?.PlatformCode))
             {
@@ -196,13 +196,12 @@ public class InboxService : IInboxService
         }
     }
 
-    private async Task ReplayPendingWebhooksAsync(string? processMenu, CancellationToken cancellationToken)
+    private async Task ReplayPendingWebhooksAsync(CancellationToken cancellationToken)
     {
-        var menus = string.IsNullOrWhiteSpace(processMenu)
-            ? ProcessModules.AllMenuTypes
-            : [processMenu];
-
-        foreach (var menu in menus)
+        // Always scan every module. Meta often POSTs Developer App Instagram
+        // deliveries to the Integrations callback URL; routing then stores the inbox row
+        // on the module that owns the connected account.
+        foreach (var menu in ProcessModules.AllMenuTypes)
         {
             try
             {

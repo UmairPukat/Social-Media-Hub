@@ -39,6 +39,25 @@ public static class InboxRoutingHelper
             : null;
     }
 
+    public static bool MatchesConnectedIdentity(
+        SocialProfileEntityBase profile,
+        SocialAccountEntityBase account,
+        string id)
+    {
+        if (string.IsNullOrWhiteSpace(id))
+            return false;
+
+        if (string.Equals(profile.ExternalProfileId, id, StringComparison.Ordinal))
+            return true;
+        if (string.Equals(account.ExternalAccountId, id, StringComparison.Ordinal))
+            return true;
+        if (ProfileMatchesRouting(profile, id, id))
+            return true;
+
+        var selectedPageId = ReadMetadataString(account.MetadataJson, "selectedPageId");
+        return string.Equals(selectedPageId, id, StringComparison.Ordinal);
+    }
+
     public static bool ProfileMatchesRouting(SocialProfileEntityBase profile, string? pageId, string? accountId)
     {
         if (!string.IsNullOrWhiteSpace(pageId))
