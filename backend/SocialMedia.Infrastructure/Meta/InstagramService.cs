@@ -1279,18 +1279,39 @@ public class InstagramService : IInstagramService
                 throw loginError ?? new InvalidOperationException("Instagram Login could not send this DM.");
             }
 
-            // Facebook Login Instagram is subscribed on the Facebook Page. Send through
-            // that Page id (or me) with the Page token — the same pair as subscribed_apps.
+            // Facebook Login Instagram uses Messenger Instagram Messaging, not Messenger PSID send.
+            // Official call: POST /me/messages?access_token=PAGE_TOKEN
+            //   recipient={"id":IGSID}&message={"text":"..."}
+            // messaging_type=RESPONSE makes Meta look up a Facebook PSID and returns 2018001.
             Exception? lastError = null;
             foreach (var pathId in FacebookLoginMessagePaths(context))
             {
-                object payload = BuildFacebookLoginMessagePayload(recipientId, message, replyToMid, messengerStyle: true);
                 try
                 {
-                    using var doc = await _graph.PostJsonAsync(
-                        GraphVersion, $"{pathId}/messages", context.AccessToken, payload, cancellationToken);
+                    using var formDoc = await _graph.PostFormAsync(
+                        GraphVersion,
+                        $"{pathId}/messages",
+                        context.AccessToken,
+                        BuildFacebookLoginFormFields(recipientId, message, replyToMid),
+                        cancellationToken);
                     LogApiDecision(context.ProfileExternalId, connectionType, "SendMessage", success: true);
-                    return ReadSentMessageId(doc.RootElement);
+                    return ReadSentMessageId(formDoc.RootElement);
+                }
+                catch (Exception ex) when (IsRetryableFacebookLoginSendError(ex))
+                {
+                    lastError = ex;
+                }
+
+                try
+                {
+                    using var jsonDoc = await _graph.PostJsonAsync(
+                        GraphVersion,
+                        $"{pathId}/messages",
+                        context.AccessToken,
+                        BuildFacebookLoginMessagePayload(recipientId, message, replyToMid, messengerStyle: false),
+                        cancellationToken);
+                    LogApiDecision(context.ProfileExternalId, connectionType, "SendMessage", success: true);
+                    return ReadSentMessageId(jsonDoc.RootElement);
                 }
                 catch (Exception ex) when (IsRetryableFacebookLoginSendError(ex))
                 {
@@ -1333,6 +1354,21 @@ public class InstagramService : IInstagramService
         Add(context.PageExternalId);
         Add("me");
         return paths;
+    }
+
+    private static IReadOnlyList<KeyValuePair<string, string>> BuildFacebookLoginFormFields(
+        string recipientId,
+        string message,
+        string? replyToMid)
+    {
+        var fields = new List<KeyValuePair<string, string>>
+        {
+            new("recipient", JsonSerializer.Serialize(new { id = recipientId })),
+            new("message", JsonSerializer.Serialize(new { text = message }))
+        };
+        if (!string.IsNullOrWhiteSpace(replyToMid))
+            fields.Add(new("reply_to", JsonSerializer.Serialize(new { mid = replyToMid })));
+        return fields;
     }
 
     private static object BuildFacebookLoginMessagePayload(

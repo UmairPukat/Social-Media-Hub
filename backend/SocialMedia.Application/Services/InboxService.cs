@@ -862,13 +862,14 @@ public class InboxService : IInboxService
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         async Task AddAsync(
+            string seenKey,
             string code,
             SocialAccountEntityBase acc,
             SocialAuthEntityBase? cardAuth,
             IReadOnlyList<string> tokens,
             string? pageId)
         {
-            if (!seen.Add(code))
+            if (!seen.Add(seenKey))
                 return;
 
             var type = InstagramConnectionResolver.FromPlatformCode(code);
@@ -897,22 +898,38 @@ public class InboxService : IInboxService
             attempts.Add(new InstagramReplySendAttempt(code, type, tokenList, pageId, igId));
         }
 
-        await AddAsync(primaryCode, account, auth, primaryTokens, primaryPageId);
+        await AddAsync($"{store.MenuType}:{primaryCode}", primaryCode, account, auth, primaryTokens, primaryPageId);
 
-        foreach (var other in new[]
-                 {
-                     InstagramConnectionResolver.FacebookLoginPlatformCode,
-                     InstagramConnectionResolver.InstagramLoginPlatformCode
-                 })
+        foreach (var cardStore in _processData.AllStores())
         {
-            if (seen.Contains(other))
-                continue;
+            foreach (var other in new[]
+                     {
+                         InstagramConnectionResolver.InstagramLoginPlatformCode,
+                         InstagramConnectionResolver.FacebookLoginPlatformCode
+                     })
+            {
+                var card = await ProcessCardAuthResolver.ResolveAsync(cardStore, userId, other, cancellationToken);
+                if (card is null)
+                    continue;
 
-            var card = await ProcessCardAuthResolver.ResolveAsync(store, userId, other, cancellationToken);
-            if (card is null)
-                continue;
+                await AddAsync(
+                    $"{cardStore.MenuType}:{other}",
+                    other,
+                    card.Account,
+                    card.Auth,
+                    card.Tokens,
+                    card.PageId);
+            }
+        }
 
-            await AddAsync(other, card.Account, card.Auth, card.Tokens, card.PageId);
+        var hasPage = attempts.Any(a =>
+            a.ConnectionType == InstagramConnectionType.FacebookLogin
+            && !string.IsNullOrWhiteSpace(a.PageId));
+        if (!hasPage)
+        {
+            attempts = attempts
+                .OrderBy(a => a.ConnectionType == InstagramConnectionType.InstagramLogin ? 0 : 1)
+                .ToList();
         }
 
         return attempts;

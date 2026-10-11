@@ -549,6 +549,28 @@ public class MetaGraphClient
         return JsonDocument.Parse(body);
     }
 
+    /// <summary>
+    /// Messenger Instagram send uses form fields, not JSON:
+    /// recipient={"id":IGSID}&amp;message={"text":"..."}&amp;access_token=PAGE_TOKEN
+    /// </summary>
+    public async Task<JsonDocument> PostFormAsync(
+        string version,
+        string path,
+        string accessToken,
+        IReadOnlyList<KeyValuePair<string, string>> fields,
+        CancellationToken cancellationToken)
+    {
+        var url = BuildUrl(FacebookGraphHost, version, path, accessToken);
+        using var content = new FormUrlEncodedContent(fields);
+        using var response = await _httpClient.PostAsync(url, content, cancellationToken);
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+
+        if (!response.IsSuccessStatusCode)
+            throw new InvalidOperationException($"Meta Graph POST form failed ({(int)response.StatusCode}): {body}");
+
+        return JsonDocument.Parse(body);
+    }
+
     public async Task<MetaGraphHttpResult> PostJsonDetailedAsync(
         string version,
         string path,
