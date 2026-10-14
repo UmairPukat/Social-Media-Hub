@@ -43,6 +43,10 @@ h1 {
   line-height: 1.55;
 }
 
+.lede code {
+  font-size: 0.86em;
+}
+
 .search-panel {
   display: flex;
   flex-wrap: wrap;
@@ -89,67 +93,183 @@ h1 {
   background: var(--surface);
 }
 
+.results-layout {
+  display: grid;
+  grid-template-columns: minmax(180px, 240px) minmax(0, 1fr);
+  gap: 16px;
+}
+
+.match-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
 .result-count {
-  margin: 0 0 12px;
+  margin: 0 0 4px;
   color: var(--muted);
   font-size: 0.78rem;
   font-weight: 700;
 }
 
-.table-wrap {
-  overflow-x: auto;
-}
-
-.pages-table {
+.match-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
   width: 100%;
-  min-width: 720px;
-  border-collapse: collapse;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--soft);
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
 }
 
-.pages-table th {
-  padding: 11px 14px;
-  border-bottom: 1px solid var(--line);
-  background: var(--soft);
+.match-item.active {
+  border-color: color-mix(in srgb, var(--chrome-accent) 45%, var(--line));
+  background: color-mix(in srgb, var(--chrome-accent) 10%, var(--surface));
+}
+
+.match-name {
+  font-weight: 700;
+}
+
+.match-meta {
   color: var(--muted);
-  font-size: 0.66rem;
+  font-size: 0.78rem;
+}
+
+.detail-card {
+  padding: 22px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--chrome-accent) 10%, transparent), transparent 36%),
+    var(--soft);
+}
+
+.detail-top {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.avatar {
+  display: grid;
+  place-items: center;
+  width: 72px;
+  height: 72px;
+  border-radius: 20px;
+  background: color-mix(in srgb, var(--chrome-accent) 16%, #fff);
+  color: var(--chrome-accent);
+  font-size: 1.25rem;
   font-weight: 800;
-  letter-spacing: 0.06em;
-  text-align: left;
+  letter-spacing: 0.04em;
+}
+
+.detail-kicker {
+  margin: 0 0 4px;
+  color: var(--chrome-accent);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
 }
 
-.pages-table td {
-  padding: 14px;
-  border-bottom: 1px solid var(--line);
+.detail-heading h2 {
+  margin: 0 0 4px;
+  font-family: "Sora", "Space Grotesk", sans-serif;
+  letter-spacing: -0.03em;
+}
+
+.detail-category {
+  margin: 0;
+  color: var(--muted);
+}
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0 0 18px;
+}
+
+.stats div {
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.stats dt {
+  margin: 0 0 4px;
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.stats dd {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 800;
+}
+
+.stats .mono {
+  overflow-wrap: anywhere;
+  font-size: 0.92rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.about-block h3 {
+  margin: 0 0 8px;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.about-block p {
+  margin: 0;
   color: var(--ink);
-  vertical-align: top;
+  line-height: 1.6;
 }
 
-.pages-table tbody tr:last-child td {
-  border-bottom: 0;
-}
-
-.pages-table a {
+.open-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 18px;
   color: var(--chrome-accent, #2563eb);
   font-weight: 700;
   text-decoration: none;
 }
 
-.pages-table a:hover {
+.open-link:hover {
   text-decoration: underline;
-}
-
-.about-cell {
-  max-width: 320px;
-  color: var(--muted);
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
 }
 
 .state {
   margin: 0;
   color: var(--muted);
   line-height: 1.55;
+}
+
+.state code {
+  font-size: 0.86em;
+}
+
+@media (max-width: 800px) {
+  .results-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .stats {
+    grid-template-columns: 1fr;
+  }
 }

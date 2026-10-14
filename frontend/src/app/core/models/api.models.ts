@@ -275,6 +275,7 @@ export interface YouTubeSyncResult {
 export type PlatformSyncResult = YouTubeSyncResult;
 
 export interface PublicPage {
+  id?: string;
   name: string;
   category?: string;
   about?: string;

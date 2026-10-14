@@ -6,8 +6,7 @@ using SocialMedia.Application.Interfaces;
 namespace SocialMedia.Api.Controllers;
 
 /// <summary>
-/// Live public Facebook Page metadata for Meta App Review (Page Public Metadata Access).
-/// Not used for connected Pages.
+/// Facebook Pages from Graph <c>me/accounts</c> for the current process module.
 /// </summary>
 [Authorize]
 [Route("api/public-pages")]

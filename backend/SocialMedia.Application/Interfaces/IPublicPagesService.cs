@@ -6,8 +6,8 @@ namespace SocialMedia.Application.Interfaces;
 public interface IPublicPagesService
 {
     /// <summary>
-    /// Live Facebook Pages Search using this module's Facebook app token.
-    /// Results are not stored.
+    /// Lists Facebook Pages from Graph <c>me/accounts</c> for this module's connected Facebook user,
+    /// then filters by the search keyword. Results are not stored.
     /// </summary>
     Task<ApiResponse<IReadOnlyList<PublicPageDto>>> SearchAsync(
         Guid userId,
