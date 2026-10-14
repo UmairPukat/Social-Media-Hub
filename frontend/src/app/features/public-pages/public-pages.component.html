@@ -38,63 +38,65 @@
       <p class="state">Loading pages from me/accounts…</p>
     } @else if (searched() && !error() && pages().length === 0) {
       <p class="state">No connected Facebook Pages matched that name.</p>
-    } @else if (selected(); as page) {
-      <div class="results-layout">
-        @if (pages().length > 1) {
-          <aside class="match-list">
-            <p class="result-count">{{ pages().length }} matching pages</p>
-            @for (row of pages(); track pageKey(row)) {
-              <button
-                type="button"
-                class="match-item"
-                [class.active]="pageKey(row) === pageKey(page)"
-                (click)="selectPage(row)"
-              >
-                <span class="match-name">{{ row.name }}</span>
-                <span class="match-meta">{{ row.category || 'Facebook Page' }}</span>
-              </button>
-            }
-          </aside>
-        }
-
-        <article class="detail-card">
-          <div class="detail-top">
-            <div class="avatar" aria-hidden="true">{{ initials(page.name) }}</div>
-            <div class="detail-heading">
-              <p class="detail-kicker">Facebook Page</p>
-              <h2>{{ page.name }}</h2>
-              <p class="detail-category">{{ page.category || 'Uncategorized' }}</p>
-            </div>
-          </div>
-
-          <dl class="stats">
-            <div>
-              <dt>Likes</dt>
-              <dd>{{ page.fanCount == null ? '—' : (page.fanCount | number) }}</dd>
-            </div>
-            <div>
-              <dt>Followers</dt>
-              <dd>{{ page.followersCount == null ? '—' : (page.followersCount | number) }}</dd>
-            </div>
-            <div>
-              <dt>Page ID</dt>
-              <dd class="mono">{{ page.id || '—' }}</dd>
-            </div>
-          </dl>
-
-          <section class="about-block">
-            <h3>About</h3>
-            <p>{{ page.about || 'No about text is available for this Page.' }}</p>
-          </section>
-
-          @if (page.link) {
-            <a class="open-link" [href]="page.link" target="_blank" rel="noopener noreferrer">
-              <mat-icon>open_in_new</mat-icon>
-              Open on Facebook
-            </a>
+    } @else if (selected()) {
+      @if (selected(); as page) {
+        <div class="results-layout">
+          @if (pages().length > 1) {
+            <aside class="match-list">
+              <p class="result-count">{{ pages().length }} matching pages</p>
+              @for (row of pages(); track pageKey(row)) {
+                <button
+                  type="button"
+                  class="match-item"
+                  [class.active]="pageKey(row) === pageKey(page)"
+                  (click)="selectPage(row)"
+                >
+                  <span class="match-name">{{ row.name }}</span>
+                  <span class="match-meta">{{ row.category || 'Facebook Page' }}</span>
+                </button>
+              }
+            </aside>
           }
-        </article>
-      </div>
+
+          <article class="detail-card">
+            <div class="detail-top">
+              <div class="avatar" aria-hidden="true">{{ initials(page.name) }}</div>
+              <div class="detail-heading">
+                <p class="detail-kicker">Facebook Page</p>
+                <h2>{{ page.name }}</h2>
+                <p class="detail-category">{{ page.category || 'Uncategorized' }}</p>
+              </div>
+            </div>
+
+            <dl class="stats">
+              <div>
+                <dt>Likes</dt>
+                <dd>{{ page.fanCount == null ? '—' : (page.fanCount | number) }}</dd>
+              </div>
+              <div>
+                <dt>Followers</dt>
+                <dd>{{ page.followersCount == null ? '—' : (page.followersCount | number) }}</dd>
+              </div>
+              <div>
+                <dt>Page ID</dt>
+                <dd class="mono">{{ page.id || '—' }}</dd>
+              </div>
+            </dl>
+
+            <section class="about-block">
+              <h3>About</h3>
+              <p>{{ page.about || 'No about text is available for this Page.' }}</p>
+            </section>
+
+            @if (page.link) {
+              <a class="open-link" [href]="page.link" target="_blank" rel="noopener noreferrer">
+                <mat-icon>open_in_new</mat-icon>
+                Open on Facebook
+              </a>
+            }
+          </article>
+        </div>
+      }
     } @else {
       <p class="state">
         Search by the connected Page name. Matching pages from <code>me/accounts</code> will open here
