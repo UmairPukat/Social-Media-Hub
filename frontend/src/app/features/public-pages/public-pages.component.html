@@ -55,40 +55,55 @@
             </aside>
           }
 
-          <article class="detail-card">
-            <div class="detail-top">
-              <div class="avatar" aria-hidden="true">{{ initials(page.name) }}</div>
-              <div class="detail-heading">
-                <p class="detail-kicker">Facebook Page</p>
-                <h2>{{ page.name }}</h2>
-                <p class="detail-category">{{ page.category || 'Uncategorized' }}</p>
+          <article class="page-card">
+            <header class="page-card__hero">
+              <div class="page-card__brand">
+                <div class="page-card__mark" aria-hidden="true">{{ initials(page.name) }}</div>
+                <div class="page-card__identity">
+                  @if (page.category) {
+                    <span class="page-card__chip">
+                      <mat-icon>sell</mat-icon>
+                      {{ page.category }}
+                    </span>
+                  }
+                  <h2>{{ page.name }}</h2>
+                </div>
               </div>
               @if (page.link) {
-                <a class="open-link" [href]="page.link" target="_blank" rel="noopener noreferrer">
+                <a class="page-card__open" [href]="page.link" target="_blank" rel="noopener noreferrer">
                   <mat-icon>open_in_new</mat-icon>
-                  Open on Facebook
+                  Open page
                 </a>
               }
+            </header>
+
+            <div class="page-card__metrics">
+              <div class="metric metric--likes">
+                <span class="metric__icon" aria-hidden="true">
+                  <mat-icon>thumb_up</mat-icon>
+                </span>
+                <div>
+                  <p class="metric__value">{{ page.fanCount == null ? '—' : (page.fanCount | number) }}</p>
+                  <p class="metric__label">Likes</p>
+                </div>
+              </div>
+              <div class="metric metric--followers">
+                <span class="metric__icon" aria-hidden="true">
+                  <mat-icon>groups</mat-icon>
+                </span>
+                <div>
+                  <p class="metric__value">{{ page.followersCount == null ? '—' : (page.followersCount | number) }}</p>
+                  <p class="metric__label">Followers</p>
+                </div>
+              </div>
             </div>
 
-            <dl class="stats">
-              <div>
-                <dt>Likes</dt>
-                <dd>{{ page.fanCount == null ? '—' : (page.fanCount | number) }}</dd>
-              </div>
-              <div>
-                <dt>Followers</dt>
-                <dd>{{ page.followersCount == null ? '—' : (page.followersCount | number) }}</dd>
-              </div>
-              <div class="page-id">
-                <dt>Page ID</dt>
-                <dd>{{ page.id || '—' }}</dd>
-              </div>
-            </dl>
-
-            <section class="about-block">
-              <h3>About</h3>
-              <p>{{ page.about || 'No about text is available for this Page.' }}</p>
+            <section class="page-card__about">
+              <p class="page-card__about-label">
+                <mat-icon>notes</mat-icon>
+                About
+              </p>
+              <p class="page-card__about-text">{{ page.about || 'No about text is available for this Page.' }}</p>
             </section>
           </article>
         </div>
