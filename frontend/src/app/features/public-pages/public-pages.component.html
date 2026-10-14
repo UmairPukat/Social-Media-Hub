@@ -3,10 +3,7 @@
     <div>
       <p class="eyebrow">{{ processLabel() }}</p>
       <h1>Public Pages</h1>
-      <p class="lede">
-        Search the Facebook Pages returned by <code>me/accounts</code> for this module.
-        Try a page name such as Gul_Creations or MaSti And FuN.
-      </p>
+      <p class="lede">Search connected Facebook Pages and view their public details.</p>
     </div>
   </header>
 
@@ -17,7 +14,7 @@
         id="public-page-q"
         type="search"
         name="q"
-        placeholder="Search page name, for example Gul_Creations"
+        placeholder="Search page name"
         [value]="query()"
         (input)="onQueryInput($event)"
         autocomplete="off"
@@ -35,12 +32,12 @@
 
   <section class="results-panel">
     @if (loading()) {
-      <p class="state">Loading pages from me/accounts…</p>
+      <p class="state">Loading pages…</p>
     } @else if (searched() && !error() && pages().length === 0) {
       <p class="state">No connected Facebook Pages matched that name.</p>
     } @else if (selected()) {
       @if (selected(); as page) {
-        <div class="results-layout">
+        <div class="results-layout" [class.has-matches]="pages().length > 1">
           @if (pages().length > 1) {
             <aside class="match-list">
               <p class="result-count">{{ pages().length }} matching pages</p>
@@ -66,6 +63,12 @@
                 <h2>{{ page.name }}</h2>
                 <p class="detail-category">{{ page.category || 'Uncategorized' }}</p>
               </div>
+              @if (page.link) {
+                <a class="open-link" [href]="page.link" target="_blank" rel="noopener noreferrer">
+                  <mat-icon>open_in_new</mat-icon>
+                  Open on Facebook
+                </a>
+              }
             </div>
 
             <dl class="stats">
@@ -77,9 +80,9 @@
                 <dt>Followers</dt>
                 <dd>{{ page.followersCount == null ? '—' : (page.followersCount | number) }}</dd>
               </div>
-              <div>
+              <div class="page-id">
                 <dt>Page ID</dt>
-                <dd class="mono">{{ page.id || '—' }}</dd>
+                <dd>{{ page.id || '—' }}</dd>
               </div>
             </dl>
 
@@ -87,21 +90,11 @@
               <h3>About</h3>
               <p>{{ page.about || 'No about text is available for this Page.' }}</p>
             </section>
-
-            @if (page.link) {
-              <a class="open-link" [href]="page.link" target="_blank" rel="noopener noreferrer">
-                <mat-icon>open_in_new</mat-icon>
-                Open on Facebook
-              </a>
-            }
           </article>
         </div>
       }
     } @else {
-      <p class="state">
-        Search by the connected Page name. Matching pages from <code>me/accounts</code> will open here
-        with category, about, likes, and followers.
-      </p>
+      <p class="state">Search by page name to see category, about, likes, and followers.</p>
     }
   </section>
 </section>

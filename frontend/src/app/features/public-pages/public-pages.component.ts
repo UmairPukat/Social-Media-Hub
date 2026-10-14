@@ -38,7 +38,7 @@ export class PublicPagesComponent {
   search(): void {
     const keyword = this.query().trim();
     if (!keyword) {
-      this.error.set('Enter a page name to search, for example Gul_Creations.');
+      this.error.set('Enter a page name to search.');
       this.pages.set([]);
       this.selectedId.set(null);
       this.searched.set(false);
