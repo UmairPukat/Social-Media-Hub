@@ -9,6 +9,8 @@ using SocialMedia.Application.Meta;
 using SocialMedia.Domain.Enums;
 using SocialMedia.Domain.Interfaces;
 using SocialMedia.Domain.Modules.Common.Entities;
+using SocialMedia.Domain.Modules.SocialMediaAccounts.Entities;
+using SocialMedia.Domain.Modules.AccountConnections.Entities;
 
 namespace SocialMedia.Application.Services;
 
@@ -507,37 +509,8 @@ public class WebhookService : IWebhookService
         string payloadJson,
         CancellationToken cancellationToken)
     {
-        var owners = await WebhookInboxRouter.ResolveOwningMenusAsync(
-            _processData, payloadJson, cancellationToken);
-        var menus = WebhookInboxRouter.MenusToProcess(incomingMenu, owners);
-        if (owners.Count > 0 && !owners.Contains(incomingMenu, StringComparer.OrdinalIgnoreCase))
-        {
-            _logger.LogInformation(
-                "Webhook received on {IncomingMenu} routed to {OwningMenus}. Entry={EntryId}",
-                incomingMenu,
-                string.Join(",", owners),
-                webhookEvent.ExternalObjectId);
-        }
-
-        WebhookProcessResult? merged = null;
-        foreach (var menu in menus)
-        {
-            var attempt = await ProcessMetaPayloadAsync(webhookEvent, menu, targetCode, cancellationToken);
-            if (attempt is null)
-                continue;
-
-            if (merged is null)
-            {
-                merged = attempt;
-                continue;
-            }
-
-            merged.Handled += attempt.Handled;
-            foreach (var note in attempt.Notes)
-                merged.Skip(note);
-        }
-
-        return merged;
+        // A webhook URL belongs to one menu. Never copy the delivery into another menu's tables.
+        return await ProcessMetaPayloadAsync(webhookEvent, incomingMenu, targetCode, cancellationToken);
     }
 
     private async Task<WebhookProcessResult?> ProcessMetaPayloadAsync(
@@ -753,6 +726,16 @@ public class WebhookService : IWebhookService
             foreach (var token in await _unitOfWork.AppConnectionConfigs.GetWebhookVerifyTokensAsync(normalized, cancellationToken))
                 Add(token);
         }
+        else if (normalized == MenuTypes.SocialMediaAccount)
+        {
+            foreach (var token in await _unitOfWork.SocialMediaAccountConfigs.GetWebhookVerifyTokensAsync(normalized, cancellationToken))
+                Add(token);
+        }
+        else if (normalized == MenuTypes.AccountConnection)
+        {
+            foreach (var token in await _unitOfWork.AccountConnectionConfigs.GetWebhookVerifyTokensAsync(normalized, cancellationToken))
+                Add(token);
+        }
         else
         {
             foreach (var token in await _unitOfWork.DeveloperAppConfigs.GetWebhookVerifyTokensAsync(normalized, cancellationToken))
@@ -780,6 +763,8 @@ public class WebhookService : IWebhookService
         {
             MenuTypes.AppConnection => await _unitOfWork.AppConnectionConfigs.GetClientSecretsAsync(normalized, cancellationToken),
             MenuTypes.DeveloperApp => await _unitOfWork.DeveloperAppConfigs.GetClientSecretsAsync(normalized, cancellationToken),
+            MenuTypes.AccountConnection => await _unitOfWork.AccountConnectionConfigs.GetClientSecretsAsync(normalized, cancellationToken),
+            MenuTypes.SocialMediaAccount => await _unitOfWork.SocialMediaAccountConfigs.GetClientSecretsAsync(normalized, cancellationToken),
             _ => await _unitOfWork.IntegrationAppConfigs.GetClientSecretsAsync(normalized, cancellationToken)
         };
 

@@ -2,6 +2,8 @@ using SocialMedia.Domain.Entities;
 using SocialMedia.Domain.Modules.AppConnections.Entities;
 using SocialMedia.Domain.Modules.DeveloperApps.Entities;
 using SocialMedia.Domain.Modules.Integrations.Entities;
+using SocialMedia.Domain.Modules.SocialMediaAccounts.Entities;
+using SocialMedia.Domain.Modules.AccountConnections.Entities;
 
 namespace SocialMedia.Domain.Interfaces;
 
@@ -94,6 +96,56 @@ public interface IUnitOfWork : IDisposable
     IAppConnectionConfigRepository AppConnectionConfigs { get; }
     IIntegrationAppConfigRepository IntegrationAppConfigs { get; }
     IDeveloperAppConfigRepository DeveloperAppConfigs { get; }
+    ISocialMediaAccountConfigRepository SocialMediaAccountConfigs { get; }
+    IAccountConnectionConfigRepository AccountConnectionConfigs { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
+}
+
+public interface ISocialMediaAccountConfigRepository : IRepository<SocialMediaAccountConfig>
+{
+    Task<SocialMediaAccountConfig?> GetByUserAndPlatformAsync(
+        Guid userId,
+        Guid platformId,
+        string menuType,
+        CancellationToken cancellationToken = default);
+
+    Task<SocialMediaAccountConfig?> GetByUserAndPlatformCodeAsync(
+        Guid userId,
+        string platformCode,
+        string menuType,
+        CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<SocialMediaAccountConfig>> GetByUserAsync(
+        Guid userId,
+        string menuType,
+        CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<string>> GetWebhookVerifyTokensAsync(string menuType, CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<string>> GetClientSecretsAsync(string menuType, CancellationToken cancellationToken = default);
+}
+
+public interface IAccountConnectionConfigRepository : IRepository<AccountConnectionConfig>
+{
+    Task<AccountConnectionConfig?> GetByUserAndPlatformAsync(
+        Guid userId,
+        Guid platformId,
+        string menuType,
+        CancellationToken cancellationToken = default);
+
+    Task<AccountConnectionConfig?> GetByUserAndPlatformCodeAsync(
+        Guid userId,
+        string platformCode,
+        string menuType,
+        CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<AccountConnectionConfig>> GetByUserAsync(
+        Guid userId,
+        string menuType,
+        CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<string>> GetWebhookVerifyTokensAsync(string menuType, CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<string>> GetClientSecretsAsync(string menuType, CancellationToken cancellationToken = default);
 }

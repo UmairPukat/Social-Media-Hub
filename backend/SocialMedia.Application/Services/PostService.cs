@@ -36,12 +36,17 @@ public class PostService : IPostService
         Guid userId,
         CreatePostRequest request,
         PublishMediaInput? media = null,
+        string? menuType = null,
         CancellationToken cancellationToken = default)
     {
         try
         {
-            var located = await ProcessStoreLocator.FindAsync(
+            if (!MenuTypes.IsKnown(menuType))
+                return ApiResponse<PublishPostResponse>.Fail("Process menu is required.");
+
+            var located = await ProcessStoreLocator.FindInMenuAsync(
                 _processData,
+                MenuTypes.Normalize(menuType),
                 store => store.GetProfileByIdAsync(request.SocialProfileId, cancellationToken),
                 cancellationToken);
             if (located is null)
@@ -249,9 +254,9 @@ public class PostService : IPostService
     {
         try
         {
-            var stores = string.IsNullOrWhiteSpace(menuType)
-                ? _processData.AllStores()
-                : [_processData.ForMenu(menuType)];
+            var stores = !MenuTypes.IsKnown(menuType)
+                ? Array.Empty<IProcessDataStore>()
+                : new[] { _processData.ForMenu(MenuTypes.Normalize(menuType)) };
 
             var posts = new List<PostEntityBase>();
             foreach (var store in stores)
@@ -266,12 +271,20 @@ public class PostService : IPostService
         }
     }
 
-    public async Task<ApiResponse<object>> DeletePostAsync(Guid userId, Guid postId, CancellationToken cancellationToken = default)
+    public async Task<ApiResponse<object>> DeletePostAsync(
+        Guid userId,
+        Guid postId,
+        string? menuType = null,
+        CancellationToken cancellationToken = default)
     {
         try
         {
-            var located = await ProcessStoreLocator.FindAsync(
+            if (!MenuTypes.IsKnown(menuType))
+                return ApiResponse<object>.Fail("Process menu is required.");
+
+            var located = await ProcessStoreLocator.FindInMenuAsync(
                 _processData,
+                MenuTypes.Normalize(menuType),
                 store => store.GetPostByIdAsync(postId, cancellationToken),
                 cancellationToken);
             if (located is null)

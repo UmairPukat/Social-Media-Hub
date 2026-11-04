@@ -8,7 +8,9 @@ export interface ApiResponse<T> {
 export const MENU_TYPES = {
   integration: 'integration',
   appConnection: 'app_connection',
-  developerApp: 'developer_app'
+  developerApp: 'developer_app',
+  socialMediaAccount: 'social_media_account',
+  accountConnection: 'account_connection'
 } as const;
 
 export type MenuType = (typeof MENU_TYPES)[keyof typeof MENU_TYPES];

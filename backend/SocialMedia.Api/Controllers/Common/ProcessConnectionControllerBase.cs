@@ -11,13 +11,16 @@ public abstract class ProcessConnectionControllerBase : ControllerBase
 {
     private readonly IIntegrationService _integrationService;
     private readonly IProcessAppConfigService _configService;
+    private readonly IPublicPagesService _publicPages;
 
     protected ProcessConnectionControllerBase(
         IIntegrationService integrationService,
-        IProcessAppConfigService configService)
+        IProcessAppConfigService configService,
+        IPublicPagesService publicPages)
     {
         _integrationService = integrationService;
         _configService = configService;
+        _publicPages = publicPages;
     }
 
     protected abstract string MenuType { get; }
@@ -59,7 +62,8 @@ public abstract class ProcessConnectionControllerBase : ControllerBase
         [FromQuery] string? error = null,
         [FromQuery(Name = "error_description")] string? errorDescription = null)
     {
-        var result = await _integrationService.CompleteMetaRedirectAsync(code, state, errorDescription ?? error);
+        var result = await _integrationService.CompleteMetaRedirectAsync(
+            code, state, errorDescription ?? error, MenuType);
         Response.Headers["Cross-Origin-Opener-Policy"] = "same-origin-allow-popups";
         return OAuthPopupHtmlBuilder.AsHtml(result);
     }
@@ -133,6 +137,13 @@ public abstract class ProcessConnectionControllerBase : ControllerBase
     public async Task<IActionResult> DeleteConfig([FromQuery] string platformCode)
     {
         var response = await _configService.DeleteConfigAsync(User.GetUserId(), platformCode, MenuType);
+        return Ok(response);
+    }
+
+    [HttpGet("public-pages/search")]
+    public async Task<IActionResult> SearchPublicPages([FromQuery] string? q, CancellationToken cancellationToken)
+    {
+        var response = await _publicPages.SearchAsync(User.GetUserId(), MenuType, q, cancellationToken);
         return Ok(response);
     }
 }

@@ -192,8 +192,7 @@ export class ProcessApiService {
   searchPublicPages(menuType: ProcessMenuType, query: string): Observable<ApiResponse<PublicPage[]>> {
     const params = new URLSearchParams();
     params.set('q', query);
-    params.set('menuType', menuType);
-    return this.http.get<ApiResponse<PublicPage[]>>(`${this.root}/public-pages/search?${params}`);
+    return this.http.get<ApiResponse<PublicPage[]>>(`${this.base(menuType)}/public-pages/search?${params}`);
   }
 
   getPostStatistics(

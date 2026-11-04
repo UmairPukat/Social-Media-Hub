@@ -3,6 +3,8 @@ using SocialMedia.Domain.Modules.AppConnections.Entities;
 using SocialMedia.Domain.Modules.Common.Entities;
 using SocialMedia.Domain.Modules.DeveloperApps.Entities;
 using SocialMedia.Domain.Modules.Integrations.Entities;
+using SocialMedia.Domain.Modules.SocialMediaAccounts.Entities;
+using SocialMedia.Domain.Modules.AccountConnections.Entities;
 
 namespace SocialMedia.Infrastructure.Repositories;
 
@@ -12,6 +14,8 @@ internal static class ProcessEntityFactory
     {
         MenuTypes.AppConnection => new AppConnectionPlatform(),
         MenuTypes.DeveloperApp => new DeveloperAppPlatform(),
+        MenuTypes.AccountConnection => new AccountConnectionPlatform(),
+        MenuTypes.SocialMediaAccount => new SocialMediaAccountPlatform(),
         _ => new IntegrationPlatform()
     };
 
@@ -19,6 +23,8 @@ internal static class ProcessEntityFactory
     {
         MenuTypes.AppConnection => new AppConnectionSocialAccount(),
         MenuTypes.DeveloperApp => new DeveloperAppSocialAccount(),
+        MenuTypes.AccountConnection => new AccountConnectionSocialAccount(),
+        MenuTypes.SocialMediaAccount => new SocialMediaAccountSocialAccount(),
         _ => new IntegrationSocialAccount()
     };
 
@@ -26,6 +32,8 @@ internal static class ProcessEntityFactory
     {
         MenuTypes.AppConnection => new AppConnectionSocialAuth(),
         MenuTypes.DeveloperApp => new DeveloperAppSocialAuth(),
+        MenuTypes.AccountConnection => new AccountConnectionSocialAuth(),
+        MenuTypes.SocialMediaAccount => new SocialMediaAccountSocialAuth(),
         _ => new IntegrationSocialAuth()
     };
 
@@ -33,6 +41,8 @@ internal static class ProcessEntityFactory
     {
         MenuTypes.AppConnection => new AppConnectionSocialProfile(),
         MenuTypes.DeveloperApp => new DeveloperAppSocialProfile(),
+        MenuTypes.AccountConnection => new AccountConnectionSocialProfile(),
+        MenuTypes.SocialMediaAccount => new SocialMediaAccountSocialProfile(),
         _ => new IntegrationSocialProfile()
     };
 
@@ -40,6 +50,8 @@ internal static class ProcessEntityFactory
     {
         MenuTypes.AppConnection => new AppConnectionPost(),
         MenuTypes.DeveloperApp => new DeveloperAppPost(),
+        MenuTypes.AccountConnection => new AccountConnectionPost(),
+        MenuTypes.SocialMediaAccount => new SocialMediaAccountPost(),
         _ => new IntegrationPost()
     };
 
@@ -47,6 +59,8 @@ internal static class ProcessEntityFactory
     {
         MenuTypes.AppConnection => new AppConnectionComment(),
         MenuTypes.DeveloperApp => new DeveloperAppComment(),
+        MenuTypes.AccountConnection => new AccountConnectionComment(),
+        MenuTypes.SocialMediaAccount => new SocialMediaAccountComment(),
         _ => new IntegrationComment()
     };
 
@@ -54,6 +68,8 @@ internal static class ProcessEntityFactory
     {
         MenuTypes.AppConnection => new AppConnectionConversation(),
         MenuTypes.DeveloperApp => new DeveloperAppConversation(),
+        MenuTypes.AccountConnection => new AccountConnectionConversation(),
+        MenuTypes.SocialMediaAccount => new SocialMediaAccountConversation(),
         _ => new IntegrationConversation()
     };
 
@@ -61,6 +77,8 @@ internal static class ProcessEntityFactory
     {
         MenuTypes.AppConnection => new AppConnectionMessage(),
         MenuTypes.DeveloperApp => new DeveloperAppMessage(),
+        MenuTypes.AccountConnection => new AccountConnectionMessage(),
+        MenuTypes.SocialMediaAccount => new SocialMediaAccountMessage(),
         _ => new IntegrationMessage()
     };
 
@@ -68,6 +86,8 @@ internal static class ProcessEntityFactory
     {
         MenuTypes.AppConnection => new AppConnectionWebhookEvent(),
         MenuTypes.DeveloperApp => new DeveloperAppWebhookEvent(),
+        MenuTypes.AccountConnection => new AccountConnectionWebhookEvent(),
+        MenuTypes.SocialMediaAccount => new SocialMediaAccountWebhookEvent(),
         _ => new IntegrationWebhookEvent()
     };
 
@@ -75,6 +95,8 @@ internal static class ProcessEntityFactory
     {
         MenuTypes.AppConnection => new AppConnectionWebhookLog(),
         MenuTypes.DeveloperApp => new DeveloperAppWebhookLog(),
+        MenuTypes.AccountConnection => new AccountConnectionWebhookLog(),
+        MenuTypes.SocialMediaAccount => new SocialMediaAccountWebhookLog(),
         _ => new IntegrationWebhookLog()
     };
 
@@ -82,6 +104,8 @@ internal static class ProcessEntityFactory
     {
         MenuTypes.AppConnection => new AppConnectionMedia(),
         MenuTypes.DeveloperApp => new DeveloperAppMedia(),
+        MenuTypes.AccountConnection => new AccountConnectionMedia(),
+        MenuTypes.SocialMediaAccount => new SocialMediaAccountMedia(),
         _ => new IntegrationMedia()
     };
 
@@ -89,6 +113,8 @@ internal static class ProcessEntityFactory
     {
         MenuTypes.AppConnection => new AppConnectionSyncJob(),
         MenuTypes.DeveloperApp => new DeveloperAppSyncJob(),
+        MenuTypes.AccountConnection => new AccountConnectionSyncJob(),
+        MenuTypes.SocialMediaAccount => new SocialMediaAccountSyncJob(),
         _ => new IntegrationSyncJob()
     };
 

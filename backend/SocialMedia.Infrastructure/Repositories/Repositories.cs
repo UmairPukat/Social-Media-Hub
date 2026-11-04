@@ -6,6 +6,8 @@ using SocialMedia.Domain.Modules.DeveloperApps.Entities;
 using SocialMedia.Domain.Modules.Integrations.Entities;
 using SocialMedia.Domain.Interfaces;
 using SocialMedia.Infrastructure.Persistence;
+using SocialMedia.Domain.Modules.SocialMediaAccounts.Entities;
+using SocialMedia.Domain.Modules.AccountConnections.Entities;
 
 namespace SocialMedia.Infrastructure.Repositories;
 
@@ -182,7 +184,9 @@ public class UnitOfWork : IUnitOfWork
         IAccessTokenRepository accessTokens,
         IAppConnectionConfigRepository appConnectionConfigs,
         IIntegrationAppConfigRepository integrationAppConfigs,
-        IDeveloperAppConfigRepository developerAppConfigs)
+        IDeveloperAppConfigRepository developerAppConfigs,
+        ISocialMediaAccountConfigRepository socialMediaAccountConfigs,
+        IAccountConnectionConfigRepository accountConnectionConfigs)
     {
         _context = context;
         Users = users;
@@ -190,6 +194,8 @@ public class UnitOfWork : IUnitOfWork
         AppConnectionConfigs = appConnectionConfigs;
         IntegrationAppConfigs = integrationAppConfigs;
         DeveloperAppConfigs = developerAppConfigs;
+        SocialMediaAccountConfigs = socialMediaAccountConfigs;
+        AccountConnectionConfigs = accountConnectionConfigs;
     }
 
     public IUserRepository Users { get; }
@@ -197,9 +203,77 @@ public class UnitOfWork : IUnitOfWork
     public IAppConnectionConfigRepository AppConnectionConfigs { get; }
     public IIntegrationAppConfigRepository IntegrationAppConfigs { get; }
     public IDeveloperAppConfigRepository DeveloperAppConfigs { get; }
+    public ISocialMediaAccountConfigRepository SocialMediaAccountConfigs { get; }
+    public IAccountConnectionConfigRepository AccountConnectionConfigs { get; }
 
     public Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
         => _context.SaveChangesAsync(cancellationToken);
 
     public void Dispose() => _context.Dispose();
+}
+
+public class SocialMediaAccountConfigRepository : Repository<SocialMediaAccountConfig>, ISocialMediaAccountConfigRepository
+{
+    public SocialMediaAccountConfigRepository(AppDbContext context) : base(context) { }
+
+    public Task<SocialMediaAccountConfig?> GetByUserAndPlatformAsync(
+        Guid userId, Guid platformId, string menuType, CancellationToken cancellationToken = default)
+        => DbSet.FirstOrDefaultAsync(c => c.UserId == userId && c.PlatformId == platformId && c.MenuType == menuType, cancellationToken);
+
+    public Task<SocialMediaAccountConfig?> GetByUserAndPlatformCodeAsync(
+        Guid userId, string platformCode, string menuType, CancellationToken cancellationToken = default)
+        => DbSet.FirstOrDefaultAsync(
+            c => c.UserId == userId && c.PlatformCode == platformCode && c.MenuType == menuType,
+            cancellationToken);
+
+    public async Task<IReadOnlyList<SocialMediaAccountConfig>> GetByUserAsync(
+        Guid userId, string menuType, CancellationToken cancellationToken = default)
+        => await DbSet.AsNoTracking().Where(c => c.UserId == userId && c.MenuType == menuType).ToListAsync(cancellationToken);
+
+    public async Task<IReadOnlyList<string>> GetWebhookVerifyTokensAsync(string menuType, CancellationToken cancellationToken = default)
+        => await DbSet.AsNoTracking()
+            .Where(c => c.MenuType == menuType && c.WebhookVerifyToken != null && c.WebhookVerifyToken != "")
+            .Select(c => c.WebhookVerifyToken!)
+            .Distinct()
+            .ToListAsync(cancellationToken);
+
+    public async Task<IReadOnlyList<string>> GetClientSecretsAsync(string menuType, CancellationToken cancellationToken = default)
+        => await DbSet.AsNoTracking()
+            .Where(c => c.MenuType == menuType && c.ClientSecret != "")
+            .Select(c => c.ClientSecret)
+            .Distinct()
+            .ToListAsync(cancellationToken);
+}
+
+public class AccountConnectionConfigRepository : Repository<AccountConnectionConfig>, IAccountConnectionConfigRepository
+{
+    public AccountConnectionConfigRepository(AppDbContext context) : base(context) { }
+
+    public Task<AccountConnectionConfig?> GetByUserAndPlatformAsync(
+        Guid userId, Guid platformId, string menuType, CancellationToken cancellationToken = default)
+        => DbSet.FirstOrDefaultAsync(c => c.UserId == userId && c.PlatformId == platformId && c.MenuType == menuType, cancellationToken);
+
+    public Task<AccountConnectionConfig?> GetByUserAndPlatformCodeAsync(
+        Guid userId, string platformCode, string menuType, CancellationToken cancellationToken = default)
+        => DbSet.FirstOrDefaultAsync(
+            c => c.UserId == userId && c.PlatformCode == platformCode && c.MenuType == menuType,
+            cancellationToken);
+
+    public async Task<IReadOnlyList<AccountConnectionConfig>> GetByUserAsync(
+        Guid userId, string menuType, CancellationToken cancellationToken = default)
+        => await DbSet.AsNoTracking().Where(c => c.UserId == userId && c.MenuType == menuType).ToListAsync(cancellationToken);
+
+    public async Task<IReadOnlyList<string>> GetWebhookVerifyTokensAsync(string menuType, CancellationToken cancellationToken = default)
+        => await DbSet.AsNoTracking()
+            .Where(c => c.MenuType == menuType && c.WebhookVerifyToken != null && c.WebhookVerifyToken != "")
+            .Select(c => c.WebhookVerifyToken!)
+            .Distinct()
+            .ToListAsync(cancellationToken);
+
+    public async Task<IReadOnlyList<string>> GetClientSecretsAsync(string menuType, CancellationToken cancellationToken = default)
+        => await DbSet.AsNoTracking()
+            .Where(c => c.MenuType == menuType && c.ClientSecret != "")
+            .Select(c => c.ClientSecret)
+            .Distinct()
+            .ToListAsync(cancellationToken);
 }

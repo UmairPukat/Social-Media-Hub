@@ -65,14 +65,14 @@ public abstract class ProcessPostsControllerBase : ControllerBase
             AutoAddMusic = form.AutoAddMusic
         };
 
-        var response = await _postService.CreateAndPublishAsync(User.GetUserId(), request, media);
+        var response = await _postService.CreateAndPublishAsync(User.GetUserId(), request, media, MenuType);
         return Ok(response);
     }
 
     [HttpDelete("posts/{id:guid}")]
     public async Task<IActionResult> DeletePost(Guid id)
     {
-        var response = await _postService.DeletePostAsync(User.GetUserId(), id);
+        var response = await _postService.DeletePostAsync(User.GetUserId(), id, MenuType);
         return Ok(response);
     }
 

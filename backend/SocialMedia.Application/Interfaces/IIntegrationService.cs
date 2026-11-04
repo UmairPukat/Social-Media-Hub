@@ -34,6 +34,7 @@ public interface IIntegrationService
         string? code,
         string? state,
         string? error,
+        string expectedMenuType,
         CancellationToken cancellationToken = default);
 
     Task<ApiResponse<SocialAccountDto>> ExchangeAuthCodeAsync(

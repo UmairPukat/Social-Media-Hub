@@ -1,7 +1,9 @@
 using Microsoft.EntityFrameworkCore;
 using SocialMedia.Domain.Entities;
 using SocialMedia.Domain.Modules.AppConnections.Entities;
+using SocialMedia.Domain.Modules.AccountConnections.Entities;
 using SocialMedia.Domain.Modules.DeveloperApps.Entities;
+using SocialMedia.Domain.Modules.SocialMediaAccounts.Entities;
 using SocialMedia.Domain.Modules.Integrations.Entities;
 
 namespace SocialMedia.Infrastructure.Persistence;
@@ -63,10 +65,43 @@ public class AppDbContext : DbContext
     public DbSet<DeveloperAppWebhookLog> DeveloperAppWebhookLogs => Set<DeveloperAppWebhookLog>();
     public DbSet<DeveloperAppSyncJob> DeveloperAppSyncJobs => Set<DeveloperAppSyncJob>();
 
+
+    // Social Media Accounts module tables
+    public DbSet<SocialMediaAccountPlatform> SocialMediaAccountPlatforms => Set<SocialMediaAccountPlatform>();
+    public DbSet<SocialMediaAccountSocialAccount> SocialMediaAccountSocialAccounts => Set<SocialMediaAccountSocialAccount>();
+    public DbSet<SocialMediaAccountSocialAuth> SocialMediaAccountSocialAuths => Set<SocialMediaAccountSocialAuth>();
+    public DbSet<SocialMediaAccountSocialProfile> SocialMediaAccountSocialProfiles => Set<SocialMediaAccountSocialProfile>();
+    public DbSet<SocialMediaAccountPost> SocialMediaAccountPosts => Set<SocialMediaAccountPost>();
+    public DbSet<SocialMediaAccountMedia> SocialMediaAccountMedia => Set<SocialMediaAccountMedia>();
+    public DbSet<SocialMediaAccountComment> SocialMediaAccountComments => Set<SocialMediaAccountComment>();
+    public DbSet<SocialMediaAccountConversation> SocialMediaAccountConversations => Set<SocialMediaAccountConversation>();
+    public DbSet<SocialMediaAccountMessage> SocialMediaAccountMessages => Set<SocialMediaAccountMessage>();
+    public DbSet<SocialMediaAccountMessageAttachment> SocialMediaAccountMessageAttachments => Set<SocialMediaAccountMessageAttachment>();
+    public DbSet<SocialMediaAccountWebhookEvent> SocialMediaAccountWebhookEvents => Set<SocialMediaAccountWebhookEvent>();
+    public DbSet<SocialMediaAccountWebhookLog> SocialMediaAccountWebhookLogs => Set<SocialMediaAccountWebhookLog>();
+    public DbSet<SocialMediaAccountSyncJob> SocialMediaAccountSyncJobs => Set<SocialMediaAccountSyncJob>();
+
+    // Account Connections module tables
+    public DbSet<AccountConnectionPlatform> AccountConnectionPlatforms => Set<AccountConnectionPlatform>();
+    public DbSet<AccountConnectionSocialAccount> AccountConnectionSocialAccounts => Set<AccountConnectionSocialAccount>();
+    public DbSet<AccountConnectionSocialAuth> AccountConnectionSocialAuths => Set<AccountConnectionSocialAuth>();
+    public DbSet<AccountConnectionSocialProfile> AccountConnectionSocialProfiles => Set<AccountConnectionSocialProfile>();
+    public DbSet<AccountConnectionPost> AccountConnectionPosts => Set<AccountConnectionPost>();
+    public DbSet<AccountConnectionMedia> AccountConnectionMedia => Set<AccountConnectionMedia>();
+    public DbSet<AccountConnectionComment> AccountConnectionComments => Set<AccountConnectionComment>();
+    public DbSet<AccountConnectionConversation> AccountConnectionConversations => Set<AccountConnectionConversation>();
+    public DbSet<AccountConnectionMessage> AccountConnectionMessages => Set<AccountConnectionMessage>();
+    public DbSet<AccountConnectionMessageAttachment> AccountConnectionMessageAttachments => Set<AccountConnectionMessageAttachment>();
+    public DbSet<AccountConnectionWebhookEvent> AccountConnectionWebhookEvents => Set<AccountConnectionWebhookEvent>();
+    public DbSet<AccountConnectionWebhookLog> AccountConnectionWebhookLogs => Set<AccountConnectionWebhookLog>();
+    public DbSet<AccountConnectionSyncJob> AccountConnectionSyncJobs => Set<AccountConnectionSyncJob>();
+
     // Config tables
     public DbSet<AppConnectionConfig> AppConnectionConfigs => Set<AppConnectionConfig>();
     public DbSet<IntegrationAppConfig> IntegrationAppConfigs => Set<IntegrationAppConfig>();
     public DbSet<DeveloperAppConfig> DeveloperAppConfigs => Set<DeveloperAppConfig>();
+    public DbSet<SocialMediaAccountConfig> SocialMediaAccountConfigs => Set<SocialMediaAccountConfig>();
+    public DbSet<AccountConnectionConfig> AccountConnectionConfigs => Set<AccountConnectionConfig>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

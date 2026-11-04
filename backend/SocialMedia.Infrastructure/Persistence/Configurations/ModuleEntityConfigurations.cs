@@ -4,6 +4,8 @@ using SocialMedia.Domain.Entities;
 using SocialMedia.Domain.Modules.Integrations.Entities;
 using SocialMedia.Domain.Modules.AppConnections.Entities;
 using SocialMedia.Domain.Modules.DeveloperApps.Entities;
+using SocialMedia.Domain.Modules.SocialMediaAccounts.Entities;
+using SocialMedia.Domain.Modules.AccountConnections.Entities;
 
 namespace SocialMedia.Infrastructure.Persistence.Configurations;
 
@@ -511,3 +513,339 @@ public class DeveloperAppSyncJobConfiguration : IEntityTypeConfiguration<Develop
     }
 }
 
+
+public class SocialMediaAccountPlatformConfiguration : IEntityTypeConfiguration<SocialMediaAccountPlatform>
+{
+    public void Configure(EntityTypeBuilder<SocialMediaAccountPlatform> builder)
+    {
+        builder.ToTable("SocialMediaAccountPlatforms");
+        builder.HasKey(x => x.Id);
+        builder.Property(x => x.Name).IsRequired().HasMaxLength(100);
+        builder.Property(x => x.Code).IsRequired().HasMaxLength(50);
+        builder.HasIndex(x => x.Code).IsUnique();
+        builder.Property(x => x.Icon).HasMaxLength(500);
+    }
+}
+
+public class SocialMediaAccountSocialAccountConfiguration : IEntityTypeConfiguration<SocialMediaAccountSocialAccount>
+{
+    public void Configure(EntityTypeBuilder<SocialMediaAccountSocialAccount> builder)
+    {
+        builder.ToTable("SocialMediaAccountSocialAccounts");
+        builder.HasKey(x => x.Id);
+        builder.Property(x => x.ExternalAccountId).IsRequired().HasMaxLength(200);
+        builder.Property(x => x.DisplayName).IsRequired().HasMaxLength(200);
+        builder.Property(x => x.Username).HasMaxLength(200);
+        builder.Property(x => x.Email).HasMaxLength(256);
+        builder.HasIndex(x => new { x.UserId, x.PlatformId, x.ExternalAccountId }).IsUnique();
+        builder.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+        builder.HasOne(x => x.Platform).WithMany(x => x.SocialAccounts).HasForeignKey(x => x.PlatformId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne(x => x.Auth).WithOne(x => x.SocialAccount).HasForeignKey<SocialMediaAccountSocialAuth>(x => x.SocialAccountId).OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
+public class SocialMediaAccountSocialAuthConfiguration : IEntityTypeConfiguration<SocialMediaAccountSocialAuth>
+{
+    public void Configure(EntityTypeBuilder<SocialMediaAccountSocialAuth> builder)
+    {
+        builder.ToTable("SocialMediaAccountSocialAuths");
+        builder.HasKey(x => x.Id);
+        builder.Property(x => x.AccessToken).IsRequired();
+        builder.Property(x => x.Scopes).HasMaxLength(1000);
+        builder.HasIndex(x => x.SocialAccountId).IsUnique();
+    }
+}
+
+public class SocialMediaAccountSocialProfileConfiguration : IEntityTypeConfiguration<SocialMediaAccountSocialProfile>
+{
+    public void Configure(EntityTypeBuilder<SocialMediaAccountSocialProfile> builder)
+    {
+        builder.ToTable("SocialMediaAccountSocialProfiles");
+        builder.HasKey(x => x.Id);
+        builder.Property(x => x.ExternalProfileId).IsRequired().HasMaxLength(200);
+        builder.Property(x => x.Name).IsRequired().HasMaxLength(200);
+        builder.HasIndex(x => x.ExternalProfileId);
+        builder.HasOne(x => x.SocialAccount).WithMany(x => x.Profiles).HasForeignKey(x => x.SocialAccountId).OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
+public class SocialMediaAccountPostConfiguration : IEntityTypeConfiguration<SocialMediaAccountPost>
+{
+    public void Configure(EntityTypeBuilder<SocialMediaAccountPost> builder)
+    {
+        builder.ToTable("SocialMediaAccountPosts");
+        builder.HasKey(x => x.Id);
+        builder.Property(x => x.ExternalPostId).HasMaxLength(200);
+        builder.Property(x => x.Text).HasMaxLength(5000);
+        builder.Property(x => x.Caption).HasMaxLength(5000);
+        builder.HasOne(x => x.SocialProfile).WithMany(x => x.Posts).HasForeignKey(x => x.SocialProfileId).OnDelete(DeleteBehavior.Cascade);
+        builder.HasOne(x => x.Platform).WithMany().HasForeignKey(x => x.PlatformId).OnDelete(DeleteBehavior.Restrict);
+    }
+}
+
+public class SocialMediaAccountMediaConfiguration : IEntityTypeConfiguration<SocialMediaAccountMedia>
+{
+    public void Configure(EntityTypeBuilder<SocialMediaAccountMedia> builder)
+    {
+        builder.ToTable("SocialMediaAccountMedia");
+        builder.HasKey(x => x.Id);
+        builder.Property(x => x.Url).IsRequired();
+        builder.HasOne(x => x.Post).WithMany(x => x.MediaItems).HasForeignKey(x => x.PostId).OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
+public class SocialMediaAccountCommentConfiguration : IEntityTypeConfiguration<SocialMediaAccountComment>
+{
+    public void Configure(EntityTypeBuilder<SocialMediaAccountComment> builder)
+    {
+        builder.ToTable("SocialMediaAccountComments");
+        builder.HasKey(x => x.Id);
+        builder.Property(x => x.ExternalCommentId).IsRequired().HasMaxLength(200);
+        builder.Property(x => x.AuthorName).IsRequired().HasMaxLength(200);
+        builder.Property(x => x.Message).IsRequired().HasMaxLength(5000);
+        builder.HasIndex(x => x.ExternalCommentId).IsUnique();
+        builder.HasOne(x => x.Post).WithMany(x => x.Comments).HasForeignKey(x => x.PostId).OnDelete(DeleteBehavior.Cascade);
+        builder.HasOne(x => x.ParentComment).WithMany(x => x.Replies).HasForeignKey(x => x.ParentCommentId).OnDelete(DeleteBehavior.Restrict);
+    }
+}
+
+public class SocialMediaAccountConversationConfiguration : IEntityTypeConfiguration<SocialMediaAccountConversation>
+{
+    public void Configure(EntityTypeBuilder<SocialMediaAccountConversation> builder)
+    {
+        builder.ToTable("SocialMediaAccountConversations");
+        builder.HasKey(x => x.Id);
+        builder.Property(x => x.ExternalConversationId).IsRequired().HasMaxLength(200);
+        builder.HasIndex(x => new { x.SocialProfileId, x.ExternalConversationId }).IsUnique();
+        builder.HasOne(x => x.SocialProfile).WithMany(x => x.Conversations).HasForeignKey(x => x.SocialProfileId).OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
+public class SocialMediaAccountMessageConfiguration : IEntityTypeConfiguration<SocialMediaAccountMessage>
+{
+    public void Configure(EntityTypeBuilder<SocialMediaAccountMessage> builder)
+    {
+        builder.ToTable("SocialMediaAccountMessages");
+        builder.HasKey(x => x.Id);
+        builder.Property(x => x.ExternalMessageId).IsRequired().HasMaxLength(512);
+        builder.Property(x => x.Body).HasMaxLength(5000);
+        builder.Property(x => x.ReplyToExternalId).HasMaxLength(512);
+        builder.HasIndex(x => x.ExternalMessageId).IsUnique();
+        builder.HasOne(x => x.Conversation).WithMany(x => x.Messages).HasForeignKey(x => x.ConversationId).OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
+public class SocialMediaAccountMessageAttachmentConfiguration : IEntityTypeConfiguration<SocialMediaAccountMessageAttachment>
+{
+    public void Configure(EntityTypeBuilder<SocialMediaAccountMessageAttachment> builder)
+    {
+        builder.ToTable("SocialMediaAccountMessageAttachments");
+        builder.HasKey(x => x.Id);
+        builder.Property(x => x.Url).IsRequired().HasMaxLength(4000);
+        builder.HasOne(x => x.Message).WithMany(x => x.Attachments).HasForeignKey(x => x.MessageId).OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
+public class SocialMediaAccountWebhookEventConfiguration : IEntityTypeConfiguration<SocialMediaAccountWebhookEvent>
+{
+    public void Configure(EntityTypeBuilder<SocialMediaAccountWebhookEvent> builder)
+    {
+        builder.ToTable("SocialMediaAccountWebhookEvents");
+        builder.HasKey(x => x.Id);
+        builder.Property(x => x.EventType).IsRequired().HasMaxLength(100);
+        builder.Property(x => x.PayloadJson).IsRequired();
+        builder.HasOne(x => x.Platform).WithMany().HasForeignKey(x => x.PlatformId).OnDelete(DeleteBehavior.SetNull);
+        builder.HasIndex(x => x.Status);
+    }
+}
+
+public class SocialMediaAccountWebhookLogConfiguration : IEntityTypeConfiguration<SocialMediaAccountWebhookLog>
+{
+    public void Configure(EntityTypeBuilder<SocialMediaAccountWebhookLog> builder)
+    {
+        builder.ToTable("SocialMediaAccountWebhookLogs");
+        builder.HasKey(x => x.Id);
+        builder.Property(x => x.PlatformCode).IsRequired().HasMaxLength(50);
+        builder.Property(x => x.PayloadJson).IsRequired();
+        builder.HasOne(x => x.Platform).WithMany().HasForeignKey(x => x.PlatformId).OnDelete(DeleteBehavior.SetNull);
+        builder.HasIndex(x => x.ReceivedAt);
+    }
+}
+
+public class SocialMediaAccountSyncJobConfiguration : IEntityTypeConfiguration<SocialMediaAccountSyncJob>
+{
+    public void Configure(EntityTypeBuilder<SocialMediaAccountSyncJob> builder)
+    {
+        builder.ToTable("SocialMediaAccountSyncJobs");
+        builder.HasKey(x => x.Id);
+        builder.HasOne(x => x.SocialAccount).WithMany(x => x.SyncJobs).HasForeignKey(x => x.SocialAccountId).OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
+public class AccountConnectionPlatformConfiguration : IEntityTypeConfiguration<AccountConnectionPlatform>
+{
+    public void Configure(EntityTypeBuilder<AccountConnectionPlatform> builder)
+    {
+        builder.ToTable("AccountConnectionPlatforms");
+        builder.HasKey(x => x.Id);
+        builder.Property(x => x.Name).IsRequired().HasMaxLength(100);
+        builder.Property(x => x.Code).IsRequired().HasMaxLength(50);
+        builder.HasIndex(x => x.Code).IsUnique();
+        builder.Property(x => x.Icon).HasMaxLength(500);
+    }
+}
+
+public class AccountConnectionSocialAccountConfiguration : IEntityTypeConfiguration<AccountConnectionSocialAccount>
+{
+    public void Configure(EntityTypeBuilder<AccountConnectionSocialAccount> builder)
+    {
+        builder.ToTable("AccountConnectionSocialAccounts");
+        builder.HasKey(x => x.Id);
+        builder.Property(x => x.ExternalAccountId).IsRequired().HasMaxLength(200);
+        builder.Property(x => x.DisplayName).IsRequired().HasMaxLength(200);
+        builder.Property(x => x.Username).HasMaxLength(200);
+        builder.Property(x => x.Email).HasMaxLength(256);
+        builder.HasIndex(x => new { x.UserId, x.PlatformId, x.ExternalAccountId }).IsUnique();
+        builder.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+        builder.HasOne(x => x.Platform).WithMany(x => x.SocialAccounts).HasForeignKey(x => x.PlatformId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne(x => x.Auth).WithOne(x => x.SocialAccount).HasForeignKey<AccountConnectionSocialAuth>(x => x.SocialAccountId).OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
+public class AccountConnectionSocialAuthConfiguration : IEntityTypeConfiguration<AccountConnectionSocialAuth>
+{
+    public void Configure(EntityTypeBuilder<AccountConnectionSocialAuth> builder)
+    {
+        builder.ToTable("AccountConnectionSocialAuths");
+        builder.HasKey(x => x.Id);
+        builder.Property(x => x.AccessToken).IsRequired();
+        builder.Property(x => x.Scopes).HasMaxLength(1000);
+        builder.HasIndex(x => x.SocialAccountId).IsUnique();
+    }
+}
+
+public class AccountConnectionSocialProfileConfiguration : IEntityTypeConfiguration<AccountConnectionSocialProfile>
+{
+    public void Configure(EntityTypeBuilder<AccountConnectionSocialProfile> builder)
+    {
+        builder.ToTable("AccountConnectionSocialProfiles");
+        builder.HasKey(x => x.Id);
+        builder.Property(x => x.ExternalProfileId).IsRequired().HasMaxLength(200);
+        builder.Property(x => x.Name).IsRequired().HasMaxLength(200);
+        builder.HasIndex(x => x.ExternalProfileId);
+        builder.HasOne(x => x.SocialAccount).WithMany(x => x.Profiles).HasForeignKey(x => x.SocialAccountId).OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
+public class AccountConnectionPostConfiguration : IEntityTypeConfiguration<AccountConnectionPost>
+{
+    public void Configure(EntityTypeBuilder<AccountConnectionPost> builder)
+    {
+        builder.ToTable("AccountConnectionPosts");
+        builder.HasKey(x => x.Id);
+        builder.Property(x => x.ExternalPostId).HasMaxLength(200);
+        builder.Property(x => x.Text).HasMaxLength(5000);
+        builder.Property(x => x.Caption).HasMaxLength(5000);
+        builder.HasOne(x => x.SocialProfile).WithMany(x => x.Posts).HasForeignKey(x => x.SocialProfileId).OnDelete(DeleteBehavior.Cascade);
+        builder.HasOne(x => x.Platform).WithMany().HasForeignKey(x => x.PlatformId).OnDelete(DeleteBehavior.Restrict);
+    }
+}
+
+public class AccountConnectionMediaConfiguration : IEntityTypeConfiguration<AccountConnectionMedia>
+{
+    public void Configure(EntityTypeBuilder<AccountConnectionMedia> builder)
+    {
+        builder.ToTable("AccountConnectionMedia");
+        builder.HasKey(x => x.Id);
+        builder.Property(x => x.Url).IsRequired();
+        builder.HasOne(x => x.Post).WithMany(x => x.MediaItems).HasForeignKey(x => x.PostId).OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
+public class AccountConnectionCommentConfiguration : IEntityTypeConfiguration<AccountConnectionComment>
+{
+    public void Configure(EntityTypeBuilder<AccountConnectionComment> builder)
+    {
+        builder.ToTable("AccountConnectionComments");
+        builder.HasKey(x => x.Id);
+        builder.Property(x => x.ExternalCommentId).IsRequired().HasMaxLength(200);
+        builder.Property(x => x.AuthorName).IsRequired().HasMaxLength(200);
+        builder.Property(x => x.Message).IsRequired().HasMaxLength(5000);
+        builder.HasIndex(x => x.ExternalCommentId).IsUnique();
+        builder.HasOne(x => x.Post).WithMany(x => x.Comments).HasForeignKey(x => x.PostId).OnDelete(DeleteBehavior.Cascade);
+        builder.HasOne(x => x.ParentComment).WithMany(x => x.Replies).HasForeignKey(x => x.ParentCommentId).OnDelete(DeleteBehavior.Restrict);
+    }
+}
+
+public class AccountConnectionConversationConfiguration : IEntityTypeConfiguration<AccountConnectionConversation>
+{
+    public void Configure(EntityTypeBuilder<AccountConnectionConversation> builder)
+    {
+        builder.ToTable("AccountConnectionConversations");
+        builder.HasKey(x => x.Id);
+        builder.Property(x => x.ExternalConversationId).IsRequired().HasMaxLength(200);
+        builder.HasIndex(x => new { x.SocialProfileId, x.ExternalConversationId }).IsUnique();
+        builder.HasOne(x => x.SocialProfile).WithMany(x => x.Conversations).HasForeignKey(x => x.SocialProfileId).OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
+public class AccountConnectionMessageConfiguration : IEntityTypeConfiguration<AccountConnectionMessage>
+{
+    public void Configure(EntityTypeBuilder<AccountConnectionMessage> builder)
+    {
+        builder.ToTable("AccountConnectionMessages");
+        builder.HasKey(x => x.Id);
+        builder.Property(x => x.ExternalMessageId).IsRequired().HasMaxLength(512);
+        builder.Property(x => x.Body).HasMaxLength(5000);
+        builder.Property(x => x.ReplyToExternalId).HasMaxLength(512);
+        builder.HasIndex(x => x.ExternalMessageId).IsUnique();
+        builder.HasOne(x => x.Conversation).WithMany(x => x.Messages).HasForeignKey(x => x.ConversationId).OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
+public class AccountConnectionMessageAttachmentConfiguration : IEntityTypeConfiguration<AccountConnectionMessageAttachment>
+{
+    public void Configure(EntityTypeBuilder<AccountConnectionMessageAttachment> builder)
+    {
+        builder.ToTable("AccountConnectionMessageAttachments");
+        builder.HasKey(x => x.Id);
+        builder.Property(x => x.Url).IsRequired().HasMaxLength(4000);
+        builder.HasOne(x => x.Message).WithMany(x => x.Attachments).HasForeignKey(x => x.MessageId).OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
+public class AccountConnectionWebhookEventConfiguration : IEntityTypeConfiguration<AccountConnectionWebhookEvent>
+{
+    public void Configure(EntityTypeBuilder<AccountConnectionWebhookEvent> builder)
+    {
+        builder.ToTable("AccountConnectionWebhookEvents");
+        builder.HasKey(x => x.Id);
+        builder.Property(x => x.EventType).IsRequired().HasMaxLength(100);
+        builder.Property(x => x.PayloadJson).IsRequired();
+        builder.HasOne(x => x.Platform).WithMany().HasForeignKey(x => x.PlatformId).OnDelete(DeleteBehavior.SetNull);
+        builder.HasIndex(x => x.Status);
+    }
+}
+
+public class AccountConnectionWebhookLogConfiguration : IEntityTypeConfiguration<AccountConnectionWebhookLog>
+{
+    public void Configure(EntityTypeBuilder<AccountConnectionWebhookLog> builder)
+    {
+        builder.ToTable("AccountConnectionWebhookLogs");
+        builder.HasKey(x => x.Id);
+        builder.Property(x => x.PlatformCode).IsRequired().HasMaxLength(50);
+        builder.Property(x => x.PayloadJson).IsRequired();
+        builder.HasOne(x => x.Platform).WithMany().HasForeignKey(x => x.PlatformId).OnDelete(DeleteBehavior.SetNull);
+        builder.HasIndex(x => x.ReceivedAt);
+    }
+}
+
+public class AccountConnectionSyncJobConfiguration : IEntityTypeConfiguration<AccountConnectionSyncJob>
+{
+    public void Configure(EntityTypeBuilder<AccountConnectionSyncJob> builder)
+    {
+        builder.ToTable("AccountConnectionSyncJobs");
+        builder.HasKey(x => x.Id);
+        builder.HasOne(x => x.SocialAccount).WithMany(x => x.SyncJobs).HasForeignKey(x => x.SocialAccountId).OnDelete(DeleteBehavior.Cascade);
+    }
+}

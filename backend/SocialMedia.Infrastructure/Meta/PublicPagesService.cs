@@ -38,6 +38,9 @@ public class PublicPagesService : IPublicPagesService
         if (keyword.Length > 100)
             return ApiResponse<IReadOnlyList<PublicPageDto>>.Fail("Search keyword is too long.");
 
+        if (!MenuTypes.IsKnown(menuType))
+            return ApiResponse<IReadOnlyList<PublicPageDto>>.Fail("Unknown process menu.");
+
         var normalizedMenu = MenuTypes.Normalize(menuType);
         var store = _processData.ForMenu(normalizedMenu);
         var token = await ResolveFacebookUserTokenAsync(store, userId, cancellationToken);

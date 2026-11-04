@@ -18,6 +18,8 @@ public class MetaCallContext
     /// Instagram auth path. Defaults to FacebookLogin so existing callers keep graph.facebook.com behavior.
     /// </summary>
     public InstagramConnectionType InstagramConnectionType { get; set; } = InstagramConnectionType.FacebookLogin;
+    /// <summary>Process menu that owns this call. Deletes and lookups stay inside this menu.</summary>
+    public string? MenuType { get; set; }
 }
 
 public interface IFacebookService

@@ -3,7 +3,9 @@ using Microsoft.Extensions.Logging;
 using SocialMedia.Application.Catalog;
 using SocialMedia.Domain.Entities;
 using SocialMedia.Domain.Modules.AppConnections.Entities;
+using SocialMedia.Domain.Modules.AccountConnections.Entities;
 using SocialMedia.Domain.Modules.DeveloperApps.Entities;
+using SocialMedia.Domain.Modules.SocialMediaAccounts.Entities;
 using SocialMedia.Domain.Modules.Integrations.Entities;
 
 namespace SocialMedia.Infrastructure.Persistence;
@@ -106,6 +108,8 @@ public static class DbSeeder
         await EnsureAppConnectionConfigsTableAsync(db);
         await EnsureIntegrationAppConfigsTableAsync(db);
         await EnsureDeveloperAppConfigsTableAsync(db);
+        await EnsureSocialMediaAccountConfigsTableAsync(db);
+        await EnsureAccountConnectionConfigsTableAsync(db);
         await EnsureConfigWebhookUrlColumnsAsync(db);
 
         await ModuleSchemaEnsurer.EnsureAsync(db, logger);
@@ -168,6 +172,14 @@ public static class DbSeeder
                 db.DeveloperAppPlatforms,
                 PlatformCatalog.IdForMenu(def.Id, MenuTypes.DeveloperApp),
                 def);
+            SeedPlatformSet(
+                db.SocialMediaAccountPlatforms,
+                PlatformCatalog.IdForMenu(def.Id, MenuTypes.SocialMediaAccount),
+                def);
+            SeedPlatformSet(
+                db.AccountConnectionPlatforms,
+                PlatformCatalog.IdForMenu(def.Id, MenuTypes.AccountConnection),
+                def);
         }
 
         foreach (var p in db.IntegrationPlatforms.Where(p => !catalogCodes.Contains(p.Code)))
@@ -175,6 +187,10 @@ public static class DbSeeder
         foreach (var p in db.AppConnectionPlatforms.Where(p => !catalogCodes.Contains(p.Code)))
             p.IsActive = false;
         foreach (var p in db.DeveloperAppPlatforms.Where(p => !catalogCodes.Contains(p.Code)))
+            p.IsActive = false;
+        foreach (var p in db.SocialMediaAccountPlatforms.Where(p => !catalogCodes.Contains(p.Code)))
+            p.IsActive = false;
+        foreach (var p in db.AccountConnectionPlatforms.Where(p => !catalogCodes.Contains(p.Code)))
             p.IsActive = false;
 
         await Task.CompletedTask;
@@ -230,6 +246,38 @@ public static class DbSeeder
         existing.Icon = def.Icon;
         existing.IsActive = true;
     }
+    private static void SeedPlatformSet(
+        DbSet<AccountConnectionPlatform> set,
+        Guid id,
+        PlatformDefinition def)
+    {
+        var existing = set.Local.FirstOrDefault(p => p.Id == id) ?? set.FirstOrDefault(p => p.Id == id);
+        if (existing is null)
+        {
+            set.Add(new AccountConnectionPlatform { Id = id, Name = def.Name, Code = def.Code, Icon = def.Icon, IsActive = true });
+            return;
+        }
+        existing.Name = def.Name;
+        existing.Code = def.Code;
+        existing.Icon = def.Icon;
+        existing.IsActive = true;
+    }
+    private static void SeedPlatformSet(
+        DbSet<SocialMediaAccountPlatform> set,
+        Guid id,
+        PlatformDefinition def)
+    {
+        var existing = set.Local.FirstOrDefault(p => p.Id == id) ?? set.FirstOrDefault(p => p.Id == id);
+        if (existing is null)
+        {
+            set.Add(new SocialMediaAccountPlatform { Id = id, Name = def.Name, Code = def.Code, Icon = def.Icon, IsActive = true });
+            return;
+        }
+        existing.Name = def.Name;
+        existing.Code = def.Code;
+        existing.Icon = def.Icon;
+        existing.IsActive = true;
+    }
 
     /// <summary>
     /// EnsureCreated does not alter existing databases — create WebhookLogs if missing.
@@ -261,7 +309,7 @@ public static class DbSeeder
     /// </summary>
     private static async Task EnsureMultiSocialAccountPerPlatformIndexAsync(AppDbContext db, ILogger? logger = null)
     {
-        foreach (var prefix in new[] { "Integration", "AppConnection", "DeveloperApp" })
+        foreach (var prefix in new[] { "Integration", "AppConnection", "DeveloperApp", "SocialMediaAccount", "AccountConnection" })
         {
             var table = $"{prefix}SocialAccounts";
             if (!await ModuleTableMigration.TableExistsAsync(db, table))
@@ -526,10 +574,70 @@ public static class DbSeeder
             ON "DeveloperAppConfigs" ("UserId", "PlatformId", "MenuType");
             """);
     }
+    private static async Task EnsureAccountConnectionConfigsTableAsync(AppDbContext db)
+    {
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE IF NOT EXISTS "AccountConnectionConfigs" (
+                "Id" uuid NOT NULL,
+                "UserId" uuid NOT NULL,
+                "PlatformId" uuid NOT NULL,
+                "PlatformCode" character varying(50) NOT NULL,
+                "MenuType" character varying(50) NOT NULL DEFAULT 'account_connection',
+                "Label" character varying(200) NULL,
+                "ClientId" character varying(200) NOT NULL,
+                "ClientSecret" text NOT NULL,
+                "RedirectUri" character varying(2000) NULL,
+                "AuthUrl" character varying(2000) NULL,
+                "BaseUrl" character varying(500) NULL,
+                "Scopes" character varying(2000) NULL,
+                "GraphApiVersion" character varying(20) NOT NULL DEFAULT 'v21.0',
+                "WebhookVerifyToken" character varying(500) NULL,
+                "PhoneNumberId" character varying(100) NULL,
+                "WabaId" character varying(100) NULL,
+                "CreatedAt" timestamp with time zone NOT NULL,
+                "UpdatedAt" timestamp with time zone NULL,
+                CONSTRAINT "PK_AccountConnectionConfigs" PRIMARY KEY ("Id")
+            );
+            """);
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE UNIQUE INDEX IF NOT EXISTS "IX_AccountConnectionConfigs_UserId_PlatformId_MenuType"
+            ON "AccountConnectionConfigs" ("UserId", "PlatformId", "MenuType");
+            """);
+    }
+    private static async Task EnsureSocialMediaAccountConfigsTableAsync(AppDbContext db)
+    {
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE IF NOT EXISTS "SocialMediaAccountConfigs" (
+                "Id" uuid NOT NULL,
+                "UserId" uuid NOT NULL,
+                "PlatformId" uuid NOT NULL,
+                "PlatformCode" character varying(50) NOT NULL,
+                "MenuType" character varying(50) NOT NULL DEFAULT 'social_media_account',
+                "Label" character varying(200) NULL,
+                "ClientId" character varying(200) NOT NULL,
+                "ClientSecret" text NOT NULL,
+                "RedirectUri" character varying(2000) NULL,
+                "AuthUrl" character varying(2000) NULL,
+                "BaseUrl" character varying(500) NULL,
+                "Scopes" character varying(2000) NULL,
+                "GraphApiVersion" character varying(20) NOT NULL DEFAULT 'v21.0',
+                "WebhookVerifyToken" character varying(500) NULL,
+                "PhoneNumberId" character varying(100) NULL,
+                "WabaId" character varying(100) NULL,
+                "CreatedAt" timestamp with time zone NOT NULL,
+                "UpdatedAt" timestamp with time zone NULL,
+                CONSTRAINT "PK_SocialMediaAccountConfigs" PRIMARY KEY ("Id")
+            );
+            """);
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE UNIQUE INDEX IF NOT EXISTS "IX_SocialMediaAccountConfigs_UserId_PlatformId_MenuType"
+            ON "SocialMediaAccountConfigs" ("UserId", "PlatformId", "MenuType");
+            """);
+    }
 
     private static async Task EnsureConfigWebhookUrlColumnsAsync(AppDbContext db)
     {
-        foreach (var table in new[] { "IntegrationAppConfigs", "AppConnectionConfigs", "DeveloperAppConfigs" })
+        foreach (var table in new[] { "IntegrationAppConfigs", "AppConnectionConfigs", "DeveloperAppConfigs", "SocialMediaAccountConfigs", "AccountConnectionConfigs" })
         {
             await db.Database.ExecuteSqlRawAsync($"""
                 ALTER TABLE "{table}" ADD COLUMN IF NOT EXISTS "WebhookUrl" character varying(2000) NULL;
@@ -539,7 +647,7 @@ public static class DbSeeder
 
     private static async Task EnsureMessageIdLengthAsync(AppDbContext db, ILogger? logger)
     {
-        foreach (var table in new[] { "IntegrationMessages", "AppConnectionMessages", "DeveloperAppMessages" })
+        foreach (var table in new[] { "IntegrationMessages", "AppConnectionMessages", "DeveloperAppMessages", "SocialMediaAccountMessages", "AccountConnectionMessages" })
         {
             try
             {
@@ -560,7 +668,7 @@ public static class DbSeeder
 
     private static async Task EnsureMediaUrlLengthAsync(AppDbContext db, ILogger? logger)
     {
-        foreach (var table in new[] { "IntegrationMedia", "AppConnectionMedia", "DeveloperAppMedia" })
+        foreach (var table in new[] { "IntegrationMedia", "AppConnectionMedia", "DeveloperAppMedia", "SocialMediaAccountMedia", "AccountConnectionMedia" })
         {
             try
             {

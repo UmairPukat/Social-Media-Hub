@@ -205,9 +205,28 @@ public static class PlatformCatalog
             return new Guid(bytes);
         }
 
-        bytes[0] ^= 0xDA;
-        bytes[1] ^= 0x03;
-        return new Guid(bytes);
+        if (string.Equals(normalized, MenuTypes.DeveloperApp, StringComparison.OrdinalIgnoreCase))
+        {
+            bytes[0] ^= 0xDA;
+            bytes[1] ^= 0x03;
+            return new Guid(bytes);
+        }
+
+        if (string.Equals(normalized, MenuTypes.SocialMediaAccount, StringComparison.OrdinalIgnoreCase))
+        {
+            bytes[0] ^= 0x5A;
+            bytes[1] ^= 0x11;
+            return new Guid(bytes);
+        }
+
+        if (string.Equals(normalized, MenuTypes.AccountConnection, StringComparison.OrdinalIgnoreCase))
+        {
+            bytes[0] ^= 0xC3;
+            bytes[1] ^= 0x21;
+            return new Guid(bytes);
+        }
+
+        return integrationId;
     }
 
     public static string DefaultAuthUrl(string platformCode, string graphVersion)

@@ -59,7 +59,11 @@ export class ShellComponent {
     app_connection: false,
     app_connection_meta_ads: false,
     developer_app: false,
-    developer_app_meta_ads: false
+    developer_app_meta_ads: false,
+    social_media_account: false,
+    social_media_account_meta_ads: false,
+    account_connection: false,
+    account_connection_meta_ads: false
   });
 
   metaAdsGroupKey(moduleId: string): string {

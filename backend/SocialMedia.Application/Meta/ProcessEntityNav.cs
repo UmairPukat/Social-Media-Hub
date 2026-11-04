@@ -3,6 +3,8 @@ using SocialMedia.Domain.Modules.AppConnections.Entities;
 using SocialMedia.Domain.Modules.Common.Entities;
 using SocialMedia.Domain.Modules.DeveloperApps.Entities;
 using SocialMedia.Domain.Modules.Integrations.Entities;
+using SocialMedia.Domain.Modules.SocialMediaAccounts.Entities;
+using SocialMedia.Domain.Modules.AccountConnections.Entities;
 
 namespace SocialMedia.Application.Meta;
 
@@ -16,6 +18,8 @@ public static class ProcessEntityNav
         IntegrationSocialAccount i => i.Auth,
         AppConnectionSocialAccount a => a.Auth,
         DeveloperAppSocialAccount d => d.Auth,
+        AccountConnectionSocialAccount d => d.Auth,
+        SocialMediaAccountSocialAccount d => d.Auth,
         _ => null
     };
 
@@ -24,6 +28,8 @@ public static class ProcessEntityNav
         IntegrationSocialAccount i when i.Profiles is { } ip => ip.Cast<SocialProfileEntityBase>().ToList(),
         AppConnectionSocialAccount a when a.Profiles is { } ap => ap.Cast<SocialProfileEntityBase>().ToList(),
         DeveloperAppSocialAccount d when d.Profiles is { } dp => dp.Cast<SocialProfileEntityBase>().ToList(),
+        AccountConnectionSocialAccount d when d.Profiles is { } dp => dp.Cast<SocialProfileEntityBase>().ToList(),
+        SocialMediaAccountSocialAccount d when d.Profiles is { } dp => dp.Cast<SocialProfileEntityBase>().ToList(),
         _ => Array.Empty<SocialProfileEntityBase>()
     };
 
@@ -32,6 +38,8 @@ public static class ProcessEntityNav
         IntegrationSocialAccount i => i.Platform,
         AppConnectionSocialAccount a => a.Platform,
         DeveloperAppSocialAccount d => d.Platform,
+        AccountConnectionSocialAccount d => d.Platform,
+        SocialMediaAccountSocialAccount d => d.Platform,
         _ => null
     };
 
@@ -42,6 +50,8 @@ public static class ProcessEntityNav
         IntegrationPost i => i.SocialProfile,
         AppConnectionPost a => a.SocialProfile,
         DeveloperAppPost d => d.SocialProfile,
+        AccountConnectionPost d => d.SocialProfile,
+        SocialMediaAccountPost d => d.SocialProfile,
         _ => null
     };
 
@@ -50,6 +60,8 @@ public static class ProcessEntityNav
         IntegrationPost i => i.Platform,
         AppConnectionPost a => a.Platform,
         DeveloperAppPost d => d.Platform,
+        AccountConnectionPost d => d.Platform,
+        SocialMediaAccountPost d => d.Platform,
         _ => null
     };
 
@@ -58,6 +70,8 @@ public static class ProcessEntityNav
         IntegrationPost i => i.MediaItems?.FirstOrDefault(),
         AppConnectionPost a => a.MediaItems?.FirstOrDefault(),
         DeveloperAppPost d => d.MediaItems?.FirstOrDefault(),
+        AccountConnectionPost d => d.MediaItems?.FirstOrDefault(),
+        SocialMediaAccountPost d => d.MediaItems?.FirstOrDefault(),
         _ => null
     };
 
@@ -115,6 +129,8 @@ public static class ProcessEntityNav
         IntegrationPost i => i.MediaItems?.Count ?? 0,
         AppConnectionPost a => a.MediaItems?.Count ?? 0,
         DeveloperAppPost d => d.MediaItems?.Count ?? 0,
+        AccountConnectionPost d => d.MediaItems?.Count ?? 0,
+        SocialMediaAccountPost d => d.MediaItems?.Count ?? 0,
         _ => 0
     };
 
@@ -147,6 +163,12 @@ public static class ProcessEntityNav
             case DeveloperAppPost d:
                 (d.MediaItems ??= new List<DeveloperAppMedia>()).Add((DeveloperAppMedia)media);
                 break;
+            case AccountConnectionPost d:
+                (d.MediaItems ??= new List<AccountConnectionMedia>()).Add((AccountConnectionMedia)media);
+                break;
+            case SocialMediaAccountPost d:
+                (d.MediaItems ??= new List<SocialMediaAccountMedia>()).Add((SocialMediaAccountMedia)media);
+                break;
         }
     }
 
@@ -155,6 +177,8 @@ public static class ProcessEntityNav
         IntegrationConversation i => i.SocialProfile,
         AppConnectionConversation a => a.SocialProfile,
         DeveloperAppConversation d => d.SocialProfile,
+        AccountConnectionConversation d => d.SocialProfile,
+        SocialMediaAccountConversation d => d.SocialProfile,
         _ => null
     };
 

@@ -11,8 +11,11 @@ namespace SocialMedia.Api.Controllers.Integrations;
 [ApiController]
 public class ConnectionController : ProcessConnectionControllerBase
 {
-    public ConnectionController(IIntegrationService integrationService, IProcessAppConfigService configService)
-        : base(integrationService, configService) { }
+    public ConnectionController(
+        IIntegrationService integrationService,
+        IProcessAppConfigService configService,
+        IPublicPagesService publicPages)
+        : base(integrationService, configService, publicPages) { }
 
     protected override string MenuType => ProcessModules.Integrations.MenuType;
 }

@@ -42,7 +42,7 @@ public abstract class ProcessInboxControllerBase : ControllerBase
     [HttpPost("inbox/comments/{id:guid}/reply")]
     public async Task<IActionResult> ReplyToComment(Guid id, [FromBody] ReplyCommentRequest model)
     {
-        model.MenuType ??= MenuType;
+        model.MenuType = MenuType;
         var response = await _inboxService.ReplyToCommentAsync(User.GetUserId(), id, model);
         return Ok(response);
     }
@@ -50,7 +50,7 @@ public abstract class ProcessInboxControllerBase : ControllerBase
     [HttpPost("inbox/messages/{id:guid}/reply")]
     public async Task<IActionResult> ReplyToMessage(Guid id, [FromBody] ReplyMessageRequest model)
     {
-        model.MenuType ??= MenuType;
+        model.MenuType = MenuType;
         var response = await _inboxService.ReplyToMessageAsync(User.GetUserId(), id, model);
         return Ok(response);
     }
@@ -58,7 +58,7 @@ public abstract class ProcessInboxControllerBase : ControllerBase
     [HttpPost("inbox/comments/{id:guid}/hide")]
     public async Task<IActionResult> HideComment(Guid id, [FromBody] HideCommentRequest model)
     {
-        model.MenuType ??= MenuType;
+        model.MenuType = MenuType;
         var response = await _inboxService.HideCommentAsync(User.GetUserId(), id, model);
         return Ok(response);
     }

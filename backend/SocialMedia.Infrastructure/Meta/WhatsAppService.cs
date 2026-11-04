@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using SocialMedia.Application.Catalog;
 using SocialMedia.Application.DTOs.Inbox;
 using SocialMedia.Application.Interfaces;
 using SocialMedia.Application.Meta;
@@ -145,16 +146,16 @@ public class WhatsAppService : IWhatsAppService
 
     public async Task DeleteMessageAsync(MetaCallContext context, string messageId, CancellationToken cancellationToken = default)
     {
-        foreach (var store in _processData.AllStores())
-        {
-            var item = await store.GetMessageByExternalIdAsync(messageId, cancellationToken);
-            if (item is null)
-                continue;
-
-            store.RemoveMessage(item);
-            await store.SaveChangesAsync(cancellationToken);
+        if (!MenuTypes.IsKnown(context.MenuType))
             return;
-        }
+
+        var store = _processData.ForMenu(MenuTypes.Normalize(context.MenuType));
+        var item = await store.GetMessageByExternalIdAsync(messageId, cancellationToken);
+        if (item is null)
+            return;
+
+        store.RemoveMessage(item);
+        await store.SaveChangesAsync(cancellationToken);
     }
 
     public async Task<WebhookProcessResult> ProcessWebhookPayloadAsync(

@@ -9,6 +9,7 @@ import { catchError, finalize, map } from 'rxjs/operators';
 import { Subscription, forkJoin, of } from 'rxjs';
 import { ProcessApiService } from '../../core/services/process-api.service';
 import { ProcessRouteService } from '../../core/services/process-route.service';
+import { PROCESS_MODULE_LIST } from '../../core/config/process.config';
 import {
   CREATE_PLATFORMS,
   CreatePlatform,
@@ -565,14 +566,10 @@ export class CreatePostComponent implements OnInit, OnDestroy {
   }
 
   moduleLabel(): string {
-    switch (this.processRoute.currentMenuType()) {
-      case 'developer_app':
-        return 'Developer Apps';
-      case 'app_connection':
-        return 'App Connections';
-      default:
-        return 'Integrations';
-    }
+    return (
+      PROCESS_MODULE_LIST.find((item) => item.id === this.processRoute.currentMenuType())?.label ??
+      'Integrations'
+    );
   }
 
   isTrackedPublishPlatform(): boolean {

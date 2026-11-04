@@ -139,6 +139,24 @@ export const routes: Routes = [
           ...metaAdsRoutes
         ]
       },
+      {
+        path: 'social-media-accounts',
+        children: [
+          ...processChildren(() =>
+            import('./features/social-media-accounts/social-media-accounts.component').then(m => m.SocialMediaAccountsComponent)
+          ),
+          ...metaAdsRoutes
+        ]
+      },
+      {
+        path: 'account-connections',
+        children: [
+          ...processChildren(() =>
+            import('./features/account-connections/account-connections.component').then(m => m.AccountConnectionsComponent)
+          ),
+          ...metaAdsRoutes
+        ]
+      },
       // Legacy redirects
       { path: 'integrations-legacy', redirectTo: 'integrations/connect', pathMatch: 'full' },
       { path: 'create-post', redirectTo: 'integrations/create-post', pathMatch: 'full' },

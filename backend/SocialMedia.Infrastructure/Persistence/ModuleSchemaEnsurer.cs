@@ -10,17 +10,36 @@ namespace SocialMedia.Infrastructure.Persistence;
 /// </summary>
 internal static partial class ModuleSchemaEnsurer
 {
-    private static readonly string[] ModulePrefixes = ["Integration", "AppConnection", "DeveloperApp"];
+    private static readonly string[] ModulePrefixes =
+    [
+        "Integration",
+        "AppConnection",
+        "DeveloperApp",
+        "SocialMediaAccount",
+        "AccountConnection"
+    ];
     private static readonly HashSet<string> ExcludedTables = new(StringComparer.Ordinal)
     {
         "IntegrationAppConfigs",
         "AppConnectionConfigs",
-        "DeveloperAppConfigs"
+        "DeveloperAppConfigs",
+        "SocialMediaAccountConfigs",
+        "AccountConnectionConfigs"
     };
 
     public static async Task EnsureAsync(AppDbContext db, ILogger? logger = null)
     {
-        if (await ModuleTableMigration.TableExistsAsync(db, "IntegrationPlatforms"))
+        var missingModule = false;
+        foreach (var prefix in ModulePrefixes)
+        {
+            if (!await ModuleTableMigration.TableExistsAsync(db, prefix + "Platforms"))
+            {
+                missingModule = true;
+                break;
+            }
+        }
+
+        if (!missingModule)
             return;
 
         logger?.LogInformation("Module tables missing — applying module schema to existing database...");

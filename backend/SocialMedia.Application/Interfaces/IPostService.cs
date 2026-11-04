@@ -10,13 +10,18 @@ public interface IPostService
         Guid userId,
         CreatePostRequest request,
         PublishMediaInput? media = null,
+        string? menuType = null,
         CancellationToken cancellationToken = default);
     Task<ApiResponse<IReadOnlyList<SocialPostDto>>> GetPostsAsync(
         Guid userId,
         Guid? platformId = null,
         string? menuType = null,
         CancellationToken cancellationToken = default);
-    Task<ApiResponse<object>> DeletePostAsync(Guid userId, Guid postId, CancellationToken cancellationToken = default);
+    Task<ApiResponse<object>> DeletePostAsync(
+        Guid userId,
+        Guid postId,
+        string? menuType = null,
+        CancellationToken cancellationToken = default);
     Task<ApiResponse<string>> GetPostPlatformCodeAsync(
         Guid userId,
         Guid postId,

@@ -106,10 +106,12 @@ using (var scope = app.Services.CreateScope())
     try
     {
         var webhooks = scope.ServiceProvider.GetRequiredService<IWebhookService>();
-        var imported = await webhooks.ImportStoredMessagingAsync(
-            SocialMedia.Application.Catalog.MenuTypes.Integration, 50);
-        if (imported > 0)
-            logger.LogInformation("Imported {Count} stored Instagram webhook DM(s) into Inbox on startup.", imported);
+        foreach (var menu in SocialMedia.Application.Catalog.ProcessModules.AllMenuTypes)
+        {
+            var imported = await webhooks.ImportStoredMessagingAsync(menu, 50);
+            if (imported > 0)
+                logger.LogInformation("Imported {Count} stored Instagram webhook DM(s) into {Menu} Inbox on startup.", imported, menu);
+        }
     }
     catch (Exception ex)
     {

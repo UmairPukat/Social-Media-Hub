@@ -1,7 +1,7 @@
 namespace SocialMedia.Application.Catalog;
 
 /// <summary>
-/// Three isolated connection processes. Each has its own API prefix, OAuth callback,
+/// Isolated connection processes. Each has its own API prefix, OAuth callback,
 /// webhook endpoint, DB config table, and frontend workspace routes.
 /// </summary>
 public static class ProcessModules
@@ -42,8 +42,33 @@ public static class ProcessModules
         public const string Label = "Developer Apps";
     }
 
+
+    public static class SocialMediaAccounts
+    {
+        public const string MenuType = MenuTypes.SocialMediaAccount;
+        public const string ApiRoute = "api/social-media-accounts";
+        public const string CallbackRoute = "/api/social-media-accounts/callback";
+        public const string WebhookRoute = "/api/social-media-accounts/webhooks";
+        public const string WhatsAppCallbackRoute = "/api/social-media-accounts/whatsapp/callback";
+        public const string WhatsAppWebhookRoute = "/api/social-media-accounts/whatsapp/webhooks";
+        public const string FrontendBase = "/app/social-media-accounts";
+        public const string Label = "Social Media Accounts";
+    }
+
+    public static class AccountConnections
+    {
+        public const string MenuType = MenuTypes.AccountConnection;
+        public const string ApiRoute = "api/account-connections";
+        public const string CallbackRoute = "/api/account-connections/callback";
+        public const string WebhookRoute = "/api/account-connections/webhooks";
+        public const string WhatsAppCallbackRoute = "/api/account-connections/whatsapp/callback";
+        public const string WhatsAppWebhookRoute = "/api/account-connections/whatsapp/webhooks";
+        public const string FrontendBase = "/app/account-connections";
+        public const string Label = "Account Connections";
+    }
+
     public static IReadOnlyList<string> AllMenuTypes { get; } =
-        [Integrations.MenuType, AppConnections.MenuType, DeveloperApps.MenuType];
+        [Integrations.MenuType, AppConnections.MenuType, DeveloperApps.MenuType, SocialMediaAccounts.MenuType, AccountConnections.MenuType];
 
     public static string? ApiRouteFor(string? menuType) =>
         MenuTypes.Normalize(menuType) switch
@@ -51,6 +76,8 @@ public static class ProcessModules
             MenuTypes.Integration => Integrations.ApiRoute,
             MenuTypes.AppConnection => AppConnections.ApiRoute,
             MenuTypes.DeveloperApp => DeveloperApps.ApiRoute,
+            MenuTypes.AccountConnection => AccountConnections.ApiRoute,
+            MenuTypes.SocialMediaAccount => SocialMediaAccounts.ApiRoute,
             _ => null
         };
 
@@ -59,6 +86,8 @@ public static class ProcessModules
         {
             MenuTypes.AppConnection => AppConnections.CallbackRoute,
             MenuTypes.DeveloperApp => DeveloperApps.CallbackRoute,
+            MenuTypes.AccountConnection => AccountConnections.CallbackRoute,
+            MenuTypes.SocialMediaAccount => SocialMediaAccounts.CallbackRoute,
             _ => Integrations.CallbackRoute
         };
 
@@ -67,6 +96,8 @@ public static class ProcessModules
         {
             MenuTypes.AppConnection => AppConnections.WhatsAppCallbackRoute,
             MenuTypes.DeveloperApp => DeveloperApps.WhatsAppCallbackRoute,
+            MenuTypes.AccountConnection => AccountConnections.WhatsAppCallbackRoute,
+            MenuTypes.SocialMediaAccount => SocialMediaAccounts.WhatsAppCallbackRoute,
             _ => Integrations.WhatsAppCallbackRoute
         };
 
@@ -75,6 +106,8 @@ public static class ProcessModules
         {
             MenuTypes.AppConnection => AppConnections.WhatsAppWebhookRoute,
             MenuTypes.DeveloperApp => DeveloperApps.WhatsAppWebhookRoute,
+            MenuTypes.AccountConnection => AccountConnections.WhatsAppWebhookRoute,
+            MenuTypes.SocialMediaAccount => SocialMediaAccounts.WhatsAppWebhookRoute,
             _ => Integrations.WhatsAppWebhookRoute
         };
 }

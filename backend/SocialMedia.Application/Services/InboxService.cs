@@ -56,13 +56,13 @@ public class InboxService : IInboxService
             var processMenu = string.IsNullOrWhiteSpace(filter?.MenuType) ? null : MenuTypes.Normalize(filter!.MenuType);
             var stores = ResolveStores(processMenu);
 
-            await ReplayPendingWebhooksAsync(cancellationToken);
+            await ReplayPendingWebhooksAsync(processMenu, cancellationToken);
 
             if (!string.IsNullOrWhiteSpace(filter?.PlatformCode))
             {
                 if (string.Equals(filter.PlatformCode, "instagram", StringComparison.OrdinalIgnoreCase))
                 {
-                    var menus = processMenu is null ? ProcessModules.AllMenuTypes : [processMenu];
+                    var menus = string.IsNullOrWhiteSpace(processMenu) ? Array.Empty<string>() : [processMenu];
                     platformIds = menus.SelectMany(m => new[]
                     {
                         PlatformCatalog.IdForMenu(PlatformCatalog.InstagramId, m),
@@ -196,21 +196,18 @@ public class InboxService : IInboxService
         }
     }
 
-    private async Task ReplayPendingWebhooksAsync(CancellationToken cancellationToken)
+    private async Task ReplayPendingWebhooksAsync(string? processMenu, CancellationToken cancellationToken)
     {
-        // Always scan every module. Meta often POSTs Developer App Instagram
-        // deliveries to the Integrations callback URL; routing then stores the inbox row
-        // on the module that owns the connected account.
-        foreach (var menu in ProcessModules.AllMenuTypes)
+        if (string.IsNullOrWhiteSpace(processMenu))
+            return;
+
+        try
         {
-            try
-            {
-                await _webhookService.ImportStoredMessagingAsync(menu, 50, cancellationToken);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Inbox could not replay stored webhooks for {MenuType}.", menu);
-            }
+            await _webhookService.ImportStoredMessagingAsync(processMenu, 50, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Inbox could not replay stored webhooks for {MenuType}.", processMenu);
         }
     }
 
@@ -278,9 +275,9 @@ public class InboxService : IInboxService
     }
 
     private IReadOnlyList<IProcessDataStore> ResolveStores(string? processMenu)
-        => string.IsNullOrWhiteSpace(processMenu)
-            ? _processData.AllStores()
-            : [_processData.ForMenu(processMenu)];
+        => string.IsNullOrWhiteSpace(processMenu) || !MenuTypes.IsKnown(processMenu)
+            ? Array.Empty<IProcessDataStore>()
+            : [_processData.ForMenu(MenuTypes.Normalize(processMenu))];
 
     private async Task<IReadOnlyList<(string MenuType, SocialAccountEntityBase Account)>> LoadUserAccountsAsync(
         Guid userId,
@@ -476,11 +473,7 @@ public class InboxService : IInboxService
                 _processData,
                 menuType,
                 store => store.GetCommentByIdAsync(commentId, cancellationToken),
-                cancellationToken)
-                ?? await ProcessStoreLocator.FindAsync(
-                    _processData,
-                    store => store.GetCommentByIdAsync(commentId, cancellationToken),
-                    cancellationToken);
+                cancellationToken);
             if (located is null)
                 throw new InvalidOperationException("Comment not found.");
 
@@ -900,26 +893,23 @@ public class InboxService : IInboxService
 
         await AddAsync($"{store.MenuType}:{primaryCode}", primaryCode, account, auth, primaryTokens, primaryPageId);
 
-        foreach (var cardStore in _processData.AllStores())
+        foreach (var other in new[]
+                 {
+                     InstagramConnectionResolver.InstagramLoginPlatformCode,
+                     InstagramConnectionResolver.FacebookLoginPlatformCode
+                 })
         {
-            foreach (var other in new[]
-                     {
-                         InstagramConnectionResolver.InstagramLoginPlatformCode,
-                         InstagramConnectionResolver.FacebookLoginPlatformCode
-                     })
-            {
-                var card = await ProcessCardAuthResolver.ResolveAsync(cardStore, userId, other, cancellationToken);
-                if (card is null)
-                    continue;
+            var card = await ProcessCardAuthResolver.ResolveAsync(store, userId, other, cancellationToken);
+            if (card is null)
+                continue;
 
-                await AddAsync(
-                    $"{cardStore.MenuType}:{other}",
-                    other,
-                    card.Account,
-                    card.Auth,
-                    card.Tokens,
-                    card.PageId);
-            }
+            await AddAsync(
+                $"{store.MenuType}:{other}",
+                other,
+                card.Account,
+                card.Auth,
+                card.Tokens,
+                card.PageId);
         }
 
         var hasPage = attempts.Any(a =>
@@ -1406,11 +1396,7 @@ public class InboxService : IInboxService
                 _processData,
                 menuType,
                 store => store.GetMessageByIdAsync(messageId, cancellationToken),
-                cancellationToken)
-                ?? await ProcessStoreLocator.FindAsync(
-                    _processData,
-                    store => store.GetMessageByIdAsync(messageId, cancellationToken),
-                    cancellationToken);
+                cancellationToken);
             if (located is null)
                 throw new InvalidOperationException("Message not found.");
 
