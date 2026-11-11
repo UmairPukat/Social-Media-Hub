@@ -1,4 +1,9 @@
+import { PROCESS_MODULE_LIST, ProcessMenuType } from '../../core/config/process.config';
 import { MetaApiResponse } from '../../core/models/meta-ads.models';
+
+export function metaAdsModuleLabel(menuType: ProcessMenuType): string {
+  return PROCESS_MODULE_LIST.find(module => module.id === menuType)?.label ?? 'Process';
+}
 
 export function normalizeAdAccountNumericId(adAccountId: string): string {
   const id = (adAccountId || '').trim();

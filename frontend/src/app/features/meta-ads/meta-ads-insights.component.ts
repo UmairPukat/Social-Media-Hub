@@ -12,7 +12,8 @@ import { MetaAdsStateService } from '../../core/services/meta-ads-state.service'
 import { MetaRateLimitService } from '../../core/services/meta-rate-limit.service';
 import { ProcessRouteService } from '../../core/services/process-route.service';
 import { MetaInsightRow, MetaInsightsSummary } from '../../core/models/meta-ads.models';
-import { metaErrorMessage } from './meta-ads.util';
+import { watchMetaAdsMenu } from './meta-ads-menu.watch';
+import { metaAdsModuleLabel, metaErrorMessage } from './meta-ads.util';
 
 type InsightLevel = 'account' | 'campaign' | 'adset' | 'ad';
 type DatePreset = 'last_7d' | 'last_30d';
@@ -50,6 +51,7 @@ export class MetaAdsInsightsComponent implements OnInit {
   readonly rateLimit = inject(MetaRateLimitService);
   private readonly processRoute = inject(ProcessRouteService);
   private readonly route = inject(ActivatedRoute);
+  readonly moduleLabel = () => metaAdsModuleLabel(this.processRoute.currentMenuType());
 
   readonly fieldOptions = FIELD_OPTIONS;
   readonly level = signal<InsightLevel>('campaign');
@@ -89,8 +91,22 @@ export class MetaAdsInsightsComponent implements OnInit {
     this.rateLimit.bucUsagePercent() || this.rateLimit.adAccountUsagePercent() || this.rateLimit.appUsagePercent()
   );
 
+  constructor() {
+    watchMetaAdsMenu(() => this.reloadForMenu());
+  }
+
   ngOnInit(): void {
+    this.reloadForMenu();
+  }
+
+  private reloadForMenu(): void {
     this.state.syncForCurrentProcess();
+    this.summary.set(null);
+    this.error.set('');
+    this.lastUpdated.set(null);
+    this.specificObjectId.set('');
+    this.level.set('campaign');
+
     const params = this.route.snapshot.queryParamMap;
     const level = params.get('level');
     const campaignId = params.get('campaignId');

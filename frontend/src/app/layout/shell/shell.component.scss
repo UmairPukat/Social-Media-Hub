@@ -474,6 +474,11 @@
   padding: 8px 10px;
 }
 
+.nav-text {
+  min-width: 0;
+  line-height: 1.25;
+}
+
 .nav-list.nested .nav-ico {
   width: 30px;
   height: 30px;
@@ -481,19 +486,16 @@
 }
 
 .process-heading.nested-heading {
-  margin: 4px 0 0 16px;
-  width: calc(100% - 16px);
+  margin: 2px 8px 0;
+  width: auto;
   font-size: 0.82rem;
   padding: 8px 10px;
+  background: transparent;
 }
 
-.nav-list.nested.deeper {
-  margin-left: 22px;
-  padding-left: 10px;
-}
-
-.nav-list.nested.deeper a {
-  font-size: 0.8rem;
+.nav-list.nested.meta-nav {
+  margin-left: 8px;
+  padding-top: 0;
 }
 
 .nav-footer {

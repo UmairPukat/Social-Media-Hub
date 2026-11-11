@@ -6,7 +6,8 @@ import { MetaAdsApiService } from '../../core/services/meta-ads-api.service';
 import { MetaAdsStateService } from '../../core/services/meta-ads-state.service';
 import { ProcessRouteService } from '../../core/services/process-route.service';
 import { MetaCatalog } from '../../core/models/meta-ads.models';
-import { metaCommerceCatalogUrl, metaErrorMessage } from './meta-ads.util';
+import { watchMetaAdsMenu } from './meta-ads-menu.watch';
+import { metaAdsModuleLabel, metaCommerceCatalogUrl, metaErrorMessage } from './meta-ads.util';
 
 @Component({
   selector: 'app-meta-ads-catalogs',
@@ -19,6 +20,7 @@ export class MetaAdsCatalogsComponent implements OnInit {
   private readonly api = inject(MetaAdsApiService);
   readonly state = inject(MetaAdsStateService);
   private readonly processRoute = inject(ProcessRouteService);
+  readonly moduleLabel = () => metaAdsModuleLabel(this.processRoute.currentMenuType());
 
   readonly catalogs = signal<MetaCatalog[]>([]);
   readonly loading = signal(false);
@@ -28,9 +30,19 @@ export class MetaAdsCatalogsComponent implements OnInit {
   readonly nextCursor = signal<string | null>(null);
   readonly selectedId = signal<string | null>(null);
 
+  constructor() {
+    watchMetaAdsMenu(() => this.reloadForMenu());
+  }
+
   ngOnInit(): void {
+    this.reloadForMenu();
+  }
+
+  private reloadForMenu(): void {
     this.state.syncForCurrentProcess();
     this.selectedId.set(this.state.selectedCatalog()?.id ?? null);
+    this.banner.set('');
+    this.catalogs.set([]);
     this.load();
   }
 

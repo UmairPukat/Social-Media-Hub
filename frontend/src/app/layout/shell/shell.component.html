@@ -85,13 +85,16 @@
               </nav>
               <button type="button" class="process-heading nested-heading" (click)="toggleGroup(metaAdsGroupKey(module.id))">
                 <mat-icon>storefront</mat-icon>
-                <span>Meta Ads & Commerce</span>
+                <span class="nav-text">Meta Ads & Commerce</span>
                 <mat-icon class="chev">{{ isExpanded(metaAdsGroupKey(module.id)) ? 'expand_less' : 'expand_more' }}</mat-icon>
               </button>
               @if (isExpanded(metaAdsGroupKey(module.id))) {
-                <nav class="nav-list nested deeper">
+                <nav class="nav-list nested meta-nav">
                   @for (sub of metaAdsNavItems; track sub.suffix) {
-                    <a [routerLink]="module.routeBase + '/' + sub.suffix" routerLinkActive="active">
+                    <a
+                      [routerLink]="module.routeBase + '/' + sub.suffix"
+                      routerLinkActive="active"
+                      [routerLinkActiveOptions]="{ exact: true }">
                       <span class="nav-ico"><mat-icon>{{ sub.icon }}</mat-icon></span>
                       <span class="nav-text">{{ sub.label }}</span>
                     </a>

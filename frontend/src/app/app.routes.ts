@@ -1,6 +1,7 @@
 import { Routes } from '@angular/router';
 import { authGuard } from './core/guards/auth.guard';
 import { adminGuard } from './core/guards/admin.guard';
+import { PROCESS_MODULES } from './core/config/process.config';
 
 const processChildren = (connectComponent: () => Promise<{ default?: never } & import('@angular/core').Type<unknown>>) => [
   { path: '', pathMatch: 'full' as const, redirectTo: 'connect' },
@@ -36,53 +37,55 @@ const processChildren = (connectComponent: () => Promise<{ default?: never } & i
   }
 ] satisfies Routes;
 
-const metaAdsRoutes = [
-  {
-    path: 'meta-ads',
-    children: [
-      { path: '', pathMatch: 'full' as const, redirectTo: 'ad-accounts' },
-      {
-        path: 'ad-accounts',
-        loadComponent: () =>
-          import('./features/meta-ads/meta-ads-ad-accounts.component').then(m => m.MetaAdsAdAccountsComponent)
-      },
-      {
-        path: 'campaigns',
-        loadComponent: () =>
-          import('./features/meta-ads/meta-ads-campaigns.component').then(m => m.MetaAdsCampaignsComponent)
-      },
-      {
-        path: 'create-campaign',
-        loadComponent: () =>
-          import('./features/meta-ads/meta-ads-create-campaign.component').then(m => m.MetaAdsCreateCampaignComponent)
-      },
-      {
-        path: 'ad-sets',
-        loadComponent: () =>
-          import('./features/meta-ads/meta-ads-ad-sets.component').then(m => m.MetaAdsAdSetsComponent)
-      },
-      {
-        path: 'ads',
-        loadComponent: () => import('./features/meta-ads/meta-ads-ads.component').then(m => m.MetaAdsAdsComponent)
-      },
-      {
-        path: 'insights',
-        loadComponent: () =>
-          import('./features/meta-ads/meta-ads-insights.component').then(m => m.MetaAdsInsightsComponent)
-      },
-      {
-        path: 'catalogs',
-        loadComponent: () =>
-          import('./features/meta-ads/meta-ads-catalogs.component').then(m => m.MetaAdsCatalogsComponent)
-      },
-      {
-        path: 'products',
-        loadComponent: () =>
-          import('./features/meta-ads/meta-ads-products.component').then(m => m.MetaAdsProductsComponent)
-      }
-    ]
-  }
-] satisfies Routes;
+function createMetaAdsRoutes(): Routes {
+  return [
+    {
+      path: 'meta-ads',
+      children: [
+        { path: '', pathMatch: 'full', redirectTo: 'ad-accounts' },
+        {
+          path: 'ad-accounts',
+          loadComponent: () =>
+            import('./features/meta-ads/meta-ads-ad-accounts.component').then(m => m.MetaAdsAdAccountsComponent)
+        },
+        {
+          path: 'campaigns',
+          loadComponent: () =>
+            import('./features/meta-ads/meta-ads-campaigns.component').then(m => m.MetaAdsCampaignsComponent)
+        },
+        {
+          path: 'create-campaign',
+          loadComponent: () =>
+            import('./features/meta-ads/meta-ads-create-campaign.component').then(m => m.MetaAdsCreateCampaignComponent)
+        },
+        {
+          path: 'ad-sets',
+          loadComponent: () =>
+            import('./features/meta-ads/meta-ads-ad-sets.component').then(m => m.MetaAdsAdSetsComponent)
+        },
+        {
+          path: 'ads',
+          loadComponent: () => import('./features/meta-ads/meta-ads-ads.component').then(m => m.MetaAdsAdsComponent)
+        },
+        {
+          path: 'insights',
+          loadComponent: () =>
+            import('./features/meta-ads/meta-ads-insights.component').then(m => m.MetaAdsInsightsComponent)
+        },
+        {
+          path: 'catalogs',
+          loadComponent: () =>
+            import('./features/meta-ads/meta-ads-catalogs.component').then(m => m.MetaAdsCatalogsComponent)
+        },
+        {
+          path: 'products',
+          loadComponent: () =>
+            import('./features/meta-ads/meta-ads-products.component').then(m => m.MetaAdsProductsComponent)
+        }
+      ]
+    }
+  ];
+}
 
 export const routes: Routes = [
   {
@@ -114,47 +117,52 @@ export const routes: Routes = [
       },
       {
         path: 'integrations',
+        data: { processMenu: PROCESS_MODULES.integrations.id },
         children: [
           ...processChildren(() =>
             import('./features/integrations/integrations.component').then(m => m.IntegrationsComponent)
           ),
-          ...metaAdsRoutes
+          ...createMetaAdsRoutes()
         ]
       },
       {
         path: 'app-connections',
+        data: { processMenu: PROCESS_MODULES.appConnections.id },
         children: [
           ...processChildren(() =>
             import('./features/app-connections/app-connections.component').then(m => m.AppConnectionsComponent)
           ),
-          ...metaAdsRoutes
+          ...createMetaAdsRoutes()
         ]
       },
       {
         path: 'developer-apps',
+        data: { processMenu: PROCESS_MODULES.developerApps.id },
         children: [
           ...processChildren(() =>
             import('./features/developer-apps/developer-apps.component').then(m => m.DeveloperAppsComponent)
           ),
-          ...metaAdsRoutes
+          ...createMetaAdsRoutes()
         ]
       },
       {
         path: 'social-media-accounts',
+        data: { processMenu: PROCESS_MODULES.socialMediaAccounts.id },
         children: [
           ...processChildren(() =>
             import('./features/social-media-accounts/social-media-accounts.component').then(m => m.SocialMediaAccountsComponent)
           ),
-          ...metaAdsRoutes
+          ...createMetaAdsRoutes()
         ]
       },
       {
         path: 'account-connections',
+        data: { processMenu: PROCESS_MODULES.accountConnections.id },
         children: [
           ...processChildren(() =>
             import('./features/account-connections/account-connections.component').then(m => m.AccountConnectionsComponent)
           ),
-          ...metaAdsRoutes
+          ...createMetaAdsRoutes()
         ]
       },
       // Legacy redirects

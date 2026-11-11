@@ -32,6 +32,9 @@ public class MetaMarketingContextFactory : IMetaMarketingContextFactory
         string menuType,
         CancellationToken cancellationToken = default)
     {
+        if (!MenuTypes.IsKnown(menuType))
+            throw new MetaGraphApiException("Unknown process menu.");
+
         var normalizedMenu = MenuTypes.Normalize(menuType);
         var store = _processData.ForMenu(normalizedMenu);
 
@@ -68,8 +71,9 @@ public class MetaMarketingContextFactory : IMetaMarketingContextFactory
                 userId, "facebook", menuType, cancellationToken))?.GraphApiVersion,
             MenuTypes.SocialMediaAccount => (await _unitOfWork.SocialMediaAccountConfigs.GetByUserAndPlatformCodeAsync(
                 userId, "facebook", menuType, cancellationToken))?.GraphApiVersion,
-            _ => (await _unitOfWork.IntegrationAppConfigs.GetByUserAndPlatformCodeAsync(
-                userId, "facebook", menuType, cancellationToken))?.GraphApiVersion
+            MenuTypes.Integration => (await _unitOfWork.IntegrationAppConfigs.GetByUserAndPlatformCodeAsync(
+                userId, "facebook", menuType, cancellationToken))?.GraphApiVersion,
+            _ => null
         };
 
         if (!string.IsNullOrWhiteSpace(configuredVersion))

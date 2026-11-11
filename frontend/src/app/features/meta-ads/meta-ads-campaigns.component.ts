@@ -13,7 +13,7 @@ import { MetaAdsApiService } from '../../core/services/meta-ads-api.service';
 import { MetaAdsStateService } from '../../core/services/meta-ads-state.service';
 import { ProcessRouteService } from '../../core/services/process-route.service';
 import { MetaCampaign } from '../../core/models/meta-ads.models';
-import { metaAdsManagerCampaignUrl, metaErrorMessage } from './meta-ads.util';
+import { metaAdsManagerCampaignUrl, metaAdsModuleLabel, metaErrorMessage } from './meta-ads.util';
 
 @Component({
   selector: 'app-meta-ads-campaigns',
@@ -37,6 +37,7 @@ export class MetaAdsCampaignsComponent implements OnInit {
   private readonly processRoute = inject(ProcessRouteService);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
+  readonly moduleLabel = () => metaAdsModuleLabel(this.processRoute.currentMenuType());
 
   readonly campaigns = signal<MetaCampaign[]>([]);
   readonly loading = signal(false);

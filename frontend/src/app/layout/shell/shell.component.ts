@@ -1,5 +1,7 @@
 import { Component, inject, signal } from '@angular/core';
-import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
+import { NavigationEnd, Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
+import { filter } from 'rxjs/operators';
+import { processFromRoute } from '../../core/config/process.config';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
 import { AuthService } from '../../core/services/auth.service';
@@ -16,6 +18,7 @@ import { PROCESS_MODULE_LIST } from '../../core/config/process.config';
 export class ShellComponent {
   readonly auth = inject(AuthService);
   readonly theme = inject(ThemeService);
+  private readonly router = inject(Router);
   readonly opened = signal(true);
 
   readonly processModules = PROCESS_MODULE_LIST;
@@ -67,8 +70,27 @@ export class ShellComponent {
     account_connection_meta_ads: false
   });
 
+  constructor() {
+    this.syncExpanded(this.router.url);
+    this.router.events.pipe(
+      filter((event): event is NavigationEnd => event instanceof NavigationEnd)
+    ).subscribe(event => this.syncExpanded(event.urlAfterRedirects));
+  }
+
   metaAdsGroupKey(moduleId: string): string {
     return `${moduleId}_meta_ads`;
+  }
+
+  private syncExpanded(url: string): void {
+    const module = processFromRoute(url);
+    if (!module) return;
+    this.expanded.update(map => ({
+      ...map,
+      [module.id]: true,
+      [this.metaAdsGroupKey(module.id)]: url.includes('/meta-ads')
+        ? true
+        : map[this.metaAdsGroupKey(module.id)]
+    }));
   }
 
   toggle(): void {

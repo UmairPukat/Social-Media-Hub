@@ -10,7 +10,8 @@ import { MetaAdsApiService } from '../../core/services/meta-ads-api.service';
 import { MetaAdsStateService } from '../../core/services/meta-ads-state.service';
 import { ProcessRouteService } from '../../core/services/process-route.service';
 import { MetaAd, MetaAdSet } from '../../core/models/meta-ads.models';
-import { metaAdsManagerAdSetUrl, metaAdsManagerAdUrl, metaAdsManagerCampaignUrl, metaErrorMessage } from './meta-ads.util';
+import { watchMetaAdsMenu } from './meta-ads-menu.watch';
+import { metaAdsManagerAdSetUrl, metaAdsManagerAdUrl, metaAdsManagerCampaignUrl, metaAdsModuleLabel, metaErrorMessage } from './meta-ads.util';
 
 @Component({
   selector: 'app-meta-ads-ads',
@@ -24,6 +25,7 @@ export class MetaAdsAdsComponent implements OnInit {
   readonly state = inject(MetaAdsStateService);
   private readonly processRoute = inject(ProcessRouteService);
   private readonly route = inject(ActivatedRoute);
+  readonly moduleLabel = () => metaAdsModuleLabel(this.processRoute.currentMenuType());
 
   readonly adSets = signal<MetaAdSet[]>([]);
   readonly ads = signal<MetaAd[]>([]);
@@ -38,12 +40,22 @@ export class MetaAdsAdsComponent implements OnInit {
     return this.ads().filter(a => !term || a.name.toLowerCase().includes(term) || a.id.includes(term));
   });
 
+  constructor() {
+    watchMetaAdsMenu(() => this.reloadForMenu());
+  }
+
   ngOnInit(): void {
+    this.reloadForMenu();
+  }
+
+  private reloadForMenu(): void {
     this.state.syncForCurrentProcess();
+    this.adSets.set([]);
+    this.ads.set([]);
+    this.banner.set('');
+    this.error.set('');
     const adSetId = this.route.snapshot.queryParamMap.get('adSetId');
-    if (adSetId) {
-      this.selectedAdSetId.set(adSetId);
-    }
+    this.selectedAdSetId.set(adSetId ?? '');
     this.loadAdSets();
     this.loadAds();
   }

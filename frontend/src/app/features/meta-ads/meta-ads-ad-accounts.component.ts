@@ -8,6 +8,7 @@ import { MetaRateLimitService } from '../../core/services/meta-rate-limit.servic
 import { ProcessRouteService } from '../../core/services/process-route.service';
 import { PROCESS_MODULE_LIST } from '../../core/config/process.config';
 import { MetaAdAccount } from '../../core/models/meta-ads.models';
+import { watchMetaAdsMenu } from './meta-ads-menu.watch';
 import { metaAdsManagerAdAccountUrl, metaErrorMessage } from './meta-ads.util';
 
 @Component({
@@ -40,9 +41,18 @@ export class MetaAdsAdAccountsComponent implements OnInit {
   readonly processLabel = () =>
     PROCESS_MODULE_LIST.find(m => m.id === this.processRoute.currentMenuType())?.label ?? 'Process';
 
+  constructor() {
+    watchMetaAdsMenu(() => this.reloadForMenu());
+  }
+
   ngOnInit(): void {
+    this.reloadForMenu();
+  }
+
+  private reloadForMenu(): void {
     this.state.syncForCurrentProcess();
     this.selectedId.set(this.state.selectedAdAccount()?.id ?? null);
+    this.banner.set('');
     this.load();
   }
 

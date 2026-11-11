@@ -9,7 +9,8 @@ import { MetaAdsApiService } from '../../core/services/meta-ads-api.service';
 import { MetaAdsStateService } from '../../core/services/meta-ads-state.service';
 import { ProcessRouteService } from '../../core/services/process-route.service';
 import { MetaProduct } from '../../core/models/meta-ads.models';
-import { metaErrorMessage } from './meta-ads.util';
+import { watchMetaAdsMenu } from './meta-ads-menu.watch';
+import { metaAdsModuleLabel, metaErrorMessage } from './meta-ads.util';
 
 @Component({
   selector: 'app-meta-ads-products',
@@ -22,6 +23,7 @@ export class MetaAdsProductsComponent implements OnInit {
   private readonly api = inject(MetaAdsApiService);
   readonly state = inject(MetaAdsStateService);
   private readonly processRoute = inject(ProcessRouteService);
+  readonly moduleLabel = () => metaAdsModuleLabel(this.processRoute.currentMenuType());
 
   readonly products = signal<MetaProduct[]>([]);
   readonly loading = signal(false);
@@ -46,8 +48,20 @@ export class MetaAdsProductsComponent implements OnInit {
     return this.products().filter(p => !term || p.name.toLowerCase().includes(term) || (p.retailerId || '').includes(term));
   });
 
+  constructor() {
+    watchMetaAdsMenu(() => this.reloadForMenu());
+  }
+
   ngOnInit(): void {
+    this.reloadForMenu();
+  }
+
+  private reloadForMenu(): void {
     this.state.syncForCurrentProcess();
+    this.products.set([]);
+    this.banner.set('');
+    this.error.set('');
+    this.showForm.set(false);
     this.load();
   }
 

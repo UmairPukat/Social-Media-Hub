@@ -9,7 +9,7 @@ import { MatSelectModule } from '@angular/material/select';
 import { MetaAdsApiService } from '../../core/services/meta-ads-api.service';
 import { MetaAdsStateService } from '../../core/services/meta-ads-state.service';
 import { ProcessRouteService } from '../../core/services/process-route.service';
-import { metaErrorMessage } from './meta-ads.util';
+import { metaAdsModuleLabel, metaErrorMessage } from './meta-ads.util';
 
 @Component({
   selector: 'app-meta-ads-create-campaign',
@@ -24,6 +24,7 @@ export class MetaAdsCreateCampaignComponent {
   private readonly processRoute = inject(ProcessRouteService);
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
+  readonly moduleLabel = () => metaAdsModuleLabel(this.processRoute.currentMenuType());
 
   readonly name = signal('App Review Demo Campaign');
   readonly objective = signal('OUTCOME_AWARENESS');
