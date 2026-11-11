@@ -24,7 +24,8 @@ export class ShellComponent {
     { path: '/app/dashboard', icon: 'dashboard', label: 'Dashboard' },
     { path: '/app/users', icon: 'group', label: 'Users', adminOnly: true },
     { path: '/app/signup', icon: 'person_add', label: 'Invite Signup' },
-    { path: '/app/settings', icon: 'settings', label: 'Settings' }
+    { path: '/app/settings', icon: 'settings', label: 'Settings' },
+    { path: '/app/clear-data', icon: 'delete_forever', label: 'Clear data', adminOnly: true }
   ];
 
   visibleGlobalMenu() {

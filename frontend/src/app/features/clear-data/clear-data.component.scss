@@ -1,0 +1,97 @@
+.clear-data {
+  max-width: 1100px;
+}
+
+.page-header {
+  margin-bottom: 18px;
+}
+
+.eyebrow {
+  margin: 0 0 4px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+
+.page-header h1 {
+  margin: 0 0 6px;
+}
+
+.page-header p {
+  margin: 0;
+  max-width: 720px;
+  color: #64748b;
+}
+
+.banner {
+  margin: 0 0 14px;
+  padding: 10px 14px;
+  border-radius: 12px;
+}
+
+.banner.success {
+  background: #ecfdf5;
+  color: #047857;
+  border: 1px solid rgba(16, 185, 129, 0.18);
+}
+
+.banner.error {
+  background: #fef2f2;
+  color: #b91c1c;
+  border: 1px solid rgba(239, 68, 68, 0.2);
+}
+
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 14px;
+}
+
+.wipe-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+  border-radius: 16px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  background: #fff;
+}
+
+.wipe-card h2 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.wipe-card p {
+  margin: 0;
+  flex: 1;
+  color: #64748b;
+  font-size: 0.92rem;
+}
+
+.card-icon {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  background: #f1f5f9;
+  color: #0f172a;
+}
+
+.wipe-all {
+  border-color: rgba(185, 28, 28, 0.28);
+  background: #fff7f7;
+}
+
+.wipe-all .card-icon {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+button mat-icon {
+  margin-right: 6px;
+  vertical-align: middle;
+}

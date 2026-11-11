@@ -173,6 +173,11 @@ export const routes: Routes = [
         loadComponent: () => import('./features/settings/settings.component').then(m => m.SettingsComponent)
       },
       {
+        path: 'clear-data',
+        canActivate: [adminGuard],
+        loadComponent: () => import('./features/clear-data/clear-data.component').then(m => m.ClearDataComponent)
+      },
+      {
         path: 'users',
         canActivate: [adminGuard],
         loadComponent: () => import('./features/users/users.component').then(m => m.UsersComponent)

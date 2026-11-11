@@ -1,0 +1,54 @@
+<section class="page clear-data">
+  <header class="page-header">
+    <div>
+      <p class="eyebrow">Admin</p>
+      <h1>Clear data</h1>
+      <p>
+        Permanently delete inbox, posts, and connected accounts for one module, or for every module.
+        Comments, messages, attachments, conversations, media, sync jobs, and webhook records are removed.
+        App credentials and the platform list stay, so you can connect again.
+      </p>
+    </div>
+  </header>
+
+  @if (message()) {
+    <p class="banner success">{{ message() }}</p>
+  }
+  @if (error()) {
+    <p class="banner error">{{ error() }}</p>
+  }
+
+  <div class="card-grid">
+    @for (module of modules; track module.id) {
+      <article class="wipe-card">
+        <span class="card-icon"><mat-icon>{{ module.icon }}</mat-icon></span>
+        <h2>{{ module.label }}</h2>
+        <p>Posts, comments, messages, attachments, and connected accounts for this module only.</p>
+        <button
+          mat-flat-button
+          color="warn"
+          type="button"
+          [disabled]="busy() !== null"
+          (click)="clearModule(module.id, module.label)">
+          <mat-icon>delete_forever</mat-icon>
+          {{ busy() === module.id ? 'Deleting…' : 'Delete data' }}
+        </button>
+      </article>
+    }
+
+    <article class="wipe-card wipe-all">
+      <span class="card-icon"><mat-icon>layers_clear</mat-icon></span>
+      <h2>All modules</h2>
+      <p>The same permanent delete, including connected accounts, across all five modules.</p>
+      <button
+        mat-flat-button
+        color="warn"
+        type="button"
+        [disabled]="busy() !== null"
+        (click)="clearAll()">
+        <mat-icon>delete_forever</mat-icon>
+        {{ busy() === 'all' ? 'Deleting…' : 'Delete all data' }}
+      </button>
+    </article>
+  </div>
+</section>

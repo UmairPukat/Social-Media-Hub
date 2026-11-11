@@ -1,18 +1,18 @@
 -- =============================================================================
--- Delete inbox / content / webhook data for all three modules
+-- Delete inbox / content / webhook / connected-account data for all five modules
 -- Social Media Hub — PostgreSQL
 --
--- REMOVES (Integrations, App Connections, Developer Apps):
+-- REMOVES (Integrations, App Connections, Developer Apps, Social Media Accounts, Account Connections):
 --   WebhookLogs, WebhookEvents
 --   Messages, MessageAttachments, Conversations
 --   Comments, Media, Posts
 --   SyncJobs
+--   SocialAuths, SocialProfiles, SocialAccounts
 --
 -- KEEPS:
 --   Users, AccessTokens
---   *Platforms (IntegrationPlatforms, AppConnectionPlatforms, DeveloperAppPlatforms)
---   *AppConfigs (IntegrationAppConfigs, AppConnectionConfigs, DeveloperAppConfigs)
---   SocialAccounts, SocialAuths, SocialProfiles (connected accounts & tokens)
+--   *Platforms
+--   *AppConfigs (client id / secret so Connect can be used again)
 --
 -- Safe to re-run. Run against your Railway / local Postgres database.
 -- =============================================================================
@@ -22,14 +22,18 @@ BEGIN;
 -- ---------------------------------------------------------------------------
 -- 1. Break self-references (ParentCommentId = ON DELETE RESTRICT)
 -- ---------------------------------------------------------------------------
-UPDATE "IntegrationComments"      SET "ParentCommentId" = NULL WHERE "ParentCommentId" IS NOT NULL;
-UPDATE "AppConnectionComments"    SET "ParentCommentId" = NULL WHERE "ParentCommentId" IS NOT NULL;
-UPDATE "DeveloperAppComments"     SET "ParentCommentId" = NULL WHERE "ParentCommentId" IS NOT NULL;
+UPDATE "IntegrationComments"         SET "ParentCommentId" = NULL WHERE "ParentCommentId" IS NOT NULL;
+UPDATE "AppConnectionComments"       SET "ParentCommentId" = NULL WHERE "ParentCommentId" IS NOT NULL;
+UPDATE "DeveloperAppComments"        SET "ParentCommentId" = NULL WHERE "ParentCommentId" IS NOT NULL;
+UPDATE "SocialMediaAccountComments"  SET "ParentCommentId" = NULL WHERE "ParentCommentId" IS NOT NULL;
+UPDATE "AccountConnectionComments"   SET "ParentCommentId" = NULL WHERE "ParentCommentId" IS NOT NULL;
 
 -- Optional: clear message reply pointers (no FK, but avoids orphans in UI)
-UPDATE "IntegrationMessages"      SET "ReplyToMessageId" = NULL WHERE "ReplyToMessageId" IS NOT NULL;
-UPDATE "AppConnectionMessages"    SET "ReplyToMessageId" = NULL WHERE "ReplyToMessageId" IS NOT NULL;
-UPDATE "DeveloperAppMessages"     SET "ReplyToMessageId" = NULL WHERE "ReplyToMessageId" IS NOT NULL;
+UPDATE "IntegrationMessages"         SET "ReplyToMessageId" = NULL WHERE "ReplyToMessageId" IS NOT NULL;
+UPDATE "AppConnectionMessages"       SET "ReplyToMessageId" = NULL WHERE "ReplyToMessageId" IS NOT NULL;
+UPDATE "DeveloperAppMessages"        SET "ReplyToMessageId" = NULL WHERE "ReplyToMessageId" IS NOT NULL;
+UPDATE "SocialMediaAccountMessages"  SET "ReplyToMessageId" = NULL WHERE "ReplyToMessageId" IS NOT NULL;
+UPDATE "AccountConnectionMessages"   SET "ReplyToMessageId" = NULL WHERE "ReplyToMessageId" IS NOT NULL;
 
 -- ---------------------------------------------------------------------------
 -- 2. Integrations module
@@ -69,6 +73,51 @@ DELETE FROM "DeveloperAppPosts";
 DELETE FROM "DeveloperAppSyncJobs";
 DELETE FROM "DeveloperAppWebhookLogs";
 DELETE FROM "DeveloperAppWebhookEvents";
+
+-- ---------------------------------------------------------------------------
+-- 5. Social Media Accounts module
+-- ---------------------------------------------------------------------------
+DELETE FROM "SocialMediaAccountMessageAttachments";
+DELETE FROM "SocialMediaAccountMessages";
+DELETE FROM "SocialMediaAccountConversations";
+DELETE FROM "SocialMediaAccountComments";
+DELETE FROM "SocialMediaAccountMedia";
+DELETE FROM "SocialMediaAccountPosts";
+DELETE FROM "SocialMediaAccountSyncJobs";
+DELETE FROM "SocialMediaAccountWebhookLogs";
+DELETE FROM "SocialMediaAccountWebhookEvents";
+
+-- ---------------------------------------------------------------------------
+-- 6. Account Connections module
+-- ---------------------------------------------------------------------------
+DELETE FROM "AccountConnectionMessageAttachments";
+DELETE FROM "AccountConnectionMessages";
+DELETE FROM "AccountConnectionConversations";
+DELETE FROM "AccountConnectionComments";
+DELETE FROM "AccountConnectionMedia";
+DELETE FROM "AccountConnectionPosts";
+DELETE FROM "AccountConnectionSyncJobs";
+DELETE FROM "AccountConnectionWebhookLogs";
+DELETE FROM "AccountConnectionWebhookEvents";
+
+-- ---------------------------------------------------------------------------
+-- 7. Connected accounts (content rows above must already be gone)
+-- ---------------------------------------------------------------------------
+DELETE FROM "IntegrationSocialAuths";
+DELETE FROM "IntegrationSocialProfiles";
+DELETE FROM "IntegrationSocialAccounts";
+DELETE FROM "AppConnectionSocialAuths";
+DELETE FROM "AppConnectionSocialProfiles";
+DELETE FROM "AppConnectionSocialAccounts";
+DELETE FROM "DeveloperAppSocialAuths";
+DELETE FROM "DeveloperAppSocialProfiles";
+DELETE FROM "DeveloperAppSocialAccounts";
+DELETE FROM "SocialMediaAccountSocialAuths";
+DELETE FROM "SocialMediaAccountSocialProfiles";
+DELETE FROM "SocialMediaAccountSocialAccounts";
+DELETE FROM "AccountConnectionSocialAuths";
+DELETE FROM "AccountConnectionSocialProfiles";
+DELETE FROM "AccountConnectionSocialAccounts";
 
 COMMIT;
 

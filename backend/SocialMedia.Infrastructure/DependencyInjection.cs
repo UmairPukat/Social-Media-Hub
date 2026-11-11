@@ -37,6 +37,7 @@ public static class DependencyInjection
         services.AddScoped<ISocialMediaAccountConfigRepository, SocialMediaAccountConfigRepository>();
         services.AddScoped<IAccountConnectionConfigRepository, AccountConnectionConfigRepository>();
         services.AddScoped<IProcessDataStoreFactory, ProcessDataStoreFactory>();
+        services.AddScoped<IModuleDataPurgeService, ModuleDataPurgeService>();
         services.AddScoped<IUnitOfWork, UnitOfWork>();
 
         services.AddScoped<IPasswordHasher, PasswordHasher>();
