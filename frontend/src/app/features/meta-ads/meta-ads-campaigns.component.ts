@@ -118,7 +118,28 @@ export class MetaAdsCampaignsComponent implements OnInit {
 
   refresh(): void {
     this.cursorStack.set([]);
-    this.load();
+    this.loading.set(true);
+    this.error.set('');
+    this.state.ensureAdAccount().subscribe({
+      next: (result) => {
+        if (result.error) {
+          this.loading.set(false);
+          this.error.set(result.error);
+          this.campaigns.set([]);
+          return;
+        }
+        if (!result.account) {
+          this.loading.set(false);
+          this.campaigns.set([]);
+          return;
+        }
+        this.load();
+      },
+      error: () => {
+        this.loading.set(false);
+        this.error.set('Unable to load ad accounts.');
+      }
+    });
   }
 
   nextPage(): void {

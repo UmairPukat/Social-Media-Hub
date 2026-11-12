@@ -1,4 +1,4 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, OnInit, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
@@ -18,7 +18,7 @@ import { metaAdsModuleLabel, metaErrorMessage } from './meta-ads.util';
   templateUrl: './meta-ads-create-campaign.component.html',
   styleUrl: './meta-ads.shared.scss'
 })
-export class MetaAdsCreateCampaignComponent {
+export class MetaAdsCreateCampaignComponent implements OnInit {
   private readonly api = inject(MetaAdsApiService);
   readonly state = inject(MetaAdsStateService);
   private readonly processRoute = inject(ProcessRouteService);
@@ -30,10 +30,30 @@ export class MetaAdsCreateCampaignComponent {
   readonly objective = signal('OUTCOME_AWARENESS');
   readonly status = signal('PAUSED');
   readonly specialCategory = signal('');
+  readonly preparing = signal(false);
   readonly loading = signal(false);
   readonly error = signal('');
   readonly banner = signal('');
   readonly createdId = signal('');
+
+  ngOnInit(): void {
+    this.prepareAccount();
+  }
+
+  private prepareAccount(): void {
+    this.preparing.set(true);
+    this.error.set('');
+    this.state.ensureAdAccount().subscribe({
+      next: (result) => {
+        this.preparing.set(false);
+        if (result.error) this.error.set(result.error);
+      },
+      error: () => {
+        this.preparing.set(false);
+        this.error.set('Unable to load ad accounts.');
+      }
+    });
+  }
 
   readonly objectives = [
     'OUTCOME_AWARENESS',

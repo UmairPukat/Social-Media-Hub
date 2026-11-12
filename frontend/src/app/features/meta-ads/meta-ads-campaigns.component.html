@@ -30,7 +30,12 @@
     </div>
   }
 
-  @if (!state.selectedAdAccount()) {
+  @if (loading() && !state.selectedAdAccount()) {
+    <div class="empty-state">
+      <mat-icon>hourglass_top</mat-icon>
+      <strong>Loading ad account…</strong>
+    </div>
+  } @else if (!state.selectedAdAccount()) {
     <div class="setup-hint">
       <mat-icon>account_balance</mat-icon>
       <div>

@@ -71,8 +71,22 @@ export class MetaAdsAdSetsComponent implements OnInit {
     this.error.set('');
     const campaignId = this.route.snapshot.queryParamMap.get('campaignId');
     this.selectedCampaignId.set(campaignId ?? '');
-    this.loadCampaigns();
-    this.loadAdSets();
+    this.loading.set(true);
+    this.state.ensureAdAccount().subscribe({
+      next: (result) => {
+        if (result.error || !result.account) {
+          this.loading.set(false);
+          if (result.error) this.error.set(result.error);
+          return;
+        }
+        this.loadCampaigns();
+        this.loadAdSets();
+      },
+      error: () => {
+        this.loading.set(false);
+        this.error.set('Unable to load ad accounts.');
+      }
+    });
   }
 
   loadCampaigns(): void {

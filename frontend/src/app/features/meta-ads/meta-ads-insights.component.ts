@@ -59,6 +59,7 @@ export class MetaAdsInsightsComponent implements OnInit {
   readonly datePreset = signal<DatePreset>('last_7d');
   readonly selectedFields = signal<string[]>(FIELD_OPTIONS.map(f => f.id));
   readonly summary = signal<MetaInsightsSummary | null>(null);
+  readonly preparing = signal(false);
   readonly loading = signal(false);
   readonly error = signal('');
   readonly lastUpdated = signal<Date | null>(null);
@@ -103,6 +104,14 @@ export class MetaAdsInsightsComponent implements OnInit {
     this.state.syncForCurrentProcess();
     this.summary.set(null);
     this.error.set('');
+    this.preparing.set(true);
+    this.state.ensureAdAccount().subscribe({
+      next: (result) => {
+        this.preparing.set(false);
+        if (result.error) this.error.set(result.error);
+      },
+      error: () => this.preparing.set(false)
+    });
     this.lastUpdated.set(null);
     this.specificObjectId.set('');
     this.level.set('campaign');

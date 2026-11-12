@@ -66,13 +66,26 @@ export class MetaAdsAdAccountsComponent implements OnInit {
           this.error.set(metaErrorMessage(res));
           return;
         }
-        this.accounts.set(res.data ?? []);
+        const rows = res.data ?? [];
+        this.accounts.set(rows);
+        this.keepOrSelectAccount(rows);
       },
       error: () => {
         this.loading.set(false);
         this.error.set('Unable to load ad accounts.');
       }
     });
+  }
+
+  private keepOrSelectAccount(rows: MetaAdAccount[]): void {
+    const current = this.state.selectedAdAccount();
+    if (current && rows.some(account => account.id === current.id)) {
+      this.selectedId.set(current.id);
+      return;
+    }
+    const selected = this.state.selectBestAccount(rows);
+    this.selectedId.set(selected?.id ?? null);
+    if (selected) this.banner.set(`Selected ad account: ${selected.name} (${selected.id})`);
   }
 
   syncAdAccounts(): void {
