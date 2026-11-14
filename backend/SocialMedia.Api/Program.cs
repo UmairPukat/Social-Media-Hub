@@ -106,6 +106,7 @@ using (var scope = app.Services.CreateScope())
     try
     {
         await DbSeeder.EnsureModulePlatformCatalogAsync(db, logger);
+        await DbSeeder.EnsureConfigWebhookUrlColumnsAsync(db);
     }
     catch (Exception ex)
     {

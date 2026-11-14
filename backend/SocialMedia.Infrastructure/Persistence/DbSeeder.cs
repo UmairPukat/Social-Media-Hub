@@ -623,6 +623,7 @@ public static class DbSeeder
                 "ClientId" character varying(200) NOT NULL,
                 "ClientSecret" text NOT NULL,
                 "RedirectUri" character varying(2000) NULL,
+                "WebhookUrl" character varying(2000) NULL,
                 "AuthUrl" character varying(2000) NULL,
                 "BaseUrl" character varying(500) NULL,
                 "Scopes" character varying(2000) NULL,
@@ -656,6 +657,7 @@ public static class DbSeeder
                 "ClientId" character varying(200) NOT NULL,
                 "ClientSecret" text NOT NULL,
                 "RedirectUri" character varying(2000) NULL,
+                "WebhookUrl" character varying(2000) NULL,
                 "AuthUrl" character varying(2000) NULL,
                 "BaseUrl" character varying(500) NULL,
                 "Scopes" character varying(2000) NULL,
@@ -687,6 +689,7 @@ public static class DbSeeder
                 "ClientId" character varying(200) NOT NULL,
                 "ClientSecret" text NOT NULL,
                 "RedirectUri" character varying(2000) NULL,
+                "WebhookUrl" character varying(2000) NULL,
                 "AuthUrl" character varying(2000) NULL,
                 "BaseUrl" character varying(500) NULL,
                 "Scopes" character varying(2000) NULL,
@@ -717,6 +720,7 @@ public static class DbSeeder
                 "ClientId" character varying(200) NOT NULL,
                 "ClientSecret" text NOT NULL,
                 "RedirectUri" character varying(2000) NULL,
+                "WebhookUrl" character varying(2000) NULL,
                 "AuthUrl" character varying(2000) NULL,
                 "BaseUrl" character varying(500) NULL,
                 "Scopes" character varying(2000) NULL,
@@ -747,6 +751,7 @@ public static class DbSeeder
                 "ClientId" character varying(200) NOT NULL,
                 "ClientSecret" text NOT NULL,
                 "RedirectUri" character varying(2000) NULL,
+                "WebhookUrl" character varying(2000) NULL,
                 "AuthUrl" character varying(2000) NULL,
                 "BaseUrl" character varying(500) NULL,
                 "Scopes" character varying(2000) NULL,
@@ -777,6 +782,7 @@ public static class DbSeeder
                 "ClientId" character varying(200) NOT NULL,
                 "ClientSecret" text NOT NULL,
                 "RedirectUri" character varying(2000) NULL,
+                "WebhookUrl" character varying(2000) NULL,
                 "AuthUrl" character varying(2000) NULL,
                 "BaseUrl" character varying(500) NULL,
                 "Scopes" character varying(2000) NULL,
@@ -807,6 +813,7 @@ public static class DbSeeder
                 "ClientId" character varying(200) NOT NULL,
                 "ClientSecret" text NOT NULL,
                 "RedirectUri" character varying(2000) NULL,
+                "WebhookUrl" character varying(2000) NULL,
                 "AuthUrl" character varying(2000) NULL,
                 "BaseUrl" character varying(500) NULL,
                 "Scopes" character varying(2000) NULL,
@@ -825,10 +832,22 @@ public static class DbSeeder
             """);
     }
 
-    private static async Task EnsureConfigWebhookUrlColumnsAsync(AppDbContext db)
+    public static async Task EnsureConfigWebhookUrlColumnsAsync(AppDbContext db)
     {
-        foreach (var table in new[] { "IntegrationAppConfigs", "AppConnectionConfigs", "DeveloperAppConfigs", "SocialMediaAccountConfigs", "AccountConnectionConfigs" })
+        foreach (var table in new[]
         {
+            "IntegrationAppConfigs",
+            "AppConnectionConfigs",
+            "DeveloperAppConfigs",
+            "SocialMediaAccountConfigs",
+            "AccountConnectionConfigs",
+            "AccountManagementConfigs",
+            "AccountHubConfigs"
+        })
+        {
+            if (!await ModuleTableMigration.TableExistsAsync(db, table))
+                continue;
+
             await db.Database.ExecuteSqlRawAsync($"""
                 ALTER TABLE "{table}" ADD COLUMN IF NOT EXISTS "WebhookUrl" character varying(2000) NULL;
                 """);
