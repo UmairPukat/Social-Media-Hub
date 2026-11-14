@@ -66,9 +66,31 @@ public static class ProcessModules
         public const string FrontendBase = "/app/account-connections";
         public const string Label = "Account Connections";
     }
+    public static class AccountManagement
+    {
+        public const string MenuType = MenuTypes.AccountManagement;
+        public const string ApiRoute = "api/account-management";
+        public const string CallbackRoute = "/api/account-management/callback";
+        public const string WebhookRoute = "/api/account-management/webhooks";
+        public const string WhatsAppCallbackRoute = "/api/account-management/whatsapp/callback";
+        public const string WhatsAppWebhookRoute = "/api/account-management/whatsapp/webhooks";
+        public const string FrontendBase = "/app/account-management";
+        public const string Label = "Account Management";
+    }
+    public static class AccountHub
+    {
+        public const string MenuType = MenuTypes.AccountHub;
+        public const string ApiRoute = "api/account-hub";
+        public const string CallbackRoute = "/api/account-hub/callback";
+        public const string WebhookRoute = "/api/account-hub/webhooks";
+        public const string WhatsAppCallbackRoute = "/api/account-hub/whatsapp/callback";
+        public const string WhatsAppWebhookRoute = "/api/account-hub/whatsapp/webhooks";
+        public const string FrontendBase = "/app/account-hub";
+        public const string Label = "Account Hub";
+    }
 
     public static IReadOnlyList<string> AllMenuTypes { get; } =
-        [Integrations.MenuType, AppConnections.MenuType, DeveloperApps.MenuType, SocialMediaAccounts.MenuType, AccountConnections.MenuType];
+        [Integrations.MenuType, AppConnections.MenuType, DeveloperApps.MenuType, SocialMediaAccounts.MenuType, AccountConnections.MenuType, AccountManagement.MenuType, AccountHub.MenuType];
 
     public static string? ApiRouteFor(string? menuType) =>
         MenuTypes.Normalize(menuType) switch
@@ -77,6 +99,8 @@ public static class ProcessModules
             MenuTypes.AppConnection => AppConnections.ApiRoute,
             MenuTypes.DeveloperApp => DeveloperApps.ApiRoute,
             MenuTypes.AccountConnection => AccountConnections.ApiRoute,
+            MenuTypes.AccountManagement => AccountManagement.ApiRoute,
+            MenuTypes.AccountHub => AccountHub.ApiRoute,
             MenuTypes.SocialMediaAccount => SocialMediaAccounts.ApiRoute,
             _ => null
         };
@@ -87,6 +111,8 @@ public static class ProcessModules
             MenuTypes.AppConnection => AppConnections.CallbackRoute,
             MenuTypes.DeveloperApp => DeveloperApps.CallbackRoute,
             MenuTypes.AccountConnection => AccountConnections.CallbackRoute,
+            MenuTypes.AccountManagement => AccountManagement.CallbackRoute,
+            MenuTypes.AccountHub => AccountHub.CallbackRoute,
             MenuTypes.SocialMediaAccount => SocialMediaAccounts.CallbackRoute,
             _ => Integrations.CallbackRoute
         };
@@ -97,6 +123,8 @@ public static class ProcessModules
             MenuTypes.AppConnection => AppConnections.WhatsAppCallbackRoute,
             MenuTypes.DeveloperApp => DeveloperApps.WhatsAppCallbackRoute,
             MenuTypes.AccountConnection => AccountConnections.WhatsAppCallbackRoute,
+            MenuTypes.AccountManagement => AccountManagement.WhatsAppCallbackRoute,
+            MenuTypes.AccountHub => AccountHub.WhatsAppCallbackRoute,
             MenuTypes.SocialMediaAccount => SocialMediaAccounts.WhatsAppCallbackRoute,
             _ => Integrations.WhatsAppCallbackRoute
         };
@@ -107,6 +135,8 @@ public static class ProcessModules
             MenuTypes.AppConnection => AppConnections.WhatsAppWebhookRoute,
             MenuTypes.DeveloperApp => DeveloperApps.WhatsAppWebhookRoute,
             MenuTypes.AccountConnection => AccountConnections.WhatsAppWebhookRoute,
+            MenuTypes.AccountManagement => AccountManagement.WhatsAppWebhookRoute,
+            MenuTypes.AccountHub => AccountHub.WhatsAppWebhookRoute,
             MenuTypes.SocialMediaAccount => SocialMediaAccounts.WhatsAppWebhookRoute,
             _ => Integrations.WhatsAppWebhookRoute
         };

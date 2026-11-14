@@ -8,6 +8,8 @@ using SocialMedia.Domain.Interfaces;
 using SocialMedia.Domain.Modules.Common.Entities;
 using SocialMedia.Domain.Modules.SocialMediaAccounts.Entities;
 using SocialMedia.Domain.Modules.AccountConnections.Entities;
+using SocialMedia.Domain.Modules.AccountManagement.Entities;
+using SocialMedia.Domain.Modules.AccountHub.Entities;
 
 namespace SocialMedia.Infrastructure.Meta;
 
@@ -68,6 +70,10 @@ public class MetaMarketingContextFactory : IMetaMarketingContextFactory
             MenuTypes.DeveloperApp => (await _unitOfWork.DeveloperAppConfigs.GetByUserAndPlatformCodeAsync(
                 userId, "facebook", menuType, cancellationToken))?.GraphApiVersion,
             MenuTypes.AccountConnection => (await _unitOfWork.AccountConnectionConfigs.GetByUserAndPlatformCodeAsync(
+                userId, "facebook", menuType, cancellationToken))?.GraphApiVersion,
+            MenuTypes.AccountManagement => (await _unitOfWork.AccountManagementConfigs.GetByUserAndPlatformCodeAsync(
+                userId, "facebook", menuType, cancellationToken))?.GraphApiVersion,
+            MenuTypes.AccountHub => (await _unitOfWork.AccountHubConfigs.GetByUserAndPlatformCodeAsync(
                 userId, "facebook", menuType, cancellationToken))?.GraphApiVersion,
             MenuTypes.SocialMediaAccount => (await _unitOfWork.SocialMediaAccountConfigs.GetByUserAndPlatformCodeAsync(
                 userId, "facebook", menuType, cancellationToken))?.GraphApiVersion,

@@ -5,6 +5,8 @@ using SocialMedia.Domain.Modules.DeveloperApps.Entities;
 using SocialMedia.Domain.Modules.Integrations.Entities;
 using SocialMedia.Domain.Modules.SocialMediaAccounts.Entities;
 using SocialMedia.Domain.Modules.AccountConnections.Entities;
+using SocialMedia.Domain.Modules.AccountManagement.Entities;
+using SocialMedia.Domain.Modules.AccountHub.Entities;
 
 namespace SocialMedia.Application.Meta;
 
@@ -19,6 +21,8 @@ public static class ProcessEntityNav
         AppConnectionSocialAccount a => a.Auth,
         DeveloperAppSocialAccount d => d.Auth,
         AccountConnectionSocialAccount d => d.Auth,
+        AccountManagementSocialAccount d => d.Auth,
+        AccountHubSocialAccount d => d.Auth,
         SocialMediaAccountSocialAccount d => d.Auth,
         _ => null
     };
@@ -29,6 +33,8 @@ public static class ProcessEntityNav
         AppConnectionSocialAccount a when a.Profiles is { } ap => ap.Cast<SocialProfileEntityBase>().ToList(),
         DeveloperAppSocialAccount d when d.Profiles is { } dp => dp.Cast<SocialProfileEntityBase>().ToList(),
         AccountConnectionSocialAccount d when d.Profiles is { } dp => dp.Cast<SocialProfileEntityBase>().ToList(),
+        AccountManagementSocialAccount d when d.Profiles is { } dp => dp.Cast<SocialProfileEntityBase>().ToList(),
+        AccountHubSocialAccount d when d.Profiles is { } dp => dp.Cast<SocialProfileEntityBase>().ToList(),
         SocialMediaAccountSocialAccount d when d.Profiles is { } dp => dp.Cast<SocialProfileEntityBase>().ToList(),
         _ => Array.Empty<SocialProfileEntityBase>()
     };
@@ -39,6 +45,8 @@ public static class ProcessEntityNav
         AppConnectionSocialAccount a => a.Platform,
         DeveloperAppSocialAccount d => d.Platform,
         AccountConnectionSocialAccount d => d.Platform,
+        AccountManagementSocialAccount d => d.Platform,
+        AccountHubSocialAccount d => d.Platform,
         SocialMediaAccountSocialAccount d => d.Platform,
         _ => null
     };
@@ -51,6 +59,8 @@ public static class ProcessEntityNav
         AppConnectionPost a => a.SocialProfile,
         DeveloperAppPost d => d.SocialProfile,
         AccountConnectionPost d => d.SocialProfile,
+        AccountManagementPost d => d.SocialProfile,
+        AccountHubPost d => d.SocialProfile,
         SocialMediaAccountPost d => d.SocialProfile,
         _ => null
     };
@@ -61,6 +71,8 @@ public static class ProcessEntityNav
         AppConnectionPost a => a.Platform,
         DeveloperAppPost d => d.Platform,
         AccountConnectionPost d => d.Platform,
+        AccountManagementPost d => d.Platform,
+        AccountHubPost d => d.Platform,
         SocialMediaAccountPost d => d.Platform,
         _ => null
     };
@@ -71,6 +83,8 @@ public static class ProcessEntityNav
         AppConnectionPost a => a.MediaItems?.FirstOrDefault(),
         DeveloperAppPost d => d.MediaItems?.FirstOrDefault(),
         AccountConnectionPost d => d.MediaItems?.FirstOrDefault(),
+        AccountManagementPost d => d.MediaItems?.FirstOrDefault(),
+        AccountHubPost d => d.MediaItems?.FirstOrDefault(),
         SocialMediaAccountPost d => d.MediaItems?.FirstOrDefault(),
         _ => null
     };
@@ -130,6 +144,8 @@ public static class ProcessEntityNav
         AppConnectionPost a => a.MediaItems?.Count ?? 0,
         DeveloperAppPost d => d.MediaItems?.Count ?? 0,
         AccountConnectionPost d => d.MediaItems?.Count ?? 0,
+        AccountManagementPost d => d.MediaItems?.Count ?? 0,
+        AccountHubPost d => d.MediaItems?.Count ?? 0,
         SocialMediaAccountPost d => d.MediaItems?.Count ?? 0,
         _ => 0
     };
@@ -166,6 +182,12 @@ public static class ProcessEntityNav
             case AccountConnectionPost d:
                 (d.MediaItems ??= new List<AccountConnectionMedia>()).Add((AccountConnectionMedia)media);
                 break;
+            case AccountManagementPost d:
+                (d.MediaItems ??= new List<AccountManagementMedia>()).Add((AccountManagementMedia)media);
+                break;
+            case AccountHubPost d:
+                (d.MediaItems ??= new List<AccountHubMedia>()).Add((AccountHubMedia)media);
+                break;
             case SocialMediaAccountPost d:
                 (d.MediaItems ??= new List<SocialMediaAccountMedia>()).Add((SocialMediaAccountMedia)media);
                 break;
@@ -178,6 +200,8 @@ public static class ProcessEntityNav
         AppConnectionConversation a => a.SocialProfile,
         DeveloperAppConversation d => d.SocialProfile,
         AccountConnectionConversation d => d.SocialProfile,
+        AccountManagementConversation d => d.SocialProfile,
+        AccountHubConversation d => d.SocialProfile,
         SocialMediaAccountConversation d => d.SocialProfile,
         _ => null
     };

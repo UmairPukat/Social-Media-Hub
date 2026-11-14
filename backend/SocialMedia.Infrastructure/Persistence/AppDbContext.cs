@@ -2,6 +2,8 @@ using Microsoft.EntityFrameworkCore;
 using SocialMedia.Domain.Entities;
 using SocialMedia.Domain.Modules.AppConnections.Entities;
 using SocialMedia.Domain.Modules.AccountConnections.Entities;
+using SocialMedia.Domain.Modules.AccountManagement.Entities;
+using SocialMedia.Domain.Modules.AccountHub.Entities;
 using SocialMedia.Domain.Modules.DeveloperApps.Entities;
 using SocialMedia.Domain.Modules.SocialMediaAccounts.Entities;
 using SocialMedia.Domain.Modules.Integrations.Entities;
@@ -83,18 +85,46 @@ public class AppDbContext : DbContext
 
     // Account Connections module tables
     public DbSet<AccountConnectionPlatform> AccountConnectionPlatforms => Set<AccountConnectionPlatform>();
+    // Account Management module tables
+    public DbSet<AccountManagementPlatform> AccountManagementPlatforms => Set<AccountManagementPlatform>();
+    // Account Hub module tables
+    public DbSet<AccountHubPlatform> AccountHubPlatforms => Set<AccountHubPlatform>();
     public DbSet<AccountConnectionSocialAccount> AccountConnectionSocialAccounts => Set<AccountConnectionSocialAccount>();
+    public DbSet<AccountManagementSocialAccount> AccountManagementSocialAccounts => Set<AccountManagementSocialAccount>();
+    public DbSet<AccountHubSocialAccount> AccountHubSocialAccounts => Set<AccountHubSocialAccount>();
     public DbSet<AccountConnectionSocialAuth> AccountConnectionSocialAuths => Set<AccountConnectionSocialAuth>();
+    public DbSet<AccountManagementSocialAuth> AccountManagementSocialAuths => Set<AccountManagementSocialAuth>();
+    public DbSet<AccountHubSocialAuth> AccountHubSocialAuths => Set<AccountHubSocialAuth>();
     public DbSet<AccountConnectionSocialProfile> AccountConnectionSocialProfiles => Set<AccountConnectionSocialProfile>();
+    public DbSet<AccountManagementSocialProfile> AccountManagementSocialProfiles => Set<AccountManagementSocialProfile>();
+    public DbSet<AccountHubSocialProfile> AccountHubSocialProfiles => Set<AccountHubSocialProfile>();
     public DbSet<AccountConnectionPost> AccountConnectionPosts => Set<AccountConnectionPost>();
+    public DbSet<AccountManagementPost> AccountManagementPosts => Set<AccountManagementPost>();
+    public DbSet<AccountHubPost> AccountHubPosts => Set<AccountHubPost>();
     public DbSet<AccountConnectionMedia> AccountConnectionMedia => Set<AccountConnectionMedia>();
+    public DbSet<AccountManagementMedia> AccountManagementMedia => Set<AccountManagementMedia>();
+    public DbSet<AccountHubMedia> AccountHubMedia => Set<AccountHubMedia>();
     public DbSet<AccountConnectionComment> AccountConnectionComments => Set<AccountConnectionComment>();
+    public DbSet<AccountManagementComment> AccountManagementComments => Set<AccountManagementComment>();
+    public DbSet<AccountHubComment> AccountHubComments => Set<AccountHubComment>();
     public DbSet<AccountConnectionConversation> AccountConnectionConversations => Set<AccountConnectionConversation>();
+    public DbSet<AccountManagementConversation> AccountManagementConversations => Set<AccountManagementConversation>();
+    public DbSet<AccountHubConversation> AccountHubConversations => Set<AccountHubConversation>();
     public DbSet<AccountConnectionMessage> AccountConnectionMessages => Set<AccountConnectionMessage>();
+    public DbSet<AccountManagementMessage> AccountManagementMessages => Set<AccountManagementMessage>();
+    public DbSet<AccountHubMessage> AccountHubMessages => Set<AccountHubMessage>();
     public DbSet<AccountConnectionMessageAttachment> AccountConnectionMessageAttachments => Set<AccountConnectionMessageAttachment>();
+    public DbSet<AccountManagementMessageAttachment> AccountManagementMessageAttachments => Set<AccountManagementMessageAttachment>();
+    public DbSet<AccountHubMessageAttachment> AccountHubMessageAttachments => Set<AccountHubMessageAttachment>();
     public DbSet<AccountConnectionWebhookEvent> AccountConnectionWebhookEvents => Set<AccountConnectionWebhookEvent>();
+    public DbSet<AccountManagementWebhookEvent> AccountManagementWebhookEvents => Set<AccountManagementWebhookEvent>();
+    public DbSet<AccountHubWebhookEvent> AccountHubWebhookEvents => Set<AccountHubWebhookEvent>();
     public DbSet<AccountConnectionWebhookLog> AccountConnectionWebhookLogs => Set<AccountConnectionWebhookLog>();
+    public DbSet<AccountManagementWebhookLog> AccountManagementWebhookLogs => Set<AccountManagementWebhookLog>();
+    public DbSet<AccountHubWebhookLog> AccountHubWebhookLogs => Set<AccountHubWebhookLog>();
     public DbSet<AccountConnectionSyncJob> AccountConnectionSyncJobs => Set<AccountConnectionSyncJob>();
+    public DbSet<AccountManagementSyncJob> AccountManagementSyncJobs => Set<AccountManagementSyncJob>();
+    public DbSet<AccountHubSyncJob> AccountHubSyncJobs => Set<AccountHubSyncJob>();
 
     // Config tables
     public DbSet<AppConnectionConfig> AppConnectionConfigs => Set<AppConnectionConfig>();
@@ -102,6 +132,8 @@ public class AppDbContext : DbContext
     public DbSet<DeveloperAppConfig> DeveloperAppConfigs => Set<DeveloperAppConfig>();
     public DbSet<SocialMediaAccountConfig> SocialMediaAccountConfigs => Set<SocialMediaAccountConfig>();
     public DbSet<AccountConnectionConfig> AccountConnectionConfigs => Set<AccountConnectionConfig>();
+    public DbSet<AccountManagementConfig> AccountManagementConfigs => Set<AccountManagementConfig>();
+    public DbSet<AccountHubConfig> AccountHubConfigs => Set<AccountHubConfig>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

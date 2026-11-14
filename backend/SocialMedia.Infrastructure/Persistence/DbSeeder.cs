@@ -4,6 +4,8 @@ using SocialMedia.Application.Catalog;
 using SocialMedia.Domain.Entities;
 using SocialMedia.Domain.Modules.AppConnections.Entities;
 using SocialMedia.Domain.Modules.AccountConnections.Entities;
+using SocialMedia.Domain.Modules.AccountManagement.Entities;
+using SocialMedia.Domain.Modules.AccountHub.Entities;
 using SocialMedia.Domain.Modules.DeveloperApps.Entities;
 using SocialMedia.Domain.Modules.SocialMediaAccounts.Entities;
 using SocialMedia.Domain.Modules.Integrations.Entities;
@@ -110,6 +112,8 @@ public static class DbSeeder
         await EnsureDeveloperAppConfigsTableAsync(db);
         await EnsureSocialMediaAccountConfigsTableAsync(db);
         await EnsureAccountConnectionConfigsTableAsync(db);
+        await EnsureAccountManagementConfigsTableAsync(db);
+        await EnsureAccountHubConfigsTableAsync(db);
         await EnsureConfigWebhookUrlColumnsAsync(db);
 
         await ModuleSchemaEnsurer.EnsureAsync(db, logger);
@@ -180,6 +184,14 @@ public static class DbSeeder
                 db.AccountConnectionPlatforms,
                 PlatformCatalog.IdForMenu(def.Id, MenuTypes.AccountConnection),
                 def);
+            SeedPlatformSet(
+                db.AccountManagementPlatforms,
+                PlatformCatalog.IdForMenu(def.Id, MenuTypes.AccountManagement),
+                def);
+            SeedPlatformSet(
+                db.AccountHubPlatforms,
+                PlatformCatalog.IdForMenu(def.Id, MenuTypes.AccountHub),
+                def);
         }
 
         foreach (var p in db.IntegrationPlatforms.Where(p => !catalogCodes.Contains(p.Code)))
@@ -191,6 +203,10 @@ public static class DbSeeder
         foreach (var p in db.SocialMediaAccountPlatforms.Where(p => !catalogCodes.Contains(p.Code)))
             p.IsActive = false;
         foreach (var p in db.AccountConnectionPlatforms.Where(p => !catalogCodes.Contains(p.Code)))
+            p.IsActive = false;
+        foreach (var p in db.AccountManagementPlatforms.Where(p => !catalogCodes.Contains(p.Code)))
+            p.IsActive = false;
+        foreach (var p in db.AccountHubPlatforms.Where(p => !catalogCodes.Contains(p.Code)))
             p.IsActive = false;
 
         await Task.CompletedTask;
@@ -262,6 +278,40 @@ public static class DbSeeder
         existing.Icon = def.Icon;
         existing.IsActive = true;
     }
+
+    private static void SeedPlatformSet(
+        DbSet<AccountManagementPlatform> set,
+        Guid id,
+        PlatformDefinition def)
+    {
+        var existing = set.Local.FirstOrDefault(p => p.Id == id) ?? set.FirstOrDefault(p => p.Id == id);
+        if (existing is null)
+        {
+            set.Add(new AccountManagementPlatform { Id = id, Name = def.Name, Code = def.Code, Icon = def.Icon, IsActive = true });
+            return;
+        }
+        existing.Name = def.Name;
+        existing.Code = def.Code;
+        existing.Icon = def.Icon;
+        existing.IsActive = true;
+    }
+
+    private static void SeedPlatformSet(
+        DbSet<AccountHubPlatform> set,
+        Guid id,
+        PlatformDefinition def)
+    {
+        var existing = set.Local.FirstOrDefault(p => p.Id == id) ?? set.FirstOrDefault(p => p.Id == id);
+        if (existing is null)
+        {
+            set.Add(new AccountHubPlatform { Id = id, Name = def.Name, Code = def.Code, Icon = def.Icon, IsActive = true });
+            return;
+        }
+        existing.Name = def.Name;
+        existing.Code = def.Code;
+        existing.Icon = def.Icon;
+        existing.IsActive = true;
+    }
     private static void SeedPlatformSet(
         DbSet<SocialMediaAccountPlatform> set,
         Guid id,
@@ -309,7 +359,7 @@ public static class DbSeeder
     /// </summary>
     private static async Task EnsureMultiSocialAccountPerPlatformIndexAsync(AppDbContext db, ILogger? logger = null)
     {
-        foreach (var prefix in new[] { "Integration", "AppConnection", "DeveloperApp", "SocialMediaAccount", "AccountConnection" })
+        foreach (var prefix in new[] { "Integration", "AppConnection", "DeveloperApp", "SocialMediaAccount", "AccountConnection", "AccountManagement", "AccountHub" })
         {
             var table = $"{prefix}SocialAccounts";
             if (!await ModuleTableMigration.TableExistsAsync(db, table))
@@ -602,6 +652,66 @@ public static class DbSeeder
         await db.Database.ExecuteSqlRawAsync("""
             CREATE UNIQUE INDEX IF NOT EXISTS "IX_AccountConnectionConfigs_UserId_PlatformId_MenuType"
             ON "AccountConnectionConfigs" ("UserId", "PlatformId", "MenuType");
+            """);
+    }
+    private static async Task EnsureAccountManagementConfigsTableAsync(AppDbContext db)
+    {
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE IF NOT EXISTS "AccountManagementConfigs" (
+                "Id" uuid NOT NULL,
+                "UserId" uuid NOT NULL,
+                "PlatformId" uuid NOT NULL,
+                "PlatformCode" character varying(50) NOT NULL,
+                "MenuType" character varying(50) NOT NULL DEFAULT 'account_management',
+                "Label" character varying(200) NULL,
+                "ClientId" character varying(200) NOT NULL,
+                "ClientSecret" text NOT NULL,
+                "RedirectUri" character varying(2000) NULL,
+                "AuthUrl" character varying(2000) NULL,
+                "BaseUrl" character varying(500) NULL,
+                "Scopes" character varying(2000) NULL,
+                "GraphApiVersion" character varying(20) NOT NULL DEFAULT 'v21.0',
+                "WebhookVerifyToken" character varying(500) NULL,
+                "PhoneNumberId" character varying(100) NULL,
+                "WabaId" character varying(100) NULL,
+                "CreatedAt" timestamp with time zone NOT NULL,
+                "UpdatedAt" timestamp with time zone NULL,
+                CONSTRAINT "PK_AccountManagementConfigs" PRIMARY KEY ("Id")
+            );
+            """);
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE UNIQUE INDEX IF NOT EXISTS "IX_AccountManagementConfigs_UserId_PlatformId_MenuType"
+            ON "AccountManagementConfigs" ("UserId", "PlatformId", "MenuType");
+            """);
+    }
+    private static async Task EnsureAccountHubConfigsTableAsync(AppDbContext db)
+    {
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE IF NOT EXISTS "AccountHubConfigs" (
+                "Id" uuid NOT NULL,
+                "UserId" uuid NOT NULL,
+                "PlatformId" uuid NOT NULL,
+                "PlatformCode" character varying(50) NOT NULL,
+                "MenuType" character varying(50) NOT NULL DEFAULT 'account_hub',
+                "Label" character varying(200) NULL,
+                "ClientId" character varying(200) NOT NULL,
+                "ClientSecret" text NOT NULL,
+                "RedirectUri" character varying(2000) NULL,
+                "AuthUrl" character varying(2000) NULL,
+                "BaseUrl" character varying(500) NULL,
+                "Scopes" character varying(2000) NULL,
+                "GraphApiVersion" character varying(20) NOT NULL DEFAULT 'v21.0',
+                "WebhookVerifyToken" character varying(500) NULL,
+                "PhoneNumberId" character varying(100) NULL,
+                "WabaId" character varying(100) NULL,
+                "CreatedAt" timestamp with time zone NOT NULL,
+                "UpdatedAt" timestamp with time zone NULL,
+                CONSTRAINT "PK_AccountHubConfigs" PRIMARY KEY ("Id")
+            );
+            """);
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE UNIQUE INDEX IF NOT EXISTS "IX_AccountHubConfigs_UserId_PlatformId_MenuType"
+            ON "AccountHubConfigs" ("UserId", "PlatformId", "MenuType");
             """);
     }
     private static async Task EnsureSocialMediaAccountConfigsTableAsync(AppDbContext db)

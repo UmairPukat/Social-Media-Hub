@@ -16,6 +16,8 @@ using SocialMedia.Domain.Modules.DeveloperApps.Entities;
 using SocialMedia.Domain.Modules.Integrations.Entities;
 using SocialMedia.Domain.Modules.SocialMediaAccounts.Entities;
 using SocialMedia.Domain.Modules.AccountConnections.Entities;
+using SocialMedia.Domain.Modules.AccountManagement.Entities;
+using SocialMedia.Domain.Modules.AccountHub.Entities;
 
 namespace SocialMedia.Application.Services;
 
@@ -101,6 +103,10 @@ public class IntegrationService : IIntegrationService
                 MenuTypes.DeveloperApp => (await _unitOfWork.DeveloperAppConfigs.GetByUserAsync(userId, normalizedMenu, cancellationToken))
                     .ToDictionary(c => c.PlatformId, c => c.Id),
                 MenuTypes.AccountConnection => (await _unitOfWork.AccountConnectionConfigs.GetByUserAsync(userId, normalizedMenu, cancellationToken))
+                    .ToDictionary(c => c.PlatformId, c => c.Id),
+                MenuTypes.AccountManagement => (await _unitOfWork.AccountManagementConfigs.GetByUserAsync(userId, normalizedMenu, cancellationToken))
+                    .ToDictionary(c => c.PlatformId, c => c.Id),
+                MenuTypes.AccountHub => (await _unitOfWork.AccountHubConfigs.GetByUserAsync(userId, normalizedMenu, cancellationToken))
                     .ToDictionary(c => c.PlatformId, c => c.Id),
                 MenuTypes.SocialMediaAccount => (await _unitOfWork.SocialMediaAccountConfigs.GetByUserAsync(userId, normalizedMenu, cancellationToken))
                     .ToDictionary(c => c.PlatformId, c => c.Id),
@@ -698,6 +704,8 @@ public class IntegrationService : IIntegrationService
             MenuTypes.AppConnection => MapAppConnection(await FindAppConnectionConfigAsync(userId, platformCode, normalizedMenu, cancellationToken)),
             MenuTypes.DeveloperApp => MapDeveloper(await FindDeveloperAppConfigAsync(userId, platformCode, normalizedMenu, cancellationToken)),
             MenuTypes.AccountConnection => MapAccountConnection(await FindAccountConnectionConfigAsync(userId, platformCode, normalizedMenu, cancellationToken)),
+            MenuTypes.AccountManagement => MapAccountManagement(await FindAccountManagementConfigAsync(userId, platformCode, normalizedMenu, cancellationToken)),
+            MenuTypes.AccountHub => MapAccountHub(await FindAccountHubConfigAsync(userId, platformCode, normalizedMenu, cancellationToken)),
             MenuTypes.SocialMediaAccount => MapSocialMediaAccount(await FindSocialMediaAccountConfigAsync(userId, platformCode, normalizedMenu, cancellationToken)),
             _ => MapIntegration(await FindIntegrationConfigAsync(userId, platformCode, normalizedMenu, cancellationToken))
         };
@@ -718,6 +726,14 @@ public class IntegrationService : IIntegrationService
                 config.Scopes, config.GraphApiVersion, config.PhoneNumberId, config.WabaId);
 
         static StoredProcessAppConfig? MapAccountConnection(AccountConnectionConfig? config) =>
+            config is null ? null : new StoredProcessAppConfig(
+                config.ClientId, config.ClientSecret, config.RedirectUri, config.AuthUrl, config.BaseUrl,
+                config.Scopes, config.GraphApiVersion, config.PhoneNumberId, config.WabaId);
+        static StoredProcessAppConfig? MapAccountManagement(AccountManagementConfig? config) =>
+            config is null ? null : new StoredProcessAppConfig(
+                config.ClientId, config.ClientSecret, config.RedirectUri, config.AuthUrl, config.BaseUrl,
+                config.Scopes, config.GraphApiVersion, config.PhoneNumberId, config.WabaId);
+        static StoredProcessAppConfig? MapAccountHub(AccountHubConfig? config) =>
             config is null ? null : new StoredProcessAppConfig(
                 config.ClientId, config.ClientSecret, config.RedirectUri, config.AuthUrl, config.BaseUrl,
                 config.Scopes, config.GraphApiVersion, config.PhoneNumberId, config.WabaId);
@@ -804,6 +820,44 @@ public class IntegrationService : IIntegrationService
             return null;
 
         return await _unitOfWork.AccountConnectionConfigs.GetByUserAndPlatformAsync(
+            userId, platform.Id, menuType, cancellationToken);
+    }
+    private async Task<AccountManagementConfig?> FindAccountManagementConfigAsync(
+        Guid userId,
+        string platformCode,
+        string menuType,
+        CancellationToken cancellationToken)
+    {
+        var config = await _unitOfWork.AccountManagementConfigs.GetByUserAndPlatformCodeAsync(
+            userId, platformCode, menuType, cancellationToken);
+        if (config is not null)
+            return config;
+
+        var store = _processData.ForMenu(menuType);
+        var platform = await store.GetPlatformByCodeAsync(platformCode, cancellationToken);
+        if (platform is null)
+            return null;
+
+        return await _unitOfWork.AccountManagementConfigs.GetByUserAndPlatformAsync(
+            userId, platform.Id, menuType, cancellationToken);
+    }
+    private async Task<AccountHubConfig?> FindAccountHubConfigAsync(
+        Guid userId,
+        string platformCode,
+        string menuType,
+        CancellationToken cancellationToken)
+    {
+        var config = await _unitOfWork.AccountHubConfigs.GetByUserAndPlatformCodeAsync(
+            userId, platformCode, menuType, cancellationToken);
+        if (config is not null)
+            return config;
+
+        var store = _processData.ForMenu(menuType);
+        var platform = await store.GetPlatformByCodeAsync(platformCode, cancellationToken);
+        if (platform is null)
+            return null;
+
+        return await _unitOfWork.AccountHubConfigs.GetByUserAndPlatformAsync(
             userId, platform.Id, menuType, cancellationToken);
     }
     private async Task<SocialMediaAccountConfig?> FindSocialMediaAccountConfigAsync(

@@ -36,6 +36,8 @@ public static class DependencyInjection
         services.AddScoped<IDeveloperAppConfigRepository, DeveloperAppConfigRepository>();
         services.AddScoped<ISocialMediaAccountConfigRepository, SocialMediaAccountConfigRepository>();
         services.AddScoped<IAccountConnectionConfigRepository, AccountConnectionConfigRepository>();
+        services.AddScoped<IAccountManagementConfigRepository, AccountManagementConfigRepository>();
+        services.AddScoped<IAccountHubConfigRepository, AccountHubConfigRepository>();
         services.AddScoped<IProcessDataStoreFactory, ProcessDataStoreFactory>();
         services.AddScoped<IModuleDataPurgeService, ModuleDataPurgeService>();
         services.AddScoped<IUnitOfWork, UnitOfWork>();

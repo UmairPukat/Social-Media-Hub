@@ -10,6 +10,8 @@ public static class MenuTypes
     public const string DeveloperApp = "developer_app";
     public const string SocialMediaAccount = "social_media_account";
     public const string AccountConnection = "account_connection";
+    public const string AccountManagement = "account_management";
+    public const string AccountHub = "account_hub";
 
     public static string Normalize(string? menuType)
     {
@@ -20,6 +22,8 @@ public static class MenuTypes
             AppConnection => AppConnection,
             DeveloperApp => DeveloperApp,
             AccountConnection => AccountConnection,
+            AccountManagement => AccountManagement,
+            AccountHub => AccountHub,
             SocialMediaAccount => SocialMediaAccount,
             _ => Integration
         };
@@ -28,6 +32,6 @@ public static class MenuTypes
     public static bool IsKnown(string? menuType)
     {
         var value = (menuType ?? string.Empty).Trim().ToLowerInvariant();
-        return value is Integration or AppConnection or DeveloperApp or SocialMediaAccount or AccountConnection;
+        return value is Integration or AppConnection or DeveloperApp or SocialMediaAccount or AccountConnection or AccountManagement or AccountHub;
     }
 }

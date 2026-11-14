@@ -1,8 +1,9 @@
 -- =============================================================================
--- Delete inbox / content / webhook / connected-account data for all five modules
+-- Delete inbox / content / webhook / connected-account data for every process module
 -- Social Media Hub — PostgreSQL
 --
--- REMOVES (Integrations, App Connections, Developer Apps, Social Media Accounts, Account Connections):
+-- REMOVES (Integrations, App Connections, Developer Apps, Social Media Accounts,
+--          Account Connections, Account Management, Account Hub):
 --   WebhookLogs, WebhookEvents
 --   Messages, MessageAttachments, Conversations
 --   Comments, Media, Posts
@@ -27,6 +28,8 @@ UPDATE "AppConnectionComments"       SET "ParentCommentId" = NULL WHERE "ParentC
 UPDATE "DeveloperAppComments"        SET "ParentCommentId" = NULL WHERE "ParentCommentId" IS NOT NULL;
 UPDATE "SocialMediaAccountComments"  SET "ParentCommentId" = NULL WHERE "ParentCommentId" IS NOT NULL;
 UPDATE "AccountConnectionComments"   SET "ParentCommentId" = NULL WHERE "ParentCommentId" IS NOT NULL;
+UPDATE "AccountManagementComments"   SET "ParentCommentId" = NULL WHERE "ParentCommentId" IS NOT NULL;
+UPDATE "AccountHubComments"   SET "ParentCommentId" = NULL WHERE "ParentCommentId" IS NOT NULL;
 
 -- Optional: clear message reply pointers (no FK, but avoids orphans in UI)
 UPDATE "IntegrationMessages"         SET "ReplyToMessageId" = NULL WHERE "ReplyToMessageId" IS NOT NULL;
@@ -34,6 +37,8 @@ UPDATE "AppConnectionMessages"       SET "ReplyToMessageId" = NULL WHERE "ReplyT
 UPDATE "DeveloperAppMessages"        SET "ReplyToMessageId" = NULL WHERE "ReplyToMessageId" IS NOT NULL;
 UPDATE "SocialMediaAccountMessages"  SET "ReplyToMessageId" = NULL WHERE "ReplyToMessageId" IS NOT NULL;
 UPDATE "AccountConnectionMessages"   SET "ReplyToMessageId" = NULL WHERE "ReplyToMessageId" IS NOT NULL;
+UPDATE "AccountManagementMessages"   SET "ReplyToMessageId" = NULL WHERE "ReplyToMessageId" IS NOT NULL;
+UPDATE "AccountHubMessages"   SET "ReplyToMessageId" = NULL WHERE "ReplyToMessageId" IS NOT NULL;
 
 -- ---------------------------------------------------------------------------
 -- 2. Integrations module
@@ -91,14 +96,36 @@ DELETE FROM "SocialMediaAccountWebhookEvents";
 -- 6. Account Connections module
 -- ---------------------------------------------------------------------------
 DELETE FROM "AccountConnectionMessageAttachments";
+-- 6. Account Management module
+-- ---------------------------------------------------------------------------
+DELETE FROM "AccountManagementMessageAttachments";
+-- 6. Account Hub module
+-- ---------------------------------------------------------------------------
+DELETE FROM "AccountHubMessageAttachments";
 DELETE FROM "AccountConnectionMessages";
+DELETE FROM "AccountManagementMessages";
+DELETE FROM "AccountHubMessages";
 DELETE FROM "AccountConnectionConversations";
+DELETE FROM "AccountManagementConversations";
+DELETE FROM "AccountHubConversations";
 DELETE FROM "AccountConnectionComments";
+DELETE FROM "AccountManagementComments";
+DELETE FROM "AccountHubComments";
 DELETE FROM "AccountConnectionMedia";
+DELETE FROM "AccountManagementMedia";
+DELETE FROM "AccountHubMedia";
 DELETE FROM "AccountConnectionPosts";
+DELETE FROM "AccountManagementPosts";
+DELETE FROM "AccountHubPosts";
 DELETE FROM "AccountConnectionSyncJobs";
+DELETE FROM "AccountManagementSyncJobs";
+DELETE FROM "AccountHubSyncJobs";
 DELETE FROM "AccountConnectionWebhookLogs";
+DELETE FROM "AccountManagementWebhookLogs";
+DELETE FROM "AccountHubWebhookLogs";
 DELETE FROM "AccountConnectionWebhookEvents";
+DELETE FROM "AccountManagementWebhookEvents";
+DELETE FROM "AccountHubWebhookEvents";
 
 -- ---------------------------------------------------------------------------
 -- 7. Connected accounts (content rows above must already be gone)
@@ -116,8 +143,14 @@ DELETE FROM "SocialMediaAccountSocialAuths";
 DELETE FROM "SocialMediaAccountSocialProfiles";
 DELETE FROM "SocialMediaAccountSocialAccounts";
 DELETE FROM "AccountConnectionSocialAuths";
+DELETE FROM "AccountManagementSocialAuths";
+DELETE FROM "AccountHubSocialAuths";
 DELETE FROM "AccountConnectionSocialProfiles";
+DELETE FROM "AccountManagementSocialProfiles";
+DELETE FROM "AccountHubSocialProfiles";
 DELETE FROM "AccountConnectionSocialAccounts";
+DELETE FROM "AccountManagementSocialAccounts";
+DELETE FROM "AccountHubSocialAccounts";
 
 COMMIT;
 

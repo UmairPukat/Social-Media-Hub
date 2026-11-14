@@ -10,6 +10,8 @@ using SocialMedia.Domain.Interfaces;
 using Microsoft.Extensions.Configuration;
 using SocialMedia.Domain.Modules.SocialMediaAccounts.Entities;
 using SocialMedia.Domain.Modules.AccountConnections.Entities;
+using SocialMedia.Domain.Modules.AccountManagement.Entities;
+using SocialMedia.Domain.Modules.AccountHub.Entities;
 
 namespace SocialMedia.Application.Modules.Common;
 
@@ -91,6 +93,10 @@ public class ProcessAppConfigService : IProcessAppConfigService
                     return await SaveDeveloperAsync(userId, platform, code, normalizedMenu, request, version, cancellationToken);
                 case MenuTypes.AccountConnection:
                     return await SaveAccountConnectionAsync(userId, platform, code, normalizedMenu, request, version, cancellationToken);
+                case MenuTypes.AccountManagement:
+                    return await SaveAccountManagementAsync(userId, platform, code, normalizedMenu, request, version, cancellationToken);
+                case MenuTypes.AccountHub:
+                    return await SaveAccountHubAsync(userId, platform, code, normalizedMenu, request, version, cancellationToken);
                 case MenuTypes.SocialMediaAccount:
                     return await SaveSocialMediaAccountAsync(userId, platform, code, normalizedMenu, request, version, cancellationToken);
                 default:
@@ -152,6 +158,24 @@ public class ProcessAppConfigService : IProcessAppConfigService
                     _unitOfWork.AccountConnectionConfigs.Remove(row);
                     break;
                 }
+                case MenuTypes.AccountManagement:
+                {
+                    var row = await _unitOfWork.AccountManagementConfigs.GetByUserAndPlatformCodeAsync(
+                        userId, code, normalizedMenu, cancellationToken);
+                    if (row is null)
+                        return ApiResponse<object>.Fail("No app configuration found for this platform.");
+                    _unitOfWork.AccountManagementConfigs.Remove(row);
+                    break;
+                }
+                case MenuTypes.AccountHub:
+                {
+                    var row = await _unitOfWork.AccountHubConfigs.GetByUserAndPlatformCodeAsync(
+                        userId, code, normalizedMenu, cancellationToken);
+                    if (row is null)
+                        return ApiResponse<object>.Fail("No app configuration found for this platform.");
+                    _unitOfWork.AccountHubConfigs.Remove(row);
+                    break;
+                }
                 case MenuTypes.SocialMediaAccount:
                 {
                     var row = await _unitOfWork.SocialMediaAccountConfigs.GetByUserAndPlatformCodeAsync(
@@ -190,6 +214,10 @@ public class ProcessAppConfigService : IProcessAppConfigService
             MenuTypes.DeveloperApp => MapDev(await _unitOfWork.DeveloperAppConfigs.GetByUserAndPlatformCodeAsync(
                 userId, platformCode, menuType, cancellationToken), revealSecret),
             MenuTypes.AccountConnection => MapAccountConnection(await _unitOfWork.AccountConnectionConfigs.GetByUserAndPlatformCodeAsync(
+                userId, platformCode, menuType, cancellationToken), revealSecret),
+            MenuTypes.AccountManagement => MapAccountManagement(await _unitOfWork.AccountManagementConfigs.GetByUserAndPlatformCodeAsync(
+                userId, platformCode, menuType, cancellationToken), revealSecret),
+            MenuTypes.AccountHub => MapAccountHub(await _unitOfWork.AccountHubConfigs.GetByUserAndPlatformCodeAsync(
                 userId, platformCode, menuType, cancellationToken), revealSecret),
             MenuTypes.SocialMediaAccount => MapSocialMediaAccount(await _unitOfWork.SocialMediaAccountConfigs.GetByUserAndPlatformCodeAsync(
                 userId, platformCode, menuType, cancellationToken), revealSecret),
@@ -355,6 +383,84 @@ public class ProcessAppConfigService : IProcessAppConfigService
         await _unitOfWork.SaveChangesAsync(cancellationToken);
         return ApiResponse<ProcessAppConfigDto>.Ok(MapAccountConnection(config, revealSecret: false), "App configuration saved.");
     }
+    private async Task<ApiResponse<ProcessAppConfigDto>> SaveAccountManagementAsync(
+        Guid userId,
+        PlatformEntityBase platform,
+        string code,
+        string menuType,
+        SaveProcessAppConfigRequest request,
+        string version,
+        CancellationToken cancellationToken)
+    {
+        var config = await _unitOfWork.AccountManagementConfigs.GetByUserAndPlatformCodeAsync(
+                       userId, code, menuType, cancellationToken)
+                   ?? await _unitOfWork.AccountManagementConfigs.GetByUserAndPlatformAsync(
+                       userId, platform.Id, menuType, cancellationToken);
+        var isNew = config is null;
+        if (config is null)
+        {
+            if (string.IsNullOrWhiteSpace(request.ClientSecret))
+                return ApiResponse<ProcessAppConfigDto>.Fail("Client Secret is required.");
+            config = new AccountManagementConfig
+            {
+                UserId = userId,
+                PlatformId = platform.Id,
+                PlatformCode = code,
+                MenuType = menuType
+            };
+            await _unitOfWork.AccountManagementConfigs.AddAsync(config, cancellationToken);
+        }
+        else
+        {
+            config.PlatformCode = code;
+        }
+
+        ApplyFields(config, request, code, menuType, version, isNew);
+        if (!isNew)
+            _unitOfWork.AccountManagementConfigs.Update(config);
+
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+        return ApiResponse<ProcessAppConfigDto>.Ok(MapAccountManagement(config, revealSecret: false), "App configuration saved.");
+    }
+    private async Task<ApiResponse<ProcessAppConfigDto>> SaveAccountHubAsync(
+        Guid userId,
+        PlatformEntityBase platform,
+        string code,
+        string menuType,
+        SaveProcessAppConfigRequest request,
+        string version,
+        CancellationToken cancellationToken)
+    {
+        var config = await _unitOfWork.AccountHubConfigs.GetByUserAndPlatformCodeAsync(
+                       userId, code, menuType, cancellationToken)
+                   ?? await _unitOfWork.AccountHubConfigs.GetByUserAndPlatformAsync(
+                       userId, platform.Id, menuType, cancellationToken);
+        var isNew = config is null;
+        if (config is null)
+        {
+            if (string.IsNullOrWhiteSpace(request.ClientSecret))
+                return ApiResponse<ProcessAppConfigDto>.Fail("Client Secret is required.");
+            config = new AccountHubConfig
+            {
+                UserId = userId,
+                PlatformId = platform.Id,
+                PlatformCode = code,
+                MenuType = menuType
+            };
+            await _unitOfWork.AccountHubConfigs.AddAsync(config, cancellationToken);
+        }
+        else
+        {
+            config.PlatformCode = code;
+        }
+
+        ApplyFields(config, request, code, menuType, version, isNew);
+        if (!isNew)
+            _unitOfWork.AccountHubConfigs.Update(config);
+
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+        return ApiResponse<ProcessAppConfigDto>.Ok(MapAccountHub(config, revealSecret: false), "App configuration saved.");
+    }
     private async Task<ApiResponse<ProcessAppConfigDto>> SaveSocialMediaAccountAsync(
         Guid userId,
         PlatformEntityBase platform,
@@ -458,6 +564,46 @@ public class ProcessAppConfigService : IProcessAppConfigService
         config.UpdatedAt = DateTime.UtcNow;
     }
     private void ApplyFields(AccountConnectionConfig config, SaveProcessAppConfigRequest request, string code, string menuType, string version, bool isNew)
+    {
+        config.Label = NullIfEmpty(request.Label);
+        config.ClientId = request.ClientId.Trim();
+        if (!string.IsNullOrWhiteSpace(request.ClientSecret))
+            config.ClientSecret = request.ClientSecret.Trim();
+        else if (isNew)
+            throw new InvalidOperationException("Client Secret is required.");
+
+        config.RedirectUri = NullIfEmpty(ResolveRedirectUri(menuType, code, request.RedirectUri));
+        config.WebhookUrl = NullIfEmpty(ResolveWebhookUri(menuType, code, request.WebhookUrl));
+        config.AuthUrl = ResolveStoredAuthUrl(code, NullIfEmpty(request.AuthUrl), version);
+        config.BaseUrl = ResolveStoredBaseUrl(code, NullIfEmpty(request.BaseUrl));
+        config.Scopes = NullIfEmpty(NormalizeStoredScopes(code, request.Scopes)) ?? DefaultScopes(code);
+        config.GraphApiVersion = version;
+        config.WebhookVerifyToken = NullIfEmpty(request.WebhookVerifyToken);
+        config.PhoneNumberId = NullIfEmpty(request.PhoneNumberId);
+        config.WabaId = NullIfEmpty(request.WabaId);
+        config.UpdatedAt = DateTime.UtcNow;
+    }
+    private void ApplyFields(AccountManagementConfig config, SaveProcessAppConfigRequest request, string code, string menuType, string version, bool isNew)
+    {
+        config.Label = NullIfEmpty(request.Label);
+        config.ClientId = request.ClientId.Trim();
+        if (!string.IsNullOrWhiteSpace(request.ClientSecret))
+            config.ClientSecret = request.ClientSecret.Trim();
+        else if (isNew)
+            throw new InvalidOperationException("Client Secret is required.");
+
+        config.RedirectUri = NullIfEmpty(ResolveRedirectUri(menuType, code, request.RedirectUri));
+        config.WebhookUrl = NullIfEmpty(ResolveWebhookUri(menuType, code, request.WebhookUrl));
+        config.AuthUrl = ResolveStoredAuthUrl(code, NullIfEmpty(request.AuthUrl), version);
+        config.BaseUrl = ResolveStoredBaseUrl(code, NullIfEmpty(request.BaseUrl));
+        config.Scopes = NullIfEmpty(NormalizeStoredScopes(code, request.Scopes)) ?? DefaultScopes(code);
+        config.GraphApiVersion = version;
+        config.WebhookVerifyToken = NullIfEmpty(request.WebhookVerifyToken);
+        config.PhoneNumberId = NullIfEmpty(request.PhoneNumberId);
+        config.WabaId = NullIfEmpty(request.WabaId);
+        config.UpdatedAt = DateTime.UtcNow;
+    }
+    private void ApplyFields(AccountHubConfig config, SaveProcessAppConfigRequest request, string code, string menuType, string version, bool isNew)
     {
         config.Label = NullIfEmpty(request.Label);
         config.ClientId = request.ClientId.Trim();
@@ -611,6 +757,50 @@ public class ProcessAppConfigService : IProcessAppConfigService
         UpdatedAt = config.UpdatedAt
     };
     private ProcessAppConfigDto MapAccountConnection(AccountConnectionConfig config, bool revealSecret) => new()
+    {
+        Id = config.Id,
+        PlatformId = config.PlatformId,
+        PlatformCode = config.PlatformCode,
+        MenuType = config.MenuType,
+        Label = config.Label,
+        ClientId = config.ClientId,
+        ClientSecret = revealSecret ? config.ClientSecret : MaskSecret(config.ClientSecret),
+        HasClientSecret = !string.IsNullOrWhiteSpace(config.ClientSecret),
+        RedirectUri = DisplayRedirectUri(config.MenuType, config.PlatformCode, config.RedirectUri),
+        WebhookUrl = DisplayWebhookUri(config.MenuType, config.PlatformCode, config.WebhookUrl),
+        AuthUrl = config.AuthUrl,
+        BaseUrl = config.BaseUrl,
+        Scopes = config.Scopes,
+        GraphApiVersion = config.GraphApiVersion,
+        WebhookVerifyToken = config.WebhookVerifyToken,
+        PhoneNumberId = config.PhoneNumberId,
+        WabaId = config.WabaId,
+        CreatedAt = config.CreatedAt,
+        UpdatedAt = config.UpdatedAt
+    };
+    private ProcessAppConfigDto MapAccountManagement(AccountManagementConfig config, bool revealSecret) => new()
+    {
+        Id = config.Id,
+        PlatformId = config.PlatformId,
+        PlatformCode = config.PlatformCode,
+        MenuType = config.MenuType,
+        Label = config.Label,
+        ClientId = config.ClientId,
+        ClientSecret = revealSecret ? config.ClientSecret : MaskSecret(config.ClientSecret),
+        HasClientSecret = !string.IsNullOrWhiteSpace(config.ClientSecret),
+        RedirectUri = DisplayRedirectUri(config.MenuType, config.PlatformCode, config.RedirectUri),
+        WebhookUrl = DisplayWebhookUri(config.MenuType, config.PlatformCode, config.WebhookUrl),
+        AuthUrl = config.AuthUrl,
+        BaseUrl = config.BaseUrl,
+        Scopes = config.Scopes,
+        GraphApiVersion = config.GraphApiVersion,
+        WebhookVerifyToken = config.WebhookVerifyToken,
+        PhoneNumberId = config.PhoneNumberId,
+        WabaId = config.WabaId,
+        CreatedAt = config.CreatedAt,
+        UpdatedAt = config.UpdatedAt
+    };
+    private ProcessAppConfigDto MapAccountHub(AccountHubConfig config, bool revealSecret) => new()
     {
         Id = config.Id,
         PlatformId = config.PlatformId,

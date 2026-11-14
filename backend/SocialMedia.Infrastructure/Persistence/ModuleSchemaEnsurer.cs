@@ -16,7 +16,9 @@ internal static partial class ModuleSchemaEnsurer
         "AppConnection",
         "DeveloperApp",
         "SocialMediaAccount",
-        "AccountConnection"
+        "AccountConnection",
+        "AccountManagement",
+        "AccountHub"
     ];
     private static readonly HashSet<string> ExcludedTables = new(StringComparer.Ordinal)
     {
@@ -24,7 +26,9 @@ internal static partial class ModuleSchemaEnsurer
         "AppConnectionConfigs",
         "DeveloperAppConfigs",
         "SocialMediaAccountConfigs",
-        "AccountConnectionConfigs"
+        "AccountConnectionConfigs",
+        "AccountManagementConfigs",
+        "AccountHubConfigs"
     };
 
     public static async Task EnsureAsync(AppDbContext db, ILogger? logger = null)

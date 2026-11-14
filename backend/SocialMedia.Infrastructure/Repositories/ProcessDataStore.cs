@@ -11,6 +11,8 @@ using SocialMedia.Domain.Modules.Integrations.Entities;
 using SocialMedia.Infrastructure.Persistence;
 using SocialMedia.Domain.Modules.SocialMediaAccounts.Entities;
 using SocialMedia.Domain.Modules.AccountConnections.Entities;
+using SocialMedia.Domain.Modules.AccountManagement.Entities;
+using SocialMedia.Domain.Modules.AccountHub.Entities;
 
 namespace SocialMedia.Infrastructure.Repositories;
 
@@ -39,6 +41,10 @@ public sealed class ProcessDataStore : IProcessDataStore
                 .Where(p => p.IsActive).OrderBy(p => p.Name).ToListAsync(cancellationToken),
             MenuTypes.AccountConnection => await _context.AccountConnectionPlatforms.AsNoTracking()
                 .Where(p => p.IsActive).OrderBy(p => p.Name).ToListAsync(cancellationToken),
+            MenuTypes.AccountManagement => await _context.AccountManagementPlatforms.AsNoTracking()
+                .Where(p => p.IsActive).OrderBy(p => p.Name).ToListAsync(cancellationToken),
+            MenuTypes.AccountHub => await _context.AccountHubPlatforms.AsNoTracking()
+                .Where(p => p.IsActive).OrderBy(p => p.Name).ToListAsync(cancellationToken),
             MenuTypes.SocialMediaAccount => await _context.SocialMediaAccountPlatforms.AsNoTracking()
                 .Where(p => p.IsActive).OrderBy(p => p.Name).ToListAsync(cancellationToken),
             _ => await _context.IntegrationPlatforms.AsNoTracking()
@@ -54,6 +60,10 @@ public sealed class ProcessDataStore : IProcessDataStore
                 _context.DeveloperAppPlatforms.AsNoTracking().FirstOrDefaultAsync(p => p.Id == id, cancellationToken)),
             MenuTypes.AccountConnection => AsBase<AccountConnectionPlatform, PlatformEntityBase>(
                 _context.AccountConnectionPlatforms.AsNoTracking().FirstOrDefaultAsync(p => p.Id == id, cancellationToken)),
+            MenuTypes.AccountManagement => AsBase<AccountManagementPlatform, PlatformEntityBase>(
+                _context.AccountManagementPlatforms.AsNoTracking().FirstOrDefaultAsync(p => p.Id == id, cancellationToken)),
+            MenuTypes.AccountHub => AsBase<AccountHubPlatform, PlatformEntityBase>(
+                _context.AccountHubPlatforms.AsNoTracking().FirstOrDefaultAsync(p => p.Id == id, cancellationToken)),
             MenuTypes.SocialMediaAccount => AsBase<SocialMediaAccountPlatform, PlatformEntityBase>(
                 _context.SocialMediaAccountPlatforms.AsNoTracking().FirstOrDefaultAsync(p => p.Id == id, cancellationToken)),
             _ => AsBase<IntegrationPlatform, PlatformEntityBase>(
@@ -69,6 +79,10 @@ public sealed class ProcessDataStore : IProcessDataStore
                 _context.DeveloperAppPlatforms.AsNoTracking().FirstOrDefaultAsync(p => p.Code == code, cancellationToken)),
             MenuTypes.AccountConnection => AsBase<AccountConnectionPlatform, PlatformEntityBase>(
                 _context.AccountConnectionPlatforms.AsNoTracking().FirstOrDefaultAsync(p => p.Code == code, cancellationToken)),
+            MenuTypes.AccountManagement => AsBase<AccountManagementPlatform, PlatformEntityBase>(
+                _context.AccountManagementPlatforms.AsNoTracking().FirstOrDefaultAsync(p => p.Code == code, cancellationToken)),
+            MenuTypes.AccountHub => AsBase<AccountHubPlatform, PlatformEntityBase>(
+                _context.AccountHubPlatforms.AsNoTracking().FirstOrDefaultAsync(p => p.Code == code, cancellationToken)),
             MenuTypes.SocialMediaAccount => AsBase<SocialMediaAccountPlatform, PlatformEntityBase>(
                 _context.SocialMediaAccountPlatforms.AsNoTracking().FirstOrDefaultAsync(p => p.Code == code, cancellationToken)),
             _ => AsBase<IntegrationPlatform, PlatformEntityBase>(
@@ -87,6 +101,12 @@ public sealed class ProcessDataStore : IProcessDataStore
                 break;
             case MenuTypes.AccountConnection:
                 await _context.AccountConnectionPlatforms.AddAsync((AccountConnectionPlatform)platform, cancellationToken);
+                break;
+            case MenuTypes.AccountManagement:
+                await _context.AccountManagementPlatforms.AddAsync((AccountManagementPlatform)platform, cancellationToken);
+                break;
+            case MenuTypes.AccountHub:
+                await _context.AccountHubPlatforms.AddAsync((AccountHubPlatform)platform, cancellationToken);
                 break;
             case MenuTypes.SocialMediaAccount:
                 await _context.SocialMediaAccountPlatforms.AddAsync((SocialMediaAccountPlatform)platform, cancellationToken);
@@ -111,6 +131,12 @@ public sealed class ProcessDataStore : IProcessDataStore
             MenuTypes.AccountConnection => await _context.AccountConnectionSocialAccounts.AsNoTracking()
                 .Include(a => a.Platform).Include(a => a.Auth).Include(a => a.Profiles)
                 .Where(a => a.UserId == userId).ToListAsync(cancellationToken),
+            MenuTypes.AccountManagement => await _context.AccountManagementSocialAccounts.AsNoTracking()
+                .Include(a => a.Platform).Include(a => a.Auth).Include(a => a.Profiles)
+                .Where(a => a.UserId == userId).ToListAsync(cancellationToken),
+            MenuTypes.AccountHub => await _context.AccountHubSocialAccounts.AsNoTracking()
+                .Include(a => a.Platform).Include(a => a.Auth).Include(a => a.Profiles)
+                .Where(a => a.UserId == userId).ToListAsync(cancellationToken),
             MenuTypes.SocialMediaAccount => await _context.SocialMediaAccountSocialAccounts.AsNoTracking()
                 .Include(a => a.Platform).Include(a => a.Auth).Include(a => a.Profiles)
                 .Where(a => a.UserId == userId).ToListAsync(cancellationToken),
@@ -128,6 +154,10 @@ public sealed class ProcessDataStore : IProcessDataStore
                 _context.DeveloperAppSocialAccounts.AsNoTracking().FirstOrDefaultAsync(a => a.Id == id, cancellationToken)),
             MenuTypes.AccountConnection => AsBase<AccountConnectionSocialAccount, SocialAccountEntityBase>(
                 _context.AccountConnectionSocialAccounts.AsNoTracking().FirstOrDefaultAsync(a => a.Id == id, cancellationToken)),
+            MenuTypes.AccountManagement => AsBase<AccountManagementSocialAccount, SocialAccountEntityBase>(
+                _context.AccountManagementSocialAccounts.AsNoTracking().FirstOrDefaultAsync(a => a.Id == id, cancellationToken)),
+            MenuTypes.AccountHub => AsBase<AccountHubSocialAccount, SocialAccountEntityBase>(
+                _context.AccountHubSocialAccounts.AsNoTracking().FirstOrDefaultAsync(a => a.Id == id, cancellationToken)),
             MenuTypes.SocialMediaAccount => AsBase<SocialMediaAccountSocialAccount, SocialAccountEntityBase>(
                 _context.SocialMediaAccountSocialAccounts.AsNoTracking().FirstOrDefaultAsync(a => a.Id == id, cancellationToken)),
             _ => AsBase<IntegrationSocialAccount, SocialAccountEntityBase>(
@@ -160,6 +190,24 @@ public sealed class ProcessDataStore : IProcessDataStore
                     .FirstOrDefaultAsync(cancellationToken)),
             MenuTypes.AccountConnection => AsBase<AccountConnectionSocialAccount, SocialAccountEntityBase>(
                 _context.AccountConnectionSocialAccounts
+                    .Include(a => a.Auth).Include(a => a.Profiles)
+                    .Where(a => a.UserId == userId && a.PlatformId == platformId)
+                    .OrderByDescending(a => a.Status == SocialAccountStatus.Connected ? 1 : 0)
+                    .ThenByDescending(a => a.Auth != null && a.Auth.AccessToken != "" ? 1 : 0)
+                    .ThenByDescending(a => a.Auth != null && a.Auth.RefreshToken != null && a.Auth.RefreshToken != "" ? 1 : 0)
+                    .ThenByDescending(a => a.ConnectedAt ?? a.UpdatedAt ?? a.CreatedAt)
+                    .FirstOrDefaultAsync(cancellationToken)),
+            MenuTypes.AccountManagement => AsBase<AccountManagementSocialAccount, SocialAccountEntityBase>(
+                _context.AccountManagementSocialAccounts
+                    .Include(a => a.Auth).Include(a => a.Profiles)
+                    .Where(a => a.UserId == userId && a.PlatformId == platformId)
+                    .OrderByDescending(a => a.Status == SocialAccountStatus.Connected ? 1 : 0)
+                    .ThenByDescending(a => a.Auth != null && a.Auth.AccessToken != "" ? 1 : 0)
+                    .ThenByDescending(a => a.Auth != null && a.Auth.RefreshToken != null && a.Auth.RefreshToken != "" ? 1 : 0)
+                    .ThenByDescending(a => a.ConnectedAt ?? a.UpdatedAt ?? a.CreatedAt)
+                    .FirstOrDefaultAsync(cancellationToken)),
+            MenuTypes.AccountHub => AsBase<AccountHubSocialAccount, SocialAccountEntityBase>(
+                _context.AccountHubSocialAccounts
                     .Include(a => a.Auth).Include(a => a.Profiles)
                     .Where(a => a.UserId == userId && a.PlatformId == platformId)
                     .OrderByDescending(a => a.Status == SocialAccountStatus.Connected ? 1 : 0)
@@ -218,6 +266,22 @@ public sealed class ProcessDataStore : IProcessDataStore
                              && a.PlatformId == platformId
                              && a.ExternalAccountId == externalAccountId,
                         cancellationToken)),
+            MenuTypes.AccountManagement => AsBase<AccountManagementSocialAccount, SocialAccountEntityBase>(
+                _context.AccountManagementSocialAccounts
+                    .Include(a => a.Auth).Include(a => a.Profiles)
+                    .FirstOrDefaultAsync(
+                        a => a.UserId == userId
+                             && a.PlatformId == platformId
+                             && a.ExternalAccountId == externalAccountId,
+                        cancellationToken)),
+            MenuTypes.AccountHub => AsBase<AccountHubSocialAccount, SocialAccountEntityBase>(
+                _context.AccountHubSocialAccounts
+                    .Include(a => a.Auth).Include(a => a.Profiles)
+                    .FirstOrDefaultAsync(
+                        a => a.UserId == userId
+                             && a.PlatformId == platformId
+                             && a.ExternalAccountId == externalAccountId,
+                        cancellationToken)),
             MenuTypes.SocialMediaAccount => AsBase<SocialMediaAccountSocialAccount, SocialAccountEntityBase>(
                 _context.SocialMediaAccountSocialAccounts
                     .Include(a => a.Auth).Include(a => a.Profiles)
@@ -253,6 +317,14 @@ public sealed class ProcessDataStore : IProcessDataStore
                 _context.AccountConnectionSocialAccounts
                     .Include(a => a.Auth).Include(a => a.Profiles)
                     .FirstOrDefaultAsync(a => a.ExternalAccountId == externalAccountId, cancellationToken)),
+            MenuTypes.AccountManagement => AsBase<AccountManagementSocialAccount, SocialAccountEntityBase>(
+                _context.AccountManagementSocialAccounts
+                    .Include(a => a.Auth).Include(a => a.Profiles)
+                    .FirstOrDefaultAsync(a => a.ExternalAccountId == externalAccountId, cancellationToken)),
+            MenuTypes.AccountHub => AsBase<AccountHubSocialAccount, SocialAccountEntityBase>(
+                _context.AccountHubSocialAccounts
+                    .Include(a => a.Auth).Include(a => a.Profiles)
+                    .FirstOrDefaultAsync(a => a.ExternalAccountId == externalAccountId, cancellationToken)),
             MenuTypes.SocialMediaAccount => AsBase<SocialMediaAccountSocialAccount, SocialAccountEntityBase>(
                 _context.SocialMediaAccountSocialAccounts
                     .Include(a => a.Auth).Include(a => a.Profiles)
@@ -280,6 +352,14 @@ public sealed class ProcessDataStore : IProcessDataStore
                 _context.AccountConnectionSocialAccounts
                     .Include(a => a.Platform).Include(a => a.Auth).Include(a => a.Profiles)
                     .FirstOrDefaultAsync(a => a.Id == id, cancellationToken)),
+            MenuTypes.AccountManagement => AsBase<AccountManagementSocialAccount, SocialAccountEntityBase>(
+                _context.AccountManagementSocialAccounts
+                    .Include(a => a.Platform).Include(a => a.Auth).Include(a => a.Profiles)
+                    .FirstOrDefaultAsync(a => a.Id == id, cancellationToken)),
+            MenuTypes.AccountHub => AsBase<AccountHubSocialAccount, SocialAccountEntityBase>(
+                _context.AccountHubSocialAccounts
+                    .Include(a => a.Platform).Include(a => a.Auth).Include(a => a.Profiles)
+                    .FirstOrDefaultAsync(a => a.Id == id, cancellationToken)),
             MenuTypes.SocialMediaAccount => AsBase<SocialMediaAccountSocialAccount, SocialAccountEntityBase>(
                 _context.SocialMediaAccountSocialAccounts
                     .Include(a => a.Platform).Include(a => a.Auth).Include(a => a.Profiles)
@@ -303,6 +383,12 @@ public sealed class ProcessDataStore : IProcessDataStore
             case MenuTypes.AccountConnection:
                 await _context.AccountConnectionSocialAccounts.AddAsync((AccountConnectionSocialAccount)account, cancellationToken);
                 break;
+            case MenuTypes.AccountManagement:
+                await _context.AccountManagementSocialAccounts.AddAsync((AccountManagementSocialAccount)account, cancellationToken);
+                break;
+            case MenuTypes.AccountHub:
+                await _context.AccountHubSocialAccounts.AddAsync((AccountHubSocialAccount)account, cancellationToken);
+                break;
             case MenuTypes.SocialMediaAccount:
                 await _context.SocialMediaAccountSocialAccounts.AddAsync((SocialMediaAccountSocialAccount)account, cancellationToken);
                 break;
@@ -324,6 +410,12 @@ public sealed class ProcessDataStore : IProcessDataStore
                 break;
             case MenuTypes.AccountConnection:
                 UpdateTracked(_context.AccountConnectionSocialAccounts, (AccountConnectionSocialAccount)account);
+                break;
+            case MenuTypes.AccountManagement:
+                UpdateTracked(_context.AccountManagementSocialAccounts, (AccountManagementSocialAccount)account);
+                break;
+            case MenuTypes.AccountHub:
+                UpdateTracked(_context.AccountHubSocialAccounts, (AccountHubSocialAccount)account);
                 break;
             case MenuTypes.SocialMediaAccount:
                 UpdateTracked(_context.SocialMediaAccountSocialAccounts, (SocialMediaAccountSocialAccount)account);
@@ -347,6 +439,12 @@ public sealed class ProcessDataStore : IProcessDataStore
             case MenuTypes.AccountConnection:
                 RemoveTracked(_context.AccountConnectionSocialAccounts, (AccountConnectionSocialAccount)account);
                 break;
+            case MenuTypes.AccountManagement:
+                RemoveTracked(_context.AccountManagementSocialAccounts, (AccountManagementSocialAccount)account);
+                break;
+            case MenuTypes.AccountHub:
+                RemoveTracked(_context.AccountHubSocialAccounts, (AccountHubSocialAccount)account);
+                break;
             case MenuTypes.SocialMediaAccount:
                 RemoveTracked(_context.SocialMediaAccountSocialAccounts, (SocialMediaAccountSocialAccount)account);
                 break;
@@ -367,6 +465,10 @@ public sealed class ProcessDataStore : IProcessDataStore
                 _context.DeveloperAppSocialAuths.FirstOrDefaultAsync(a => a.SocialAccountId == socialAccountId, cancellationToken)),
             MenuTypes.AccountConnection => AsBase<AccountConnectionSocialAuth, SocialAuthEntityBase>(
                 _context.AccountConnectionSocialAuths.FirstOrDefaultAsync(a => a.SocialAccountId == socialAccountId, cancellationToken)),
+            MenuTypes.AccountManagement => AsBase<AccountManagementSocialAuth, SocialAuthEntityBase>(
+                _context.AccountManagementSocialAuths.FirstOrDefaultAsync(a => a.SocialAccountId == socialAccountId, cancellationToken)),
+            MenuTypes.AccountHub => AsBase<AccountHubSocialAuth, SocialAuthEntityBase>(
+                _context.AccountHubSocialAuths.FirstOrDefaultAsync(a => a.SocialAccountId == socialAccountId, cancellationToken)),
             MenuTypes.SocialMediaAccount => AsBase<SocialMediaAccountSocialAuth, SocialAuthEntityBase>(
                 _context.SocialMediaAccountSocialAuths.FirstOrDefaultAsync(a => a.SocialAccountId == socialAccountId, cancellationToken)),
             _ => AsBase<IntegrationSocialAuth, SocialAuthEntityBase>(
@@ -385,6 +487,12 @@ public sealed class ProcessDataStore : IProcessDataStore
                 break;
             case MenuTypes.AccountConnection:
                 await _context.AccountConnectionSocialAuths.AddAsync((AccountConnectionSocialAuth)auth, cancellationToken);
+                break;
+            case MenuTypes.AccountManagement:
+                await _context.AccountManagementSocialAuths.AddAsync((AccountManagementSocialAuth)auth, cancellationToken);
+                break;
+            case MenuTypes.AccountHub:
+                await _context.AccountHubSocialAuths.AddAsync((AccountHubSocialAuth)auth, cancellationToken);
                 break;
             case MenuTypes.SocialMediaAccount:
                 await _context.SocialMediaAccountSocialAuths.AddAsync((SocialMediaAccountSocialAuth)auth, cancellationToken);
@@ -408,6 +516,12 @@ public sealed class ProcessDataStore : IProcessDataStore
             case MenuTypes.AccountConnection:
                 UpdateTracked(_context.AccountConnectionSocialAuths, (AccountConnectionSocialAuth)auth);
                 break;
+            case MenuTypes.AccountManagement:
+                UpdateTracked(_context.AccountManagementSocialAuths, (AccountManagementSocialAuth)auth);
+                break;
+            case MenuTypes.AccountHub:
+                UpdateTracked(_context.AccountHubSocialAuths, (AccountHubSocialAuth)auth);
+                break;
             case MenuTypes.SocialMediaAccount:
                 UpdateTracked(_context.SocialMediaAccountSocialAuths, (SocialMediaAccountSocialAuth)auth);
                 break;
@@ -428,6 +542,10 @@ public sealed class ProcessDataStore : IProcessDataStore
                 .Where(p => p.SocialAccountId == socialAccountId).ToListAsync(cancellationToken),
             MenuTypes.AccountConnection => await _context.AccountConnectionSocialProfiles.AsNoTracking()
                 .Where(p => p.SocialAccountId == socialAccountId).ToListAsync(cancellationToken),
+            MenuTypes.AccountManagement => await _context.AccountManagementSocialProfiles.AsNoTracking()
+                .Where(p => p.SocialAccountId == socialAccountId).ToListAsync(cancellationToken),
+            MenuTypes.AccountHub => await _context.AccountHubSocialProfiles.AsNoTracking()
+                .Where(p => p.SocialAccountId == socialAccountId).ToListAsync(cancellationToken),
             MenuTypes.SocialMediaAccount => await _context.SocialMediaAccountSocialProfiles.AsNoTracking()
                 .Where(p => p.SocialAccountId == socialAccountId).ToListAsync(cancellationToken),
             _ => await _context.IntegrationSocialProfiles.AsNoTracking()
@@ -443,6 +561,10 @@ public sealed class ProcessDataStore : IProcessDataStore
                 _context.DeveloperAppSocialProfiles.AsNoTracking().FirstOrDefaultAsync(p => p.Id == id, cancellationToken)),
             MenuTypes.AccountConnection => AsBase<AccountConnectionSocialProfile, SocialProfileEntityBase>(
                 _context.AccountConnectionSocialProfiles.AsNoTracking().FirstOrDefaultAsync(p => p.Id == id, cancellationToken)),
+            MenuTypes.AccountManagement => AsBase<AccountManagementSocialProfile, SocialProfileEntityBase>(
+                _context.AccountManagementSocialProfiles.AsNoTracking().FirstOrDefaultAsync(p => p.Id == id, cancellationToken)),
+            MenuTypes.AccountHub => AsBase<AccountHubSocialProfile, SocialProfileEntityBase>(
+                _context.AccountHubSocialProfiles.AsNoTracking().FirstOrDefaultAsync(p => p.Id == id, cancellationToken)),
             MenuTypes.SocialMediaAccount => AsBase<SocialMediaAccountSocialProfile, SocialProfileEntityBase>(
                 _context.SocialMediaAccountSocialProfiles.AsNoTracking().FirstOrDefaultAsync(p => p.Id == id, cancellationToken)),
             _ => AsBase<IntegrationSocialProfile, SocialProfileEntityBase>(
@@ -459,6 +581,10 @@ public sealed class ProcessDataStore : IProcessDataStore
                 ?? _context.DeveloperAppSocialProfiles.Find(id),
             MenuTypes.AccountConnection => _context.AccountConnectionSocialProfiles.Local.FirstOrDefault(p => p.Id == id)
                 ?? _context.AccountConnectionSocialProfiles.Find(id),
+            MenuTypes.AccountManagement => _context.AccountManagementSocialProfiles.Local.FirstOrDefault(p => p.Id == id)
+                ?? _context.AccountManagementSocialProfiles.Find(id),
+            MenuTypes.AccountHub => _context.AccountHubSocialProfiles.Local.FirstOrDefault(p => p.Id == id)
+                ?? _context.AccountHubSocialProfiles.Find(id),
             MenuTypes.SocialMediaAccount => _context.SocialMediaAccountSocialProfiles.Local.FirstOrDefault(p => p.Id == id)
                 ?? _context.SocialMediaAccountSocialProfiles.Find(id),
             _ => _context.IntegrationSocialProfiles.Local.FirstOrDefault(p => p.Id == id)
@@ -476,6 +602,8 @@ public sealed class ProcessDataStore : IProcessDataStore
             MenuTypes.AppConnection => QueryProfileByExternalIdAsync(_context.AppConnectionSocialProfiles, externalProfileId, cancellationToken),
             MenuTypes.DeveloperApp => QueryProfileByExternalIdAsync(_context.DeveloperAppSocialProfiles, externalProfileId, cancellationToken),
             MenuTypes.AccountConnection => QueryProfileByExternalIdAsync(_context.AccountConnectionSocialProfiles, externalProfileId, cancellationToken),
+            MenuTypes.AccountManagement => QueryProfileByExternalIdAsync(_context.AccountManagementSocialProfiles, externalProfileId, cancellationToken),
+            MenuTypes.AccountHub => QueryProfileByExternalIdAsync(_context.AccountHubSocialProfiles, externalProfileId, cancellationToken),
             MenuTypes.SocialMediaAccount => QueryProfileByExternalIdAsync(_context.SocialMediaAccountSocialProfiles, externalProfileId, cancellationToken),
             _ => QueryProfileByExternalIdAsync(_context.IntegrationSocialProfiles, externalProfileId, cancellationToken)
         };
@@ -492,6 +620,12 @@ public sealed class ProcessDataStore : IProcessDataStore
                 break;
             case MenuTypes.AccountConnection:
                 await _context.AccountConnectionSocialProfiles.AddAsync((AccountConnectionSocialProfile)profile, cancellationToken);
+                break;
+            case MenuTypes.AccountManagement:
+                await _context.AccountManagementSocialProfiles.AddAsync((AccountManagementSocialProfile)profile, cancellationToken);
+                break;
+            case MenuTypes.AccountHub:
+                await _context.AccountHubSocialProfiles.AddAsync((AccountHubSocialProfile)profile, cancellationToken);
                 break;
             case MenuTypes.SocialMediaAccount:
                 await _context.SocialMediaAccountSocialProfiles.AddAsync((SocialMediaAccountSocialProfile)profile, cancellationToken);
@@ -514,6 +648,12 @@ public sealed class ProcessDataStore : IProcessDataStore
                 break;
             case MenuTypes.AccountConnection:
                 UpdateTracked(_context.AccountConnectionSocialProfiles, (AccountConnectionSocialProfile)profile);
+                break;
+            case MenuTypes.AccountManagement:
+                UpdateTracked(_context.AccountManagementSocialProfiles, (AccountManagementSocialProfile)profile);
+                break;
+            case MenuTypes.AccountHub:
+                UpdateTracked(_context.AccountHubSocialProfiles, (AccountHubSocialProfile)profile);
                 break;
             case MenuTypes.SocialMediaAccount:
                 UpdateTracked(_context.SocialMediaAccountSocialProfiles, (SocialMediaAccountSocialProfile)profile);
@@ -540,6 +680,12 @@ public sealed class ProcessDataStore : IProcessDataStore
             case MenuTypes.AccountConnection:
                 RemoveTrackedById(_context.AccountConnectionSocialProfiles, profileId);
                 break;
+            case MenuTypes.AccountManagement:
+                RemoveTrackedById(_context.AccountManagementSocialProfiles, profileId);
+                break;
+            case MenuTypes.AccountHub:
+                RemoveTrackedById(_context.AccountHubSocialProfiles, profileId);
+                break;
             case MenuTypes.SocialMediaAccount:
                 RemoveTrackedById(_context.SocialMediaAccountSocialProfiles, profileId);
                 break;
@@ -559,6 +705,10 @@ public sealed class ProcessDataStore : IProcessDataStore
             MenuTypes.DeveloperApp => await _context.DeveloperAppSocialProfiles.AsNoTracking()
                 .Where(p => p.ExternalProfileId == externalProfileId).ToListAsync(cancellationToken),
             MenuTypes.AccountConnection => await _context.AccountConnectionSocialProfiles.AsNoTracking()
+                .Where(p => p.ExternalProfileId == externalProfileId).ToListAsync(cancellationToken),
+            MenuTypes.AccountManagement => await _context.AccountManagementSocialProfiles.AsNoTracking()
+                .Where(p => p.ExternalProfileId == externalProfileId).ToListAsync(cancellationToken),
+            MenuTypes.AccountHub => await _context.AccountHubSocialProfiles.AsNoTracking()
                 .Where(p => p.ExternalProfileId == externalProfileId).ToListAsync(cancellationToken),
             MenuTypes.SocialMediaAccount => await _context.SocialMediaAccountSocialProfiles.AsNoTracking()
                 .Where(p => p.ExternalProfileId == externalProfileId).ToListAsync(cancellationToken),
@@ -606,6 +756,28 @@ public sealed class ProcessDataStore : IProcessDataStore
                     query = query.Where(p => p.PlatformId == platformId.Value);
                 return await query.OrderByDescending(p => p.CreatedAt).ToListAsync(cancellationToken);
             }
+            case MenuTypes.AccountManagement:
+            {
+                var query = _context.AccountManagementPosts.AsNoTracking()
+                    .Include(p => p.SocialProfile!).ThenInclude(sp => sp.SocialAccount)
+                    .Include(p => p.Platform)
+                    .Include(p => p.MediaItems)
+                    .Where(p => p.SocialProfile!.SocialAccount!.UserId == userId);
+                if (platformId.HasValue)
+                    query = query.Where(p => p.PlatformId == platformId.Value);
+                return await query.OrderByDescending(p => p.CreatedAt).ToListAsync(cancellationToken);
+            }
+            case MenuTypes.AccountHub:
+            {
+                var query = _context.AccountHubPosts.AsNoTracking()
+                    .Include(p => p.SocialProfile!).ThenInclude(sp => sp.SocialAccount)
+                    .Include(p => p.Platform)
+                    .Include(p => p.MediaItems)
+                    .Where(p => p.SocialProfile!.SocialAccount!.UserId == userId);
+                if (platformId.HasValue)
+                    query = query.Where(p => p.PlatformId == platformId.Value);
+                return await query.OrderByDescending(p => p.CreatedAt).ToListAsync(cancellationToken);
+            }
             case MenuTypes.SocialMediaAccount:
             {
                 var query = _context.SocialMediaAccountPosts.AsNoTracking()
@@ -640,6 +812,10 @@ public sealed class ProcessDataStore : IProcessDataStore
                 _context.DeveloperAppPosts.AsNoTracking().FirstOrDefaultAsync(p => p.Id == id, cancellationToken)),
             MenuTypes.AccountConnection => AsBase<AccountConnectionPost, PostEntityBase>(
                 _context.AccountConnectionPosts.AsNoTracking().FirstOrDefaultAsync(p => p.Id == id, cancellationToken)),
+            MenuTypes.AccountManagement => AsBase<AccountManagementPost, PostEntityBase>(
+                _context.AccountManagementPosts.AsNoTracking().FirstOrDefaultAsync(p => p.Id == id, cancellationToken)),
+            MenuTypes.AccountHub => AsBase<AccountHubPost, PostEntityBase>(
+                _context.AccountHubPosts.AsNoTracking().FirstOrDefaultAsync(p => p.Id == id, cancellationToken)),
             MenuTypes.SocialMediaAccount => AsBase<SocialMediaAccountPost, PostEntityBase>(
                 _context.SocialMediaAccountPosts.AsNoTracking().FirstOrDefaultAsync(p => p.Id == id, cancellationToken)),
             _ => AsBase<IntegrationPost, PostEntityBase>(
@@ -662,6 +838,14 @@ public sealed class ProcessDataStore : IProcessDataStore
                     .FirstOrDefaultAsync(p => p.SocialProfileId == socialProfileId && p.ExternalPostId == externalPostId, cancellationToken)),
             MenuTypes.AccountConnection => AsBase<AccountConnectionPost, PostEntityBase>(
                 _context.AccountConnectionPosts.AsNoTracking()
+                    .Include(p => p.MediaItems)
+                    .FirstOrDefaultAsync(p => p.SocialProfileId == socialProfileId && p.ExternalPostId == externalPostId, cancellationToken)),
+            MenuTypes.AccountManagement => AsBase<AccountManagementPost, PostEntityBase>(
+                _context.AccountManagementPosts.AsNoTracking()
+                    .Include(p => p.MediaItems)
+                    .FirstOrDefaultAsync(p => p.SocialProfileId == socialProfileId && p.ExternalPostId == externalPostId, cancellationToken)),
+            MenuTypes.AccountHub => AsBase<AccountHubPost, PostEntityBase>(
+                _context.AccountHubPosts.AsNoTracking()
                     .Include(p => p.MediaItems)
                     .FirstOrDefaultAsync(p => p.SocialProfileId == socialProfileId && p.ExternalPostId == externalPostId, cancellationToken)),
             MenuTypes.SocialMediaAccount => AsBase<SocialMediaAccountPost, PostEntityBase>(
@@ -691,6 +875,14 @@ public sealed class ProcessDataStore : IProcessDataStore
                 _context.AccountConnectionPosts.AsNoTracking()
                     .Include(p => p.MediaItems)
                     .FirstOrDefaultAsync(p => p.ExternalPostId == externalPostId, cancellationToken)),
+            MenuTypes.AccountManagement => AsBase<AccountManagementPost, PostEntityBase>(
+                _context.AccountManagementPosts.AsNoTracking()
+                    .Include(p => p.MediaItems)
+                    .FirstOrDefaultAsync(p => p.ExternalPostId == externalPostId, cancellationToken)),
+            MenuTypes.AccountHub => AsBase<AccountHubPost, PostEntityBase>(
+                _context.AccountHubPosts.AsNoTracking()
+                    .Include(p => p.MediaItems)
+                    .FirstOrDefaultAsync(p => p.ExternalPostId == externalPostId, cancellationToken)),
             MenuTypes.SocialMediaAccount => AsBase<SocialMediaAccountPost, PostEntityBase>(
                 _context.SocialMediaAccountPosts.AsNoTracking()
                     .Include(p => p.MediaItems)
@@ -714,6 +906,12 @@ public sealed class ProcessDataStore : IProcessDataStore
             case MenuTypes.AccountConnection:
                 await _context.AccountConnectionPosts.AddAsync((AccountConnectionPost)post, cancellationToken);
                 break;
+            case MenuTypes.AccountManagement:
+                await _context.AccountManagementPosts.AddAsync((AccountManagementPost)post, cancellationToken);
+                break;
+            case MenuTypes.AccountHub:
+                await _context.AccountHubPosts.AddAsync((AccountHubPost)post, cancellationToken);
+                break;
             case MenuTypes.SocialMediaAccount:
                 await _context.SocialMediaAccountPosts.AddAsync((SocialMediaAccountPost)post, cancellationToken);
                 break;
@@ -735,6 +933,12 @@ public sealed class ProcessDataStore : IProcessDataStore
                 break;
             case MenuTypes.AccountConnection:
                 await _context.AccountConnectionMedia.AddAsync((AccountConnectionMedia)media, cancellationToken);
+                break;
+            case MenuTypes.AccountManagement:
+                await _context.AccountManagementMedia.AddAsync((AccountManagementMedia)media, cancellationToken);
+                break;
+            case MenuTypes.AccountHub:
+                await _context.AccountHubMedia.AddAsync((AccountHubMedia)media, cancellationToken);
                 break;
             case MenuTypes.SocialMediaAccount:
                 await _context.SocialMediaAccountMedia.AddAsync((SocialMediaAccountMedia)media, cancellationToken);
@@ -758,6 +962,12 @@ public sealed class ProcessDataStore : IProcessDataStore
             case MenuTypes.AccountConnection:
                 UpdateTracked(_context.AccountConnectionMedia, (AccountConnectionMedia)media);
                 break;
+            case MenuTypes.AccountManagement:
+                UpdateTracked(_context.AccountManagementMedia, (AccountManagementMedia)media);
+                break;
+            case MenuTypes.AccountHub:
+                UpdateTracked(_context.AccountHubMedia, (AccountHubMedia)media);
+                break;
             case MenuTypes.SocialMediaAccount:
                 UpdateTracked(_context.SocialMediaAccountMedia, (SocialMediaAccountMedia)media);
                 break;
@@ -779,6 +989,12 @@ public sealed class ProcessDataStore : IProcessDataStore
                 break;
             case MenuTypes.AccountConnection:
                 UpdateTracked(_context.AccountConnectionPosts, (AccountConnectionPost)post);
+                break;
+            case MenuTypes.AccountManagement:
+                UpdateTracked(_context.AccountManagementPosts, (AccountManagementPost)post);
+                break;
+            case MenuTypes.AccountHub:
+                UpdateTracked(_context.AccountHubPosts, (AccountHubPost)post);
                 break;
             case MenuTypes.SocialMediaAccount:
                 UpdateTracked(_context.SocialMediaAccountPosts, (SocialMediaAccountPost)post);
@@ -804,6 +1020,12 @@ public sealed class ProcessDataStore : IProcessDataStore
                 break;
             case MenuTypes.AccountConnection:
                 RemoveTrackedById(_context.AccountConnectionPosts, postId);
+                break;
+            case MenuTypes.AccountManagement:
+                RemoveTrackedById(_context.AccountManagementPosts, postId);
+                break;
+            case MenuTypes.AccountHub:
+                RemoveTrackedById(_context.AccountHubPosts, postId);
                 break;
             case MenuTypes.SocialMediaAccount:
                 RemoveTrackedById(_context.SocialMediaAccountPosts, postId);
@@ -855,6 +1077,28 @@ public sealed class ProcessDataStore : IProcessDataStore
                 var comments = await query.OrderByDescending(c => c.CreatedAt).ToListAsync(cancellationToken);
                 return MapInboxCommentRows(comments);
             }
+            case MenuTypes.AccountManagement:
+            {
+                var query = _context.AccountManagementComments.AsNoTracking()
+                    .Include(c => c.Post).ThenInclude(p => p!.SocialProfile).ThenInclude(sp => sp!.SocialAccount).ThenInclude(a => a!.Platform)
+                    .Include(c => c.Post).ThenInclude(p => p!.MediaItems)
+                    .Include(c => c.Replies)
+                    .Where(c => c.Post!.SocialProfile!.SocialAccount!.UserId == userId && !c.IsDeleted);
+                query = ApplyCommentPlatformFilter(query, platformId, platformIds);
+                var comments = await query.OrderByDescending(c => c.CreatedAt).ToListAsync(cancellationToken);
+                return MapInboxCommentRows(comments);
+            }
+            case MenuTypes.AccountHub:
+            {
+                var query = _context.AccountHubComments.AsNoTracking()
+                    .Include(c => c.Post).ThenInclude(p => p!.SocialProfile).ThenInclude(sp => sp!.SocialAccount).ThenInclude(a => a!.Platform)
+                    .Include(c => c.Post).ThenInclude(p => p!.MediaItems)
+                    .Include(c => c.Replies)
+                    .Where(c => c.Post!.SocialProfile!.SocialAccount!.UserId == userId && !c.IsDeleted);
+                query = ApplyCommentPlatformFilter(query, platformId, platformIds);
+                var comments = await query.OrderByDescending(c => c.CreatedAt).ToListAsync(cancellationToken);
+                return MapInboxCommentRows(comments);
+            }
             case MenuTypes.SocialMediaAccount:
             {
                 var query = _context.SocialMediaAccountComments.AsNoTracking()
@@ -889,6 +1133,10 @@ public sealed class ProcessDataStore : IProcessDataStore
                 _context.DeveloperAppComments.AsNoTracking().FirstOrDefaultAsync(c => c.Id == id, cancellationToken)),
             MenuTypes.AccountConnection => AsBase<AccountConnectionComment, CommentEntityBase>(
                 _context.AccountConnectionComments.AsNoTracking().FirstOrDefaultAsync(c => c.Id == id, cancellationToken)),
+            MenuTypes.AccountManagement => AsBase<AccountManagementComment, CommentEntityBase>(
+                _context.AccountManagementComments.AsNoTracking().FirstOrDefaultAsync(c => c.Id == id, cancellationToken)),
+            MenuTypes.AccountHub => AsBase<AccountHubComment, CommentEntityBase>(
+                _context.AccountHubComments.AsNoTracking().FirstOrDefaultAsync(c => c.Id == id, cancellationToken)),
             MenuTypes.SocialMediaAccount => AsBase<SocialMediaAccountComment, CommentEntityBase>(
                 _context.SocialMediaAccountComments.AsNoTracking().FirstOrDefaultAsync(c => c.Id == id, cancellationToken)),
             _ => AsBase<IntegrationComment, CommentEntityBase>(
@@ -908,6 +1156,12 @@ public sealed class ProcessDataStore : IProcessDataStore
                     .FirstOrDefaultAsync(c => c.ExternalCommentId == externalCommentId, cancellationToken)),
             MenuTypes.AccountConnection => AsBase<AccountConnectionComment, CommentEntityBase>(
                 _context.AccountConnectionComments.AsNoTracking()
+                    .FirstOrDefaultAsync(c => c.ExternalCommentId == externalCommentId, cancellationToken)),
+            MenuTypes.AccountManagement => AsBase<AccountManagementComment, CommentEntityBase>(
+                _context.AccountManagementComments.AsNoTracking()
+                    .FirstOrDefaultAsync(c => c.ExternalCommentId == externalCommentId, cancellationToken)),
+            MenuTypes.AccountHub => AsBase<AccountHubComment, CommentEntityBase>(
+                _context.AccountHubComments.AsNoTracking()
                     .FirstOrDefaultAsync(c => c.ExternalCommentId == externalCommentId, cancellationToken)),
             MenuTypes.SocialMediaAccount => AsBase<SocialMediaAccountComment, CommentEntityBase>(
                 _context.SocialMediaAccountComments.AsNoTracking()
@@ -930,6 +1184,12 @@ public sealed class ProcessDataStore : IProcessDataStore
             case MenuTypes.AccountConnection:
                 await _context.AccountConnectionComments.AddAsync((AccountConnectionComment)comment, cancellationToken);
                 break;
+            case MenuTypes.AccountManagement:
+                await _context.AccountManagementComments.AddAsync((AccountManagementComment)comment, cancellationToken);
+                break;
+            case MenuTypes.AccountHub:
+                await _context.AccountHubComments.AddAsync((AccountHubComment)comment, cancellationToken);
+                break;
             case MenuTypes.SocialMediaAccount:
                 await _context.SocialMediaAccountComments.AddAsync((SocialMediaAccountComment)comment, cancellationToken);
                 break;
@@ -951,6 +1211,12 @@ public sealed class ProcessDataStore : IProcessDataStore
                 break;
             case MenuTypes.AccountConnection:
                 UpdateTracked(_context.AccountConnectionComments, (AccountConnectionComment)comment);
+                break;
+            case MenuTypes.AccountManagement:
+                UpdateTracked(_context.AccountManagementComments, (AccountManagementComment)comment);
+                break;
+            case MenuTypes.AccountHub:
+                UpdateTracked(_context.AccountHubComments, (AccountHubComment)comment);
                 break;
             case MenuTypes.SocialMediaAccount:
                 UpdateTracked(_context.SocialMediaAccountComments, (SocialMediaAccountComment)comment);
@@ -996,6 +1262,24 @@ public sealed class ProcessDataStore : IProcessDataStore
                 var messages = await query.OrderByDescending(m => m.CreatedAt).ToListAsync(cancellationToken);
                 return MapInboxMessageRows(messages);
             }
+            case MenuTypes.AccountManagement:
+            {
+                var query = _context.AccountManagementMessages.AsNoTracking()
+                    .Include(m => m.Conversation).ThenInclude(c => c!.SocialProfile).ThenInclude(p => p!.SocialAccount).ThenInclude(a => a!.Platform)
+                    .Where(m => m.Conversation!.SocialProfile!.SocialAccount!.UserId == userId);
+                query = ApplyMessagePlatformFilter(query, platformId, platformIds);
+                var messages = await query.OrderByDescending(m => m.CreatedAt).ToListAsync(cancellationToken);
+                return MapInboxMessageRows(messages);
+            }
+            case MenuTypes.AccountHub:
+            {
+                var query = _context.AccountHubMessages.AsNoTracking()
+                    .Include(m => m.Conversation).ThenInclude(c => c!.SocialProfile).ThenInclude(p => p!.SocialAccount).ThenInclude(a => a!.Platform)
+                    .Where(m => m.Conversation!.SocialProfile!.SocialAccount!.UserId == userId);
+                query = ApplyMessagePlatformFilter(query, platformId, platformIds);
+                var messages = await query.OrderByDescending(m => m.CreatedAt).ToListAsync(cancellationToken);
+                return MapInboxMessageRows(messages);
+            }
             case MenuTypes.SocialMediaAccount:
             {
                 var query = _context.SocialMediaAccountMessages.AsNoTracking()
@@ -1026,6 +1310,10 @@ public sealed class ProcessDataStore : IProcessDataStore
                 _context.DeveloperAppConversations.AsNoTracking().FirstOrDefaultAsync(c => c.Id == id, cancellationToken)),
             MenuTypes.AccountConnection => AsBase<AccountConnectionConversation, ConversationEntityBase>(
                 _context.AccountConnectionConversations.AsNoTracking().FirstOrDefaultAsync(c => c.Id == id, cancellationToken)),
+            MenuTypes.AccountManagement => AsBase<AccountManagementConversation, ConversationEntityBase>(
+                _context.AccountManagementConversations.AsNoTracking().FirstOrDefaultAsync(c => c.Id == id, cancellationToken)),
+            MenuTypes.AccountHub => AsBase<AccountHubConversation, ConversationEntityBase>(
+                _context.AccountHubConversations.AsNoTracking().FirstOrDefaultAsync(c => c.Id == id, cancellationToken)),
             MenuTypes.SocialMediaAccount => AsBase<SocialMediaAccountConversation, ConversationEntityBase>(
                 _context.SocialMediaAccountConversations.AsNoTracking().FirstOrDefaultAsync(c => c.Id == id, cancellationToken)),
             _ => AsBase<IntegrationConversation, ConversationEntityBase>(
@@ -1046,6 +1334,12 @@ public sealed class ProcessDataStore : IProcessDataStore
                     c => c.SocialProfileId == socialProfileId && c.ExternalConversationId == externalConversationId, cancellationToken)),
             MenuTypes.AccountConnection => AsBase<AccountConnectionConversation, ConversationEntityBase>(
                 _context.AccountConnectionConversations.FirstOrDefaultAsync(
+                    c => c.SocialProfileId == socialProfileId && c.ExternalConversationId == externalConversationId, cancellationToken)),
+            MenuTypes.AccountManagement => AsBase<AccountManagementConversation, ConversationEntityBase>(
+                _context.AccountManagementConversations.FirstOrDefaultAsync(
+                    c => c.SocialProfileId == socialProfileId && c.ExternalConversationId == externalConversationId, cancellationToken)),
+            MenuTypes.AccountHub => AsBase<AccountHubConversation, ConversationEntityBase>(
+                _context.AccountHubConversations.FirstOrDefaultAsync(
                     c => c.SocialProfileId == socialProfileId && c.ExternalConversationId == externalConversationId, cancellationToken)),
             MenuTypes.SocialMediaAccount => AsBase<SocialMediaAccountConversation, ConversationEntityBase>(
                 _context.SocialMediaAccountConversations.FirstOrDefaultAsync(
@@ -1070,6 +1364,12 @@ public sealed class ProcessDataStore : IProcessDataStore
             MenuTypes.AccountConnection => AsBase<AccountConnectionConversation, ConversationEntityBase>(
                 _context.AccountConnectionConversations.FirstOrDefaultAsync(
                     c => c.SocialProfileId == socialProfileId && c.CustomerId == customerId, cancellationToken)),
+            MenuTypes.AccountManagement => AsBase<AccountManagementConversation, ConversationEntityBase>(
+                _context.AccountManagementConversations.FirstOrDefaultAsync(
+                    c => c.SocialProfileId == socialProfileId && c.CustomerId == customerId, cancellationToken)),
+            MenuTypes.AccountHub => AsBase<AccountHubConversation, ConversationEntityBase>(
+                _context.AccountHubConversations.FirstOrDefaultAsync(
+                    c => c.SocialProfileId == socialProfileId && c.CustomerId == customerId, cancellationToken)),
             MenuTypes.SocialMediaAccount => AsBase<SocialMediaAccountConversation, ConversationEntityBase>(
                 _context.SocialMediaAccountConversations.FirstOrDefaultAsync(
                     c => c.SocialProfileId == socialProfileId && c.CustomerId == customerId, cancellationToken)),
@@ -1089,6 +1389,10 @@ public sealed class ProcessDataStore : IProcessDataStore
                 .Where(c => c.SocialProfileId == profileId).ToListAsync(cancellationToken),
             MenuTypes.AccountConnection => await _context.AccountConnectionConversations.AsNoTracking()
                 .Where(c => c.SocialProfileId == profileId).ToListAsync(cancellationToken),
+            MenuTypes.AccountManagement => await _context.AccountManagementConversations.AsNoTracking()
+                .Where(c => c.SocialProfileId == profileId).ToListAsync(cancellationToken),
+            MenuTypes.AccountHub => await _context.AccountHubConversations.AsNoTracking()
+                .Where(c => c.SocialProfileId == profileId).ToListAsync(cancellationToken),
             MenuTypes.SocialMediaAccount => await _context.SocialMediaAccountConversations.AsNoTracking()
                 .Where(c => c.SocialProfileId == profileId).ToListAsync(cancellationToken),
             _ => await _context.IntegrationConversations.AsNoTracking()
@@ -1107,6 +1411,12 @@ public sealed class ProcessDataStore : IProcessDataStore
                 break;
             case MenuTypes.AccountConnection:
                 await _context.AccountConnectionConversations.AddAsync((AccountConnectionConversation)conversation, cancellationToken);
+                break;
+            case MenuTypes.AccountManagement:
+                await _context.AccountManagementConversations.AddAsync((AccountManagementConversation)conversation, cancellationToken);
+                break;
+            case MenuTypes.AccountHub:
+                await _context.AccountHubConversations.AddAsync((AccountHubConversation)conversation, cancellationToken);
                 break;
             case MenuTypes.SocialMediaAccount:
                 await _context.SocialMediaAccountConversations.AddAsync((SocialMediaAccountConversation)conversation, cancellationToken);
@@ -1130,6 +1440,12 @@ public sealed class ProcessDataStore : IProcessDataStore
             case MenuTypes.AccountConnection:
                 UpdateTracked(_context.AccountConnectionConversations, (AccountConnectionConversation)conversation);
                 break;
+            case MenuTypes.AccountManagement:
+                UpdateTracked(_context.AccountManagementConversations, (AccountManagementConversation)conversation);
+                break;
+            case MenuTypes.AccountHub:
+                UpdateTracked(_context.AccountHubConversations, (AccountHubConversation)conversation);
+                break;
             case MenuTypes.SocialMediaAccount:
                 UpdateTracked(_context.SocialMediaAccountConversations, (SocialMediaAccountConversation)conversation);
                 break;
@@ -1148,6 +1464,10 @@ public sealed class ProcessDataStore : IProcessDataStore
                 _context.DeveloperAppMessages.AsNoTracking().FirstOrDefaultAsync(m => m.Id == id, cancellationToken)),
             MenuTypes.AccountConnection => AsBase<AccountConnectionMessage, MessageEntityBase>(
                 _context.AccountConnectionMessages.AsNoTracking().FirstOrDefaultAsync(m => m.Id == id, cancellationToken)),
+            MenuTypes.AccountManagement => AsBase<AccountManagementMessage, MessageEntityBase>(
+                _context.AccountManagementMessages.AsNoTracking().FirstOrDefaultAsync(m => m.Id == id, cancellationToken)),
+            MenuTypes.AccountHub => AsBase<AccountHubMessage, MessageEntityBase>(
+                _context.AccountHubMessages.AsNoTracking().FirstOrDefaultAsync(m => m.Id == id, cancellationToken)),
             MenuTypes.SocialMediaAccount => AsBase<SocialMediaAccountMessage, MessageEntityBase>(
                 _context.SocialMediaAccountMessages.AsNoTracking().FirstOrDefaultAsync(m => m.Id == id, cancellationToken)),
             _ => AsBase<IntegrationMessage, MessageEntityBase>(
@@ -1165,6 +1485,10 @@ public sealed class ProcessDataStore : IProcessDataStore
                 _context.DeveloperAppMessages.FirstOrDefaultAsync(m => m.ExternalMessageId == externalMessageId, cancellationToken)),
             MenuTypes.AccountConnection => AsBase<AccountConnectionMessage, MessageEntityBase>(
                 _context.AccountConnectionMessages.FirstOrDefaultAsync(m => m.ExternalMessageId == externalMessageId, cancellationToken)),
+            MenuTypes.AccountManagement => AsBase<AccountManagementMessage, MessageEntityBase>(
+                _context.AccountManagementMessages.FirstOrDefaultAsync(m => m.ExternalMessageId == externalMessageId, cancellationToken)),
+            MenuTypes.AccountHub => AsBase<AccountHubMessage, MessageEntityBase>(
+                _context.AccountHubMessages.FirstOrDefaultAsync(m => m.ExternalMessageId == externalMessageId, cancellationToken)),
             MenuTypes.SocialMediaAccount => AsBase<SocialMediaAccountMessage, MessageEntityBase>(
                 _context.SocialMediaAccountMessages.FirstOrDefaultAsync(m => m.ExternalMessageId == externalMessageId, cancellationToken)),
             _ => AsBase<IntegrationMessage, MessageEntityBase>(
@@ -1183,6 +1507,12 @@ public sealed class ProcessDataStore : IProcessDataStore
                 break;
             case MenuTypes.AccountConnection:
                 await _context.AccountConnectionMessages.AddAsync((AccountConnectionMessage)message, cancellationToken);
+                break;
+            case MenuTypes.AccountManagement:
+                await _context.AccountManagementMessages.AddAsync((AccountManagementMessage)message, cancellationToken);
+                break;
+            case MenuTypes.AccountHub:
+                await _context.AccountHubMessages.AddAsync((AccountHubMessage)message, cancellationToken);
                 break;
             case MenuTypes.SocialMediaAccount:
                 await _context.SocialMediaAccountMessages.AddAsync((SocialMediaAccountMessage)message, cancellationToken);
@@ -1206,6 +1536,12 @@ public sealed class ProcessDataStore : IProcessDataStore
             case MenuTypes.AccountConnection:
                 UpdateTracked(_context.AccountConnectionMessages, (AccountConnectionMessage)message);
                 break;
+            case MenuTypes.AccountManagement:
+                UpdateTracked(_context.AccountManagementMessages, (AccountManagementMessage)message);
+                break;
+            case MenuTypes.AccountHub:
+                UpdateTracked(_context.AccountHubMessages, (AccountHubMessage)message);
+                break;
             case MenuTypes.SocialMediaAccount:
                 UpdateTracked(_context.SocialMediaAccountMessages, (SocialMediaAccountMessage)message);
                 break;
@@ -1227,6 +1563,12 @@ public sealed class ProcessDataStore : IProcessDataStore
                 break;
             case MenuTypes.AccountConnection:
                 RemoveTracked(_context.AccountConnectionMessages, (AccountConnectionMessage)message);
+                break;
+            case MenuTypes.AccountManagement:
+                RemoveTracked(_context.AccountManagementMessages, (AccountManagementMessage)message);
+                break;
+            case MenuTypes.AccountHub:
+                RemoveTracked(_context.AccountHubMessages, (AccountHubMessage)message);
                 break;
             case MenuTypes.SocialMediaAccount:
                 RemoveTracked(_context.SocialMediaAccountMessages, (SocialMediaAccountMessage)message);
@@ -1250,6 +1592,12 @@ public sealed class ProcessDataStore : IProcessDataStore
             case MenuTypes.AccountConnection:
                 await _context.AccountConnectionWebhookEvents.AddAsync((AccountConnectionWebhookEvent)webhookEvent, cancellationToken);
                 break;
+            case MenuTypes.AccountManagement:
+                await _context.AccountManagementWebhookEvents.AddAsync((AccountManagementWebhookEvent)webhookEvent, cancellationToken);
+                break;
+            case MenuTypes.AccountHub:
+                await _context.AccountHubWebhookEvents.AddAsync((AccountHubWebhookEvent)webhookEvent, cancellationToken);
+                break;
             case MenuTypes.SocialMediaAccount:
                 await _context.SocialMediaAccountWebhookEvents.AddAsync((SocialMediaAccountWebhookEvent)webhookEvent, cancellationToken);
                 break;
@@ -1272,6 +1620,12 @@ public sealed class ProcessDataStore : IProcessDataStore
             case MenuTypes.AccountConnection:
                 UpdateTracked(_context.AccountConnectionWebhookEvents, (AccountConnectionWebhookEvent)webhookEvent);
                 break;
+            case MenuTypes.AccountManagement:
+                UpdateTracked(_context.AccountManagementWebhookEvents, (AccountManagementWebhookEvent)webhookEvent);
+                break;
+            case MenuTypes.AccountHub:
+                UpdateTracked(_context.AccountHubWebhookEvents, (AccountHubWebhookEvent)webhookEvent);
+                break;
             case MenuTypes.SocialMediaAccount:
                 UpdateTracked(_context.SocialMediaAccountWebhookEvents, (SocialMediaAccountWebhookEvent)webhookEvent);
                 break;
@@ -1289,6 +1643,10 @@ public sealed class ProcessDataStore : IProcessDataStore
             MenuTypes.DeveloperApp => await _context.DeveloperAppWebhookEvents
                 .FirstOrDefaultAsync(e => e.Id == id, cancellationToken),
             MenuTypes.AccountConnection => await _context.AccountConnectionWebhookEvents
+                .FirstOrDefaultAsync(e => e.Id == id, cancellationToken),
+            MenuTypes.AccountManagement => await _context.AccountManagementWebhookEvents
+                .FirstOrDefaultAsync(e => e.Id == id, cancellationToken),
+            MenuTypes.AccountHub => await _context.AccountHubWebhookEvents
                 .FirstOrDefaultAsync(e => e.Id == id, cancellationToken),
             MenuTypes.SocialMediaAccount => await _context.SocialMediaAccountWebhookEvents
                 .FirstOrDefaultAsync(e => e.Id == id, cancellationToken),
@@ -1325,6 +1683,20 @@ public sealed class ProcessDataStore : IProcessDataStore
                     query = query.Where(e => e.ReceivedAt >= sinceUtc.Value);
                 return await query.OrderByDescending(e => e.ReceivedAt).Take(take).ToListAsync(cancellationToken);
             }
+            case MenuTypes.AccountManagement:
+            {
+                var query = _context.AccountManagementWebhookEvents.AsQueryable();
+                if (sinceUtc.HasValue)
+                    query = query.Where(e => e.ReceivedAt >= sinceUtc.Value);
+                return await query.OrderByDescending(e => e.ReceivedAt).Take(take).ToListAsync(cancellationToken);
+            }
+            case MenuTypes.AccountHub:
+            {
+                var query = _context.AccountHubWebhookEvents.AsQueryable();
+                if (sinceUtc.HasValue)
+                    query = query.Where(e => e.ReceivedAt >= sinceUtc.Value);
+                return await query.OrderByDescending(e => e.ReceivedAt).Take(take).ToListAsync(cancellationToken);
+            }
             case MenuTypes.SocialMediaAccount:
             {
                 var query = _context.SocialMediaAccountWebhookEvents.AsQueryable();
@@ -1355,6 +1727,12 @@ public sealed class ProcessDataStore : IProcessDataStore
             case MenuTypes.AccountConnection:
                 await _context.AccountConnectionWebhookLogs.AddAsync((AccountConnectionWebhookLog)webhookLog, cancellationToken);
                 break;
+            case MenuTypes.AccountManagement:
+                await _context.AccountManagementWebhookLogs.AddAsync((AccountManagementWebhookLog)webhookLog, cancellationToken);
+                break;
+            case MenuTypes.AccountHub:
+                await _context.AccountHubWebhookLogs.AddAsync((AccountHubWebhookLog)webhookLog, cancellationToken);
+                break;
             case MenuTypes.SocialMediaAccount:
                 await _context.SocialMediaAccountWebhookLogs.AddAsync((SocialMediaAccountWebhookLog)webhookLog, cancellationToken);
                 break;
@@ -1376,6 +1754,12 @@ public sealed class ProcessDataStore : IProcessDataStore
                 break;
             case MenuTypes.AccountConnection:
                 await _context.AccountConnectionSyncJobs.AddAsync((AccountConnectionSyncJob)syncJob, cancellationToken);
+                break;
+            case MenuTypes.AccountManagement:
+                await _context.AccountManagementSyncJobs.AddAsync((AccountManagementSyncJob)syncJob, cancellationToken);
+                break;
+            case MenuTypes.AccountHub:
+                await _context.AccountHubSyncJobs.AddAsync((AccountHubSyncJob)syncJob, cancellationToken);
                 break;
             case MenuTypes.SocialMediaAccount:
                 await _context.SocialMediaAccountSyncJobs.AddAsync((SocialMediaAccountSyncJob)syncJob, cancellationToken);
@@ -1437,6 +1821,30 @@ public sealed class ProcessDataStore : IProcessDataStore
             .ToListAsync(cancellationToken);
         return PickBestProfile(profiles);
     }
+
+    private static async Task<SocialProfileEntityBase?> QueryProfileByExternalIdAsync(
+        IQueryable<AccountManagementSocialProfile> query,
+        string externalProfileId,
+        CancellationToken cancellationToken)
+    {
+        var profiles = await query
+            .Include(p => p.SocialAccount).ThenInclude(a => a!.Auth)
+            .Where(p => p.ExternalProfileId == externalProfileId)
+            .ToListAsync(cancellationToken);
+        return PickBestProfile(profiles);
+    }
+
+    private static async Task<SocialProfileEntityBase?> QueryProfileByExternalIdAsync(
+        IQueryable<AccountHubSocialProfile> query,
+        string externalProfileId,
+        CancellationToken cancellationToken)
+    {
+        var profiles = await query
+            .Include(p => p.SocialAccount).ThenInclude(a => a!.Auth)
+            .Where(p => p.ExternalProfileId == externalProfileId)
+            .ToListAsync(cancellationToken);
+        return PickBestProfile(profiles);
+    }
     private static async Task<SocialProfileEntityBase?> QueryProfileByExternalIdAsync(
         IQueryable<SocialMediaAccountSocialProfile> query,
         string externalProfileId,
@@ -1475,6 +1883,18 @@ public sealed class ProcessDataStore : IProcessDataStore
             .ThenByDescending(p => p.UpdatedAt ?? p.CreatedAt)
             .FirstOrDefault();
     private static SocialProfileEntityBase? PickBestProfile(IEnumerable<AccountConnectionSocialProfile> profiles)
+        => profiles
+            .OrderByDescending(p => p.SocialAccount?.Status == SocialAccountStatus.Connected ? 1 : 0)
+            .ThenByDescending(p => HasStoredOAuthTokens(p.SocialAccount?.Auth) ? 1 : 0)
+            .ThenByDescending(p => p.UpdatedAt ?? p.CreatedAt)
+            .FirstOrDefault();
+    private static SocialProfileEntityBase? PickBestProfile(IEnumerable<AccountManagementSocialProfile> profiles)
+        => profiles
+            .OrderByDescending(p => p.SocialAccount?.Status == SocialAccountStatus.Connected ? 1 : 0)
+            .ThenByDescending(p => HasStoredOAuthTokens(p.SocialAccount?.Auth) ? 1 : 0)
+            .ThenByDescending(p => p.UpdatedAt ?? p.CreatedAt)
+            .FirstOrDefault();
+    private static SocialProfileEntityBase? PickBestProfile(IEnumerable<AccountHubSocialProfile> profiles)
         => profiles
             .OrderByDescending(p => p.SocialAccount?.Status == SocialAccountStatus.Connected ? 1 : 0)
             .ThenByDescending(p => HasStoredOAuthTokens(p.SocialAccount?.Auth) ? 1 : 0)
@@ -1544,6 +1964,28 @@ public sealed class ProcessDataStore : IProcessDataStore
             return query.Where(c => platformIds.Contains(c.Post!.PlatformId));
         return query;
     }
+    private static IQueryable<AccountManagementComment> ApplyCommentPlatformFilter(
+        IQueryable<AccountManagementComment> query,
+        Guid? platformId,
+        IReadOnlyList<Guid>? platformIds)
+    {
+        if (platformId.HasValue)
+            return query.Where(c => c.Post!.PlatformId == platformId.Value);
+        if (platformIds is { Count: > 0 })
+            return query.Where(c => platformIds.Contains(c.Post!.PlatformId));
+        return query;
+    }
+    private static IQueryable<AccountHubComment> ApplyCommentPlatformFilter(
+        IQueryable<AccountHubComment> query,
+        Guid? platformId,
+        IReadOnlyList<Guid>? platformIds)
+    {
+        if (platformId.HasValue)
+            return query.Where(c => c.Post!.PlatformId == platformId.Value);
+        if (platformIds is { Count: > 0 })
+            return query.Where(c => platformIds.Contains(c.Post!.PlatformId));
+        return query;
+    }
     private static IQueryable<SocialMediaAccountComment> ApplyCommentPlatformFilter(
         IQueryable<SocialMediaAccountComment> query,
         Guid? platformId,
@@ -1593,6 +2035,28 @@ public sealed class ProcessDataStore : IProcessDataStore
     }
     private static IQueryable<AccountConnectionMessage> ApplyMessagePlatformFilter(
         IQueryable<AccountConnectionMessage> query,
+        Guid? platformId,
+        IReadOnlyList<Guid>? platformIds)
+    {
+        if (platformId.HasValue)
+            return query.Where(m => m.Conversation!.SocialProfile!.SocialAccount!.PlatformId == platformId.Value);
+        if (platformIds is { Count: > 0 })
+            return query.Where(m => platformIds.Contains(m.Conversation!.SocialProfile!.SocialAccount!.PlatformId));
+        return query;
+    }
+    private static IQueryable<AccountManagementMessage> ApplyMessagePlatformFilter(
+        IQueryable<AccountManagementMessage> query,
+        Guid? platformId,
+        IReadOnlyList<Guid>? platformIds)
+    {
+        if (platformId.HasValue)
+            return query.Where(m => m.Conversation!.SocialProfile!.SocialAccount!.PlatformId == platformId.Value);
+        if (platformIds is { Count: > 0 })
+            return query.Where(m => platformIds.Contains(m.Conversation!.SocialProfile!.SocialAccount!.PlatformId));
+        return query;
+    }
+    private static IQueryable<AccountHubMessage> ApplyMessagePlatformFilter(
+        IQueryable<AccountHubMessage> query,
         Guid? platformId,
         IReadOnlyList<Guid>? platformIds)
     {
@@ -1652,6 +2116,24 @@ public sealed class ProcessDataStore : IProcessDataStore
             c.Post!.SocialProfile!.SocialAccount!.Platform!,
             c.Replies.Count,
             ProcessEntityNav.FirstMediaUrl(c.Post!))).ToList();
+    private static IReadOnlyList<InboxCommentRow> MapInboxCommentRows(IEnumerable<AccountManagementComment> comments)
+        => comments.Select(c => new InboxCommentRow(
+            c,
+            c.Post!,
+            c.Post!.SocialProfile!,
+            c.Post!.SocialProfile!.SocialAccount!,
+            c.Post!.SocialProfile!.SocialAccount!.Platform!,
+            c.Replies.Count,
+            ProcessEntityNav.FirstMediaUrl(c.Post!))).ToList();
+    private static IReadOnlyList<InboxCommentRow> MapInboxCommentRows(IEnumerable<AccountHubComment> comments)
+        => comments.Select(c => new InboxCommentRow(
+            c,
+            c.Post!,
+            c.Post!.SocialProfile!,
+            c.Post!.SocialProfile!.SocialAccount!,
+            c.Post!.SocialProfile!.SocialAccount!.Platform!,
+            c.Replies.Count,
+            ProcessEntityNav.FirstMediaUrl(c.Post!))).ToList();
     private static IReadOnlyList<InboxCommentRow> MapInboxCommentRows(IEnumerable<SocialMediaAccountComment> comments)
         => comments.Select(c => new InboxCommentRow(
             c,
@@ -1692,6 +2174,20 @@ public sealed class ProcessDataStore : IProcessDataStore
             m.Conversation!.SocialProfile!,
             m.Conversation!.SocialProfile!.SocialAccount!,
             m.Conversation!.SocialProfile!.SocialAccount!.Platform!)).ToList();
+    private static IReadOnlyList<InboxMessageRow> MapInboxMessageRows(IEnumerable<AccountManagementMessage> messages)
+        => messages.Select(m => new InboxMessageRow(
+            m,
+            m.Conversation!,
+            m.Conversation!.SocialProfile!,
+            m.Conversation!.SocialProfile!.SocialAccount!,
+            m.Conversation!.SocialProfile!.SocialAccount!.Platform!)).ToList();
+    private static IReadOnlyList<InboxMessageRow> MapInboxMessageRows(IEnumerable<AccountHubMessage> messages)
+        => messages.Select(m => new InboxMessageRow(
+            m,
+            m.Conversation!,
+            m.Conversation!.SocialProfile!,
+            m.Conversation!.SocialProfile!.SocialAccount!,
+            m.Conversation!.SocialProfile!.SocialAccount!.Platform!)).ToList();
     private static IReadOnlyList<InboxMessageRow> MapInboxMessageRows(IEnumerable<SocialMediaAccountMessage> messages)
         => messages.Select(m => new InboxMessageRow(
             m,
@@ -1712,6 +2208,12 @@ public sealed class ProcessDataStore : IProcessDataStore
                 .Where(a => a.Status == SocialAccountStatus.Connected)
                 .ToListAsync(cancellationToken),
             MenuTypes.AccountConnection => (IReadOnlyList<SocialAccountEntityBase>)await _context.AccountConnectionSocialAccounts.AsNoTracking()
+                .Where(a => a.Status == SocialAccountStatus.Connected)
+                .ToListAsync(cancellationToken),
+            MenuTypes.AccountManagement => (IReadOnlyList<SocialAccountEntityBase>)await _context.AccountManagementSocialAccounts.AsNoTracking()
+                .Where(a => a.Status == SocialAccountStatus.Connected)
+                .ToListAsync(cancellationToken),
+            MenuTypes.AccountHub => (IReadOnlyList<SocialAccountEntityBase>)await _context.AccountHubSocialAccounts.AsNoTracking()
                 .Where(a => a.Status == SocialAccountStatus.Connected)
                 .ToListAsync(cancellationToken),
             MenuTypes.SocialMediaAccount => (IReadOnlyList<SocialAccountEntityBase>)await _context.SocialMediaAccountSocialAccounts.AsNoTracking()
@@ -1802,6 +2304,8 @@ public sealed class ProcessDataStoreFactory : IProcessDataStoreFactory
             new ProcessDataStore(_context, MenuTypes.AppConnection),
             new ProcessDataStore(_context, MenuTypes.DeveloperApp),
             new ProcessDataStore(_context, MenuTypes.SocialMediaAccount),
-            new ProcessDataStore(_context, MenuTypes.AccountConnection)
+            new ProcessDataStore(_context, MenuTypes.AccountConnection),
+            new ProcessDataStore(_context, MenuTypes.AccountManagement),
+            new ProcessDataStore(_context, MenuTypes.AccountHub)
         ];
 }

@@ -10,7 +10,9 @@ export const MENU_TYPES = {
   appConnection: 'app_connection',
   developerApp: 'developer_app',
   socialMediaAccount: 'social_media_account',
-  accountConnection: 'account_connection'
+  accountConnection: 'account_connection',
+  accountManagement: 'account_management',
+  accountHub: 'account_hub'
 } as const;
 
 export type MenuType = (typeof MENU_TYPES)[keyof typeof MENU_TYPES];

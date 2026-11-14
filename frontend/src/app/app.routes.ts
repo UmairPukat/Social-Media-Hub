@@ -165,6 +165,26 @@ export const routes: Routes = [
           ...createMetaAdsRoutes()
         ]
       },
+      {
+        path: 'account-management',
+        data: { processMenu: PROCESS_MODULES.accountManagement.id },
+        children: [
+          ...processChildren(() =>
+            import('./features/account-management/account-management.component').then(m => m.AccountManagementComponent)
+          ),
+          ...createMetaAdsRoutes()
+        ]
+      },
+      {
+        path: 'account-hub',
+        data: { processMenu: PROCESS_MODULES.accountHub.id },
+        children: [
+          ...processChildren(() =>
+            import('./features/account-hub/account-hub.component').then(m => m.AccountHubComponent)
+          ),
+          ...createMetaAdsRoutes()
+        ]
+      },
       // Legacy redirects
       { path: 'integrations-legacy', redirectTo: 'integrations/connect', pathMatch: 'full' },
       { path: 'create-post', redirectTo: 'integrations/create-post', pathMatch: 'full' },

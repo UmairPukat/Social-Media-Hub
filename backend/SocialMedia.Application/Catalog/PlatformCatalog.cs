@@ -225,6 +225,18 @@ public static class PlatformCatalog
             bytes[1] ^= 0x21;
             return new Guid(bytes);
         }
+        if (string.Equals(normalized, MenuTypes.AccountManagement, StringComparison.OrdinalIgnoreCase))
+        {
+            bytes[0] ^= 0xA1;
+            bytes[1] ^= 0x31;
+            return new Guid(bytes);
+        }
+        if (string.Equals(normalized, MenuTypes.AccountHub, StringComparison.OrdinalIgnoreCase))
+        {
+            bytes[0] ^= 0xB7;
+            bytes[1] ^= 0x42;
+            return new Guid(bytes);
+        }
 
         return integrationId;
     }

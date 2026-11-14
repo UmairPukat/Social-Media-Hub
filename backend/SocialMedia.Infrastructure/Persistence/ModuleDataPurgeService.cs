@@ -3,6 +3,8 @@ using SocialMedia.Application.Catalog;
 using SocialMedia.Application.DTOs.Common;
 using SocialMedia.Application.Interfaces;
 using SocialMedia.Domain.Modules.AccountConnections.Entities;
+using SocialMedia.Domain.Modules.AccountManagement.Entities;
+using SocialMedia.Domain.Modules.AccountHub.Entities;
 using SocialMedia.Domain.Modules.AppConnections.Entities;
 using SocialMedia.Domain.Modules.Common.Entities;
 using SocialMedia.Domain.Modules.DeveloperApps.Entities;
@@ -92,6 +94,16 @@ public class ModuleDataPurgeService : IModuleDataPurgeService
                 AccountConnectionComment, AccountConnectionMedia, AccountConnectionPost, AccountConnectionSyncJob,
                 AccountConnectionWebhookLog, AccountConnectionWebhookEvent,
                 AccountConnectionSocialAuth, AccountConnectionSocialProfile, AccountConnectionSocialAccount>(cancellationToken),
+            MenuTypes.AccountManagement => await PurgeAsync<
+                AccountManagementMessageAttachment, AccountManagementMessage, AccountManagementConversation,
+                AccountManagementComment, AccountManagementMedia, AccountManagementPost, AccountManagementSyncJob,
+                AccountManagementWebhookLog, AccountManagementWebhookEvent,
+                AccountManagementSocialAuth, AccountManagementSocialProfile, AccountManagementSocialAccount>(cancellationToken),
+            MenuTypes.AccountHub => await PurgeAsync<
+                AccountHubMessageAttachment, AccountHubMessage, AccountHubConversation,
+                AccountHubComment, AccountHubMedia, AccountHubPost, AccountHubSyncJob,
+                AccountHubWebhookLog, AccountHubWebhookEvent,
+                AccountHubSocialAuth, AccountHubSocialProfile, AccountHubSocialAccount>(cancellationToken),
             _ => await PurgeAsync<
                 IntegrationMessageAttachment, IntegrationMessage, IntegrationConversation,
                 IntegrationComment, IntegrationMedia, IntegrationPost, IntegrationSyncJob,
@@ -144,6 +156,8 @@ public class ModuleDataPurgeService : IModuleDataPurgeService
         MenuTypes.DeveloperApp => ProcessModules.DeveloperApps.Label,
         MenuTypes.SocialMediaAccount => ProcessModules.SocialMediaAccounts.Label,
         MenuTypes.AccountConnection => ProcessModules.AccountConnections.Label,
+        MenuTypes.AccountManagement => ProcessModules.AccountManagement.Label,
+        MenuTypes.AccountHub => ProcessModules.AccountHub.Label,
         _ => ProcessModules.Integrations.Label
     };
 }

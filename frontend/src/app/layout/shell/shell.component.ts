@@ -67,7 +67,11 @@ export class ShellComponent {
     social_media_account: false,
     social_media_account_meta_ads: false,
     account_connection: false,
-    account_connection_meta_ads: false
+    account_connection_meta_ads: false,
+    account_management: false,
+    account_management_meta_ads: false,
+    account_hub: false,
+    account_hub_meta_ads: false
   });
 
   constructor() {

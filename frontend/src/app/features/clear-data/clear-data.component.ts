@@ -37,7 +37,7 @@ export class ClearDataComponent {
 
   clearAll(): void {
     const confirmed = window.confirm(
-      'Permanently delete posts, comments, messages, attachments, connected accounts, and related records for all 5 modules? This cannot be undone.'
+      'Permanently delete posts, comments, messages, attachments, connected accounts, and related records for every module? This cannot be undone.'
     );
     if (!confirmed) return;
     this.purge('all');

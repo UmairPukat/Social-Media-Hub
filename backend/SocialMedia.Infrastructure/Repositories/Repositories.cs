@@ -8,6 +8,8 @@ using SocialMedia.Domain.Interfaces;
 using SocialMedia.Infrastructure.Persistence;
 using SocialMedia.Domain.Modules.SocialMediaAccounts.Entities;
 using SocialMedia.Domain.Modules.AccountConnections.Entities;
+using SocialMedia.Domain.Modules.AccountManagement.Entities;
+using SocialMedia.Domain.Modules.AccountHub.Entities;
 
 namespace SocialMedia.Infrastructure.Repositories;
 
@@ -186,7 +188,9 @@ public class UnitOfWork : IUnitOfWork
         IIntegrationAppConfigRepository integrationAppConfigs,
         IDeveloperAppConfigRepository developerAppConfigs,
         ISocialMediaAccountConfigRepository socialMediaAccountConfigs,
-        IAccountConnectionConfigRepository accountConnectionConfigs)
+        IAccountConnectionConfigRepository accountConnectionConfigs,
+        IAccountManagementConfigRepository accountManagementConfigs,
+        IAccountHubConfigRepository accountHubConfigs)
     {
         _context = context;
         Users = users;
@@ -196,6 +200,8 @@ public class UnitOfWork : IUnitOfWork
         DeveloperAppConfigs = developerAppConfigs;
         SocialMediaAccountConfigs = socialMediaAccountConfigs;
         AccountConnectionConfigs = accountConnectionConfigs;
+        AccountManagementConfigs = accountManagementConfigs;
+        AccountHubConfigs = accountHubConfigs;
     }
 
     public IUserRepository Users { get; }
@@ -205,6 +211,8 @@ public class UnitOfWork : IUnitOfWork
     public IDeveloperAppConfigRepository DeveloperAppConfigs { get; }
     public ISocialMediaAccountConfigRepository SocialMediaAccountConfigs { get; }
     public IAccountConnectionConfigRepository AccountConnectionConfigs { get; }
+    public IAccountManagementConfigRepository AccountManagementConfigs { get; }
+    public IAccountHubConfigRepository AccountHubConfigs { get; }
 
     public Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
         => _context.SaveChangesAsync(cancellationToken);
@@ -260,6 +268,70 @@ public class AccountConnectionConfigRepository : Repository<AccountConnectionCon
             cancellationToken);
 
     public async Task<IReadOnlyList<AccountConnectionConfig>> GetByUserAsync(
+        Guid userId, string menuType, CancellationToken cancellationToken = default)
+        => await DbSet.AsNoTracking().Where(c => c.UserId == userId && c.MenuType == menuType).ToListAsync(cancellationToken);
+
+    public async Task<IReadOnlyList<string>> GetWebhookVerifyTokensAsync(string menuType, CancellationToken cancellationToken = default)
+        => await DbSet.AsNoTracking()
+            .Where(c => c.MenuType == menuType && c.WebhookVerifyToken != null && c.WebhookVerifyToken != "")
+            .Select(c => c.WebhookVerifyToken!)
+            .Distinct()
+            .ToListAsync(cancellationToken);
+
+    public async Task<IReadOnlyList<string>> GetClientSecretsAsync(string menuType, CancellationToken cancellationToken = default)
+        => await DbSet.AsNoTracking()
+            .Where(c => c.MenuType == menuType && c.ClientSecret != "")
+            .Select(c => c.ClientSecret)
+            .Distinct()
+            .ToListAsync(cancellationToken);
+}
+public class AccountManagementConfigRepository : Repository<AccountManagementConfig>, IAccountManagementConfigRepository
+{
+    public AccountManagementConfigRepository(AppDbContext context) : base(context) { }
+
+    public Task<AccountManagementConfig?> GetByUserAndPlatformAsync(
+        Guid userId, Guid platformId, string menuType, CancellationToken cancellationToken = default)
+        => DbSet.FirstOrDefaultAsync(c => c.UserId == userId && c.PlatformId == platformId && c.MenuType == menuType, cancellationToken);
+
+    public Task<AccountManagementConfig?> GetByUserAndPlatformCodeAsync(
+        Guid userId, string platformCode, string menuType, CancellationToken cancellationToken = default)
+        => DbSet.FirstOrDefaultAsync(
+            c => c.UserId == userId && c.PlatformCode == platformCode && c.MenuType == menuType,
+            cancellationToken);
+
+    public async Task<IReadOnlyList<AccountManagementConfig>> GetByUserAsync(
+        Guid userId, string menuType, CancellationToken cancellationToken = default)
+        => await DbSet.AsNoTracking().Where(c => c.UserId == userId && c.MenuType == menuType).ToListAsync(cancellationToken);
+
+    public async Task<IReadOnlyList<string>> GetWebhookVerifyTokensAsync(string menuType, CancellationToken cancellationToken = default)
+        => await DbSet.AsNoTracking()
+            .Where(c => c.MenuType == menuType && c.WebhookVerifyToken != null && c.WebhookVerifyToken != "")
+            .Select(c => c.WebhookVerifyToken!)
+            .Distinct()
+            .ToListAsync(cancellationToken);
+
+    public async Task<IReadOnlyList<string>> GetClientSecretsAsync(string menuType, CancellationToken cancellationToken = default)
+        => await DbSet.AsNoTracking()
+            .Where(c => c.MenuType == menuType && c.ClientSecret != "")
+            .Select(c => c.ClientSecret)
+            .Distinct()
+            .ToListAsync(cancellationToken);
+}
+public class AccountHubConfigRepository : Repository<AccountHubConfig>, IAccountHubConfigRepository
+{
+    public AccountHubConfigRepository(AppDbContext context) : base(context) { }
+
+    public Task<AccountHubConfig?> GetByUserAndPlatformAsync(
+        Guid userId, Guid platformId, string menuType, CancellationToken cancellationToken = default)
+        => DbSet.FirstOrDefaultAsync(c => c.UserId == userId && c.PlatformId == platformId && c.MenuType == menuType, cancellationToken);
+
+    public Task<AccountHubConfig?> GetByUserAndPlatformCodeAsync(
+        Guid userId, string platformCode, string menuType, CancellationToken cancellationToken = default)
+        => DbSet.FirstOrDefaultAsync(
+            c => c.UserId == userId && c.PlatformCode == platformCode && c.MenuType == menuType,
+            cancellationToken);
+
+    public async Task<IReadOnlyList<AccountHubConfig>> GetByUserAsync(
         Guid userId, string menuType, CancellationToken cancellationToken = default)
         => await DbSet.AsNoTracking().Where(c => c.UserId == userId && c.MenuType == menuType).ToListAsync(cancellationToken);
 

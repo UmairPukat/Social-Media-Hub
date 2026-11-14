@@ -11,6 +11,8 @@ using SocialMedia.Domain.Interfaces;
 using SocialMedia.Domain.Modules.Common.Entities;
 using SocialMedia.Domain.Modules.SocialMediaAccounts.Entities;
 using SocialMedia.Domain.Modules.AccountConnections.Entities;
+using SocialMedia.Domain.Modules.AccountManagement.Entities;
+using SocialMedia.Domain.Modules.AccountHub.Entities;
 
 namespace SocialMedia.Application.Services;
 
@@ -736,6 +738,16 @@ public class WebhookService : IWebhookService
             foreach (var token in await _unitOfWork.AccountConnectionConfigs.GetWebhookVerifyTokensAsync(normalized, cancellationToken))
                 Add(token);
         }
+        else if (normalized == MenuTypes.AccountManagement)
+        {
+            foreach (var token in await _unitOfWork.AccountManagementConfigs.GetWebhookVerifyTokensAsync(normalized, cancellationToken))
+                Add(token);
+        }
+        else if (normalized == MenuTypes.AccountHub)
+        {
+            foreach (var token in await _unitOfWork.AccountHubConfigs.GetWebhookVerifyTokensAsync(normalized, cancellationToken))
+                Add(token);
+        }
         else
         {
             foreach (var token in await _unitOfWork.DeveloperAppConfigs.GetWebhookVerifyTokensAsync(normalized, cancellationToken))
@@ -764,6 +776,8 @@ public class WebhookService : IWebhookService
             MenuTypes.AppConnection => await _unitOfWork.AppConnectionConfigs.GetClientSecretsAsync(normalized, cancellationToken),
             MenuTypes.DeveloperApp => await _unitOfWork.DeveloperAppConfigs.GetClientSecretsAsync(normalized, cancellationToken),
             MenuTypes.AccountConnection => await _unitOfWork.AccountConnectionConfigs.GetClientSecretsAsync(normalized, cancellationToken),
+            MenuTypes.AccountManagement => await _unitOfWork.AccountManagementConfigs.GetClientSecretsAsync(normalized, cancellationToken),
+            MenuTypes.AccountHub => await _unitOfWork.AccountHubConfigs.GetClientSecretsAsync(normalized, cancellationToken),
             MenuTypes.SocialMediaAccount => await _unitOfWork.SocialMediaAccountConfigs.GetClientSecretsAsync(normalized, cancellationToken),
             _ => await _unitOfWork.IntegrationAppConfigs.GetClientSecretsAsync(normalized, cancellationToken)
         };

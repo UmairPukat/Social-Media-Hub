@@ -6,6 +6,8 @@ using SocialMedia.Domain.Modules.DeveloperApps.Entities;
 using SocialMedia.Domain.Modules.Integrations.Entities;
 using SocialMedia.Domain.Modules.SocialMediaAccounts.Entities;
 using SocialMedia.Domain.Modules.AccountConnections.Entities;
+using SocialMedia.Domain.Modules.AccountManagement.Entities;
+using SocialMedia.Domain.Modules.AccountHub.Entities;
 
 namespace SocialMedia.Infrastructure.Persistence.Configurations;
 
@@ -116,6 +118,36 @@ public class AccountConnectionConfigConfiguration : IEntityTypeConfiguration<Acc
         builder.HasKey(x => x.Id);
         builder.Property(x => x.PlatformCode).IsRequired().HasMaxLength(50);
         builder.Property(x => x.MenuType).IsRequired().HasMaxLength(50).HasDefaultValue("account_connection");
+        builder.Property(x => x.ClientId).IsRequired().HasMaxLength(200);
+        builder.Property(x => x.ClientSecret).IsRequired();
+        builder.HasIndex(x => new { x.UserId, x.PlatformId, x.MenuType }).IsUnique();
+        builder.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+        builder.HasOne(x => x.Platform).WithMany().HasForeignKey(x => x.PlatformId).OnDelete(DeleteBehavior.Cascade);
+    }
+}
+public class AccountManagementConfigConfiguration : IEntityTypeConfiguration<AccountManagementConfig>
+{
+    public void Configure(EntityTypeBuilder<AccountManagementConfig> builder)
+    {
+        builder.ToTable("AccountManagementConfigs");
+        builder.HasKey(x => x.Id);
+        builder.Property(x => x.PlatformCode).IsRequired().HasMaxLength(50);
+        builder.Property(x => x.MenuType).IsRequired().HasMaxLength(50).HasDefaultValue("account_management");
+        builder.Property(x => x.ClientId).IsRequired().HasMaxLength(200);
+        builder.Property(x => x.ClientSecret).IsRequired();
+        builder.HasIndex(x => new { x.UserId, x.PlatformId, x.MenuType }).IsUnique();
+        builder.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+        builder.HasOne(x => x.Platform).WithMany().HasForeignKey(x => x.PlatformId).OnDelete(DeleteBehavior.Cascade);
+    }
+}
+public class AccountHubConfigConfiguration : IEntityTypeConfiguration<AccountHubConfig>
+{
+    public void Configure(EntityTypeBuilder<AccountHubConfig> builder)
+    {
+        builder.ToTable("AccountHubConfigs");
+        builder.HasKey(x => x.Id);
+        builder.Property(x => x.PlatformCode).IsRequired().HasMaxLength(50);
+        builder.Property(x => x.MenuType).IsRequired().HasMaxLength(50).HasDefaultValue("account_hub");
         builder.Property(x => x.ClientId).IsRequired().HasMaxLength(200);
         builder.Property(x => x.ClientSecret).IsRequired();
         builder.HasIndex(x => new { x.UserId, x.PlatformId, x.MenuType }).IsUnique();

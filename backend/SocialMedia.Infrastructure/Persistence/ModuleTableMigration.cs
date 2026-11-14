@@ -57,7 +57,9 @@ internal static class ModuleTableMigration
                || await db.AppConnectionPlatforms.AnyAsync()
                || await db.DeveloperAppPlatforms.AnyAsync()
                || await db.SocialMediaAccountPlatforms.AnyAsync()
-               || await db.AccountConnectionPlatforms.AnyAsync();
+               || await db.AccountConnectionPlatforms.AnyAsync()
+               || await db.AccountManagementPlatforms.AnyAsync()
+               || await db.AccountHubPlatforms.AnyAsync();
     }
 
     private static async Task CopyLegacyDataAsync(AppDbContext db)
@@ -230,7 +232,9 @@ internal static class ModuleTableMigration
         ("app_connection", "AppConnection"),
         ("developer_app", "DeveloperApp"),
         ("social_media_account", "SocialMediaAccount"),
-        ("account_connection", "AccountConnection")
+        ("account_connection", "AccountConnection"),
+        ("account_management", "AccountManagement"),
+        ("account_hub", "AccountHub")
     ];
 
     private static readonly string[] LegacyTables =
