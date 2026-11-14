@@ -105,6 +105,15 @@ using (var scope = app.Services.CreateScope())
 
     try
     {
+        await DbSeeder.EnsureModulePlatformCatalogAsync(db, logger);
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "Module platform catalog seed failed.");
+    }
+
+    try
+    {
         var webhooks = scope.ServiceProvider.GetRequiredService<IWebhookService>();
         foreach (var menu in SocialMedia.Application.Catalog.ProcessModules.AllMenuTypes)
         {

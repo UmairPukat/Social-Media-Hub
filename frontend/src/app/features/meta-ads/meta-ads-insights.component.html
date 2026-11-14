@@ -30,15 +30,6 @@
       <mat-icon>hourglass_top</mat-icon>
       <strong>Loading ad account…</strong>
     </div>
-  } @else if (!state.selectedAdAccount()) {
-    <div class="setup-hint">
-      <mat-icon>account_balance</mat-icon>
-      <div>
-        <strong>Select an ad account first</strong>
-        <p>Open <a routerLink="../ad-accounts">Ad Accounts</a> before loading insights.</p>
-      </div>
-      <a mat-stroked-button routerLink="../ad-accounts">Go to Ad Accounts</a>
-    </div>
   } @else {
     @if (state.selectedAdAccount(); as account) {
       <div class="context-strip">

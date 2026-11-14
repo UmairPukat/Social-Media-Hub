@@ -176,8 +176,16 @@ export class AccountManagementComponent implements OnInit {
 
   reload(): void {
     this.processApi.getPlatforms(this.menuType).subscribe({
-      next: (res: ApiResponse<PlatformCard[]>) => this.cards.set(res.data || []),
-      error: () => this.message.set('Failed to load app connections')
+      next: (res: ApiResponse<PlatformCard[]>) => {
+        if (!res.success) {
+          this.cards.set([]);
+          this.message.set(res.message || 'Failed to load platforms');
+          return;
+        }
+        this.message.set('');
+        this.cards.set(res.data || []);
+      },
+      error: () => this.message.set('Failed to load platforms')
     });
   }
 

@@ -107,6 +107,7 @@ public static class DbSeeder
     public static async Task EnsureSchemaAsync(AppDbContext db, ILogger? logger = null)
     {
         await db.Database.EnsureCreatedAsync();
+        await EnsureModulePlatformCatalogAsync(db, logger);
         await EnsureAppConnectionConfigsTableAsync(db);
         await EnsureIntegrationAppConfigsTableAsync(db);
         await EnsureDeveloperAppConfigsTableAsync(db);
@@ -370,14 +371,93 @@ public static class DbSeeder
 
             logger?.LogInformation("Ensuring multi-account index on {Table}...", table);
 
+            try
+            {
+                await db.Database.ExecuteSqlRawAsync($"""
+                    DROP INDEX IF EXISTS "{PgIdentifier(legacyIndex)}";
+                    """);
+
+                await db.Database.ExecuteSqlRawAsync($"""
+                    CREATE UNIQUE INDEX IF NOT EXISTS "{PgIdentifier(nextIndex)}"
+                    ON "{table}" ("UserId", "PlatformId", "ExternalAccountId");
+                    """);
+            }
+            catch (Exception ex)
+            {
+                logger?.LogWarning(ex, "Skipped multi-account index on {Table}.", table);
+            }
+        }
+    }
+
+    /// <summary>
+    /// PostgreSQL identifiers are limited to 63 bytes. Quoted names longer than that abort schema setup.
+    /// </summary>
+    private static string PgIdentifier(string name)
+        => name.Length <= 63 ? name : name[..63];
+
+    /// <summary>
+    /// Creates each module platform table if it is missing and upserts the full catalog.
+    /// Runs on its own so a later schema step cannot leave Connect empty.
+    /// </summary>
+    public static async Task EnsureModulePlatformCatalogAsync(AppDbContext db, ILogger? logger = null)
+    {
+        var prefixes = new (string Table, string MenuType)[]
+        {
+            ("IntegrationPlatforms", MenuTypes.Integration),
+            ("AppConnectionPlatforms", MenuTypes.AppConnection),
+            ("DeveloperAppPlatforms", MenuTypes.DeveloperApp),
+            ("SocialMediaAccountPlatforms", MenuTypes.SocialMediaAccount),
+            ("AccountConnectionPlatforms", MenuTypes.AccountConnection),
+            ("AccountManagementPlatforms", MenuTypes.AccountManagement),
+            ("AccountHubPlatforms", MenuTypes.AccountHub)
+        };
+
+        var codes = new List<string>();
+        foreach (var (table, menuType) in prefixes)
+        {
             await db.Database.ExecuteSqlRawAsync($"""
-                DROP INDEX IF EXISTS "{legacyIndex}";
+                CREATE TABLE IF NOT EXISTS "{table}" (
+                    "Id" uuid NOT NULL,
+                    "Name" character varying(100) NOT NULL,
+                    "Code" character varying(50) NOT NULL,
+                    "Icon" character varying(500) NULL,
+                    "IsActive" boolean NOT NULL,
+                    "CreatedAt" timestamp with time zone NOT NULL,
+                    "UpdatedAt" timestamp with time zone NULL,
+                    CONSTRAINT "PK_{table}" PRIMARY KEY ("Id")
+                );
+                """);
+            await db.Database.ExecuteSqlRawAsync($"""
+                CREATE UNIQUE INDEX IF NOT EXISTS "IX_{table}_Code" ON "{table}" ("Code");
                 """);
 
-            await db.Database.ExecuteSqlRawAsync($"""
-                CREATE UNIQUE INDEX IF NOT EXISTS "{nextIndex}"
-                ON "{table}" ("UserId", "PlatformId", "ExternalAccountId");
-                """);
+            foreach (var def in PlatformCatalog.All)
+            {
+                var id = PlatformCatalog.IdForMenu(def.Id, menuType);
+                var insertSql =
+                    "INSERT INTO \"" + table + "\" (\"Id\", \"Name\", \"Code\", \"Icon\", \"IsActive\", \"CreatedAt\") " +
+                    "VALUES ({0}, {1}, {2}, {3}, TRUE, NOW()) " +
+                    "ON CONFLICT (\"Code\") DO UPDATE SET " +
+                    "\"Name\" = EXCLUDED.\"Name\", \"Icon\" = EXCLUDED.\"Icon\", \"IsActive\" = TRUE;";
+                await db.Database.ExecuteSqlRawAsync(
+                    insertSql,
+                    id,
+                    def.Name,
+                    def.Code,
+                    (object?)def.Icon ?? DBNull.Value);
+            }
+
+            codes.Clear();
+            codes.AddRange(PlatformCatalog.All.Select(def => def.Code));
+            if (codes.Count == 0)
+                continue;
+
+            var inList = string.Join(", ", codes.Select((_, index) => $"{{{index}}}"));
+            await db.Database.ExecuteSqlRawAsync(
+                $"""UPDATE "{table}" SET "IsActive" = FALSE WHERE "Code" NOT IN ({inList});""",
+                codes.Cast<object>().ToArray());
+
+            logger?.LogInformation("Seeded {Count} platforms into {Table}.", PlatformCatalog.All.Count, table);
         }
     }
 

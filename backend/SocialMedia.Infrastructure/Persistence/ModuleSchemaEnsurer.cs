@@ -71,7 +71,14 @@ internal static partial class ModuleSchemaEnsurer
                 statement = statement.Replace("CREATE TABLE ", "CREATE TABLE IF NOT EXISTS ", StringComparison.Ordinal);
 
             logger?.LogInformation("Creating table {Table}...", tableName);
-            await db.Database.ExecuteSqlRawAsync(statement);
+            try
+            {
+                await db.Database.ExecuteSqlRawAsync(statement);
+            }
+            catch (Exception ex)
+            {
+                logger?.LogWarning(ex, "Skipped creating table {Table}.", tableName);
+            }
         }
     }
 
