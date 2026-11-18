@@ -16,7 +16,7 @@ import { watchMetaAdsMenu } from './meta-ads-menu.watch';
 import { metaAdsModuleLabel, metaErrorMessage } from './meta-ads.util';
 
 type InsightLevel = 'account' | 'campaign' | 'adset' | 'ad';
-type DatePreset = 'last_7d' | 'last_30d';
+type DatePreset = 'last_7d' | 'last_30d' | 'last_year';
 
 const FIELD_OPTIONS = [
   { id: 'spend', label: 'Spend' },
