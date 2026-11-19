@@ -79,6 +79,11 @@ export class InboxComponent implements OnInit, OnDestroy {
   private readonly processRoute = inject(ProcessRouteService);
   private readonly realtime = inject(InboxRealtimeService);
   private realtimeSub?: Subscription;
+  private whatsappHiTimer: ReturnType<typeof setTimeout> | null = null;
+
+  private static readonly DEMO_WA_CONVERSATION_ID = 'demo-wa-static';
+  private static readonly DEMO_WA_HI_ID = 'demo-wa-hi';
+  private static readonly DEMO_WA_PEER_ID = 'demo-wa-peer';
 
   readonly items = signal<InboxItem[]>([]);
   readonly platformCode = signal<string | null>(null);
@@ -333,8 +338,50 @@ export class InboxComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
+    this.clearWhatsAppHiDemo();
     this.realtimeSub?.unsubscribe();
     void this.realtime.stop();
+  }
+
+  /** Social Media Accounts · WhatsApp static demo (no API). */
+  private isSmaWhatsAppDemo(): boolean {
+    return this.processRoute.currentMenuType() === 'social_media_account'
+      && this.platformCode() === 'whatsapp'
+      && this.mode() === 'messages';
+  }
+
+  private clearWhatsAppHiDemo(): void {
+    if (this.whatsappHiTimer) {
+      clearTimeout(this.whatsappHiTimer);
+      this.whatsappHiTimer = null;
+    }
+  }
+
+  private scheduleWhatsAppHiDemo(): void {
+    this.clearWhatsAppHiDemo();
+    if (!this.isSmaWhatsAppDemo()) return;
+
+    this.whatsappHiTimer = setTimeout(() => {
+      this.whatsappHiTimer = null;
+      if (!this.isSmaWhatsAppDemo()) return;
+
+      this.upsertItem({
+        id: InboxComponent.DEMO_WA_HI_ID,
+        itemKind: 'message',
+        platformCode: 'whatsapp',
+        externalId: InboxComponent.DEMO_WA_HI_ID,
+        authorName: 'WhatsApp Customer',
+        authorId: InboxComponent.DEMO_WA_PEER_ID,
+        content: 'Hi',
+        isHidden: false,
+        isRead: false,
+        isOutgoing: false,
+        conversationId: InboxComponent.DEMO_WA_CONVERSATION_ID,
+        receivedAt: new Date().toISOString(),
+        menuType: 'social_media_account'
+      });
+      this.selectedKey.set(`msg:whatsapp:${InboxComponent.DEMO_WA_CONVERSATION_ID}`);
+    }, 10_000);
   }
 
   private normalizeInboxItem(item: InboxItem): InboxItem {
@@ -399,6 +446,11 @@ export class InboxComponent implements OnInit, OnDestroy {
     if (code === 'whatsapp' || code === 'instagram') this.mode.set('messages');
     if (code === 'youtube') this.mode.set('comments');
     this.selectedKey.set(null);
+    if (code === 'whatsapp' && this.processRoute.currentMenuType() === 'social_media_account') {
+      this.scheduleWhatsAppHiDemo();
+    } else {
+      this.clearWhatsAppHiDemo();
+    }
     queueMicrotask(() => this.autoSelectFirst());
   }
 
@@ -424,11 +476,13 @@ export class InboxComponent implements OnInit, OnDestroy {
         }
         this.autoSelectFirst();
         this.hydrateInstagramMedia(items);
+        if (this.isSmaWhatsAppDemo()) this.scheduleWhatsAppHiDemo();
       },
       error: () => {
         this.items.set([]);
         this.banner.set('Inbox API is unavailable. Live Instagram data could not be loaded.');
         this.autoSelectFirst();
+        if (this.isSmaWhatsAppDemo()) this.scheduleWhatsAppHiDemo();
       }
     });
   }
@@ -495,6 +549,12 @@ export class InboxComponent implements OnInit, OnDestroy {
     this.replyText.set('');
     this.replyTargetMessageId.set(null);
     const conversationId = conv.items.find((item) => item.conversationId)?.conversationId;
+    if (conversationId === InboxComponent.DEMO_WA_CONVERSATION_ID) {
+      this.items.update((items) =>
+        items.map((item) => item.conversationId === conversationId ? { ...item, isRead: true } : item)
+      );
+      return;
+    }
     if (conversationId && conv.unreadCount > 0) {
       this.processApi.markRead(this.processRoute.currentMenuType(), conversationId).subscribe({
         next: () => this.items.update((items) =>
@@ -627,6 +687,36 @@ export class InboxComponent implements OnInit, OnDestroy {
     if (this.mode() === 'messages') {
       const conv = this.selectedMessage();
       if (!conv) return;
+
+      if (this.isSmaWhatsAppDemo()) {
+        const quoted = this.replyTargetMessage();
+        const conversationId = conv.items.find((item) => item.conversationId)?.conversationId
+          ?? InboxComponent.DEMO_WA_CONVERSATION_ID;
+        const replyId = `demo-wa-out-${Date.now()}`;
+        this.upsertItem({
+          id: replyId,
+          itemKind: 'message',
+          platformCode: 'whatsapp',
+          externalId: replyId,
+          authorName: 'You',
+          authorId: InboxComponent.DEMO_WA_PEER_ID,
+          content: text,
+          isHidden: false,
+          isRead: true,
+          isOutgoing: true,
+          conversationId,
+          receivedAt: new Date().toISOString(),
+          replyToId: quoted?.id,
+          replyToAuthor: quoted ? (quoted.isOutgoing ? 'You' : quoted.authorName) : undefined,
+          replyToContent: quoted?.content,
+          menuType: 'social_media_account'
+        });
+        this.replyText.set('');
+        this.clearMessageReplyTarget();
+        this.banner.set('');
+        return;
+      }
+
       const latest = [...conv.items].sort((a, b) => +new Date(b.receivedAt) - +new Date(a.receivedAt))[0];
       if (!latest) return;
       const quoted = this.replyTargetMessage();
