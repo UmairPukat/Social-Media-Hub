@@ -3,7 +3,7 @@
     <div>
       <p class="eyebrow">{{ moduleLabel() }} · Meta Ads & Commerce</p>
       <h1>Insights</h1>
-      <p class="lede">Live performance metrics fetched directly from Meta on each refresh — nothing is stored in a database.</p>
+      <p class="lede">Refresh still calls Meta Graph API; the table below shows demo insight rows for App Review.</p>
       <div class="meta-badges">
         <span class="permission-badge"><mat-icon>verified_user</mat-icon> read_insights</span>
       </div>
@@ -68,7 +68,7 @@
 
       <p class="live-note">
         <mat-icon>cloud_sync</mat-icon>
-        Click <strong>Refresh Insights</strong> to call Meta Graph API (<code>act_…/insights</code>) — table rows come straight from Meta's response.
+        Click <strong>Refresh Insights</strong> to call Meta Graph API (<code>act_…/insights</code>). After the call finishes, the table shows demo data.
       </p>
 
       <div class="fields-panel">
@@ -138,7 +138,7 @@
         <div class="empty-state">
           <mat-icon>insights</mat-icon>
           <strong>No insights available</strong>
-          <span>Set filters, then click Refresh Insights to load live data from Meta.</span>
+          <span>Set filters, then click Refresh Insights to call Meta and load demo rows.</span>
         </div>
       }
     </section>
