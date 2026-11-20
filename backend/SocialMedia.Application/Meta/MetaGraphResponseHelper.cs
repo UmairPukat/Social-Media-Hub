@@ -11,7 +11,9 @@ public static class MetaGraphResponseHelper
             using var doc = JsonDocument.Parse(body);
             if (doc.RootElement.TryGetProperty("error", out var error))
             {
-                var message = error.TryGetProperty("message", out var msg) ? msg.GetString() : body;
+                var message = error.TryGetProperty("error_user_msg", out var userMsg) && !string.IsNullOrWhiteSpace(userMsg.GetString())
+                    ? userMsg.GetString()
+                    : error.TryGetProperty("message", out var msg) ? msg.GetString() : body;
                 var code = error.TryGetProperty("code", out var codeEl) ? codeEl.ToString() : null;
                 var type = error.TryGetProperty("type", out var typeEl) ? typeEl.GetString() : null;
                 var subcode = error.TryGetProperty("error_subcode", out var sub) ? sub.ToString() : null;

@@ -1,3 +1,6 @@
+using System.Buffers.Binary;
+using System.IO.Compression;
+using System.Text;
 using System.Text.Json;
 using SocialMedia.Application.DTOs.Meta;
 using SocialMedia.Application.Interfaces;
@@ -365,6 +368,7 @@ public class MetaAdsService : IMetaAdsService
 
             var accountId = MetaGraphResponseHelper.NormalizeAdAccountId(request.AdAccountId);
             var message = string.IsNullOrWhiteSpace(request.Message) ? request.Name.Trim() : request.Message.Trim();
+            var imageHash = await UploadReviewImageAsync(userId, menuType, accountId, cancellationToken);
             var story = JsonSerializer.Serialize(new
             {
                 page_id = request.PageId.Trim(),
@@ -372,7 +376,7 @@ public class MetaAdsService : IMetaAdsService
                 {
                     message,
                     link = request.Link.Trim(),
-                    picture = "https://upload.wikimedia.org/wikipedia/commons/thumb/4/47/PNG_transparency_demonstration_1.png/640px-PNG_transparency_demonstration_1.png",
+                    image_hash = imageHash,
                     call_to_action = new
                     {
                         type = "LEARN_MORE",
@@ -597,6 +601,128 @@ public class MetaAdsService : IMetaAdsService
             TargetingSummary = targetingSummary,
             Placements = placements
         };
+    }
+
+    private async Task<string> UploadReviewImageAsync(
+        Guid userId,
+        string menuType,
+        string accountId,
+        CancellationToken cancellationToken)
+    {
+        using var doc = await _graph.PostFormAsync(
+            userId,
+            menuType,
+            $"{accountId}/adimages",
+            new Dictionary<string, string>
+            {
+                ["bytes"] = Convert.ToBase64String(CreateReviewPng())
+            },
+            cancellationToken);
+
+        var hash = FindImageHash(doc.RootElement);
+        if (!string.IsNullOrWhiteSpace(hash))
+            return hash;
+
+        var body = doc.RootElement.GetRawText();
+        if (body.Length > 500)
+            body = body[..500];
+        throw new MetaGraphApiException($"Meta did not return an image hash. Response: {body}");
+    }
+
+    private static string? FindImageHash(JsonElement element)
+    {
+        if (element.ValueKind == JsonValueKind.Object)
+        {
+            var hash = MetaGraphResponseHelper.ReadString(element, "hash");
+            if (!string.IsNullOrWhiteSpace(hash))
+                return hash;
+
+            foreach (var property in element.EnumerateObject())
+            {
+                var nested = FindImageHash(property.Value);
+                if (!string.IsNullOrWhiteSpace(nested))
+                    return nested;
+            }
+        }
+        else if (element.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in element.EnumerateArray())
+            {
+                var nested = FindImageHash(item);
+                if (!string.IsNullOrWhiteSpace(nested))
+                    return nested;
+            }
+        }
+
+        return null;
+    }
+
+    private static byte[] CreateReviewPng()
+    {
+        const int width = 600;
+        const int height = 600;
+        var stride = 1 + (width * 3);
+        var raw = new byte[height * stride];
+        for (var y = 0; y < height; y++)
+        {
+            var row = y * stride;
+            for (var x = 0; x < width; x++)
+            {
+                var pixel = row + 1 + (x * 3);
+                raw[pixel] = 27;
+                raw[pixel + 1] = 107;
+                raw[pixel + 2] = 74;
+            }
+        }
+
+        using var compressed = new MemoryStream();
+        using (var zlib = new ZLibStream(compressed, CompressionLevel.SmallestSize, leaveOpen: true))
+            zlib.Write(raw, 0, raw.Length);
+
+        var header = new byte[13];
+        BinaryPrimitives.WriteInt32BigEndian(header.AsSpan(0, 4), width);
+        BinaryPrimitives.WriteInt32BigEndian(header.AsSpan(4, 4), height);
+        header[8] = 8;
+        header[9] = 2;
+
+        using var png = new MemoryStream();
+        png.Write(new byte[] { 137, 80, 78, 71, 13, 10, 26, 10 });
+        WritePngChunk(png, "IHDR", header);
+        WritePngChunk(png, "IDAT", compressed.ToArray());
+        WritePngChunk(png, "IEND", Array.Empty<byte>());
+        return png.ToArray();
+    }
+
+    private static void WritePngChunk(Stream stream, string type, byte[] data)
+    {
+        var typeBytes = Encoding.ASCII.GetBytes(type);
+        Span<byte> length = stackalloc byte[4];
+        BinaryPrimitives.WriteInt32BigEndian(length, data.Length);
+        stream.Write(length);
+        stream.Write(typeBytes);
+        stream.Write(data);
+
+        var crcInput = new byte[typeBytes.Length + data.Length];
+        Buffer.BlockCopy(typeBytes, 0, crcInput, 0, typeBytes.Length);
+        if (data.Length > 0)
+            Buffer.BlockCopy(data, 0, crcInput, typeBytes.Length, data.Length);
+
+        Span<byte> crc = stackalloc byte[4];
+        BinaryPrimitives.WriteUInt32BigEndian(crc, PngCrc32(crcInput));
+        stream.Write(crc);
+    }
+
+    private static uint PngCrc32(byte[] data)
+    {
+        var crc = 0xFFFFFFFFu;
+        foreach (var value in data)
+        {
+            crc ^= value;
+            for (var bit = 0; bit < 8; bit++)
+                crc = (crc & 1) != 0 ? (crc >> 1) ^ 0xEDB88320u : crc >> 1;
+        }
+
+        return ~crc;
     }
 
     private static string RequireCreatedId(JsonElement root, string label)
