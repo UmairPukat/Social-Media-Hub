@@ -100,6 +100,8 @@
                 <th>Campaign</th>
                 <th>Status</th>
                 <th>Budget</th>
+                <th>Audience</th>
+                <th>Placements</th>
                 <th>Start</th>
                 <th>End</th>
                 <th>Actions</th>
@@ -132,6 +134,8 @@
                   </td>
                   <td>{{ adSet.status || '—' }}</td>
                   <td>{{ adSet.dailyBudget || adSet.lifetimeBudget || '—' }}</td>
+                  <td>{{ adSet.targetingSummary || '—' }}</td>
+                  <td>{{ adSet.placements || '—' }}</td>
                   <td>{{ adSet.startTime | date: 'medium' }}</td>
                   <td>{{ adSet.endTime | date: 'medium' }}</td>
                   <td class="actions-cell">

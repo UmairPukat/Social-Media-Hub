@@ -25,6 +25,32 @@ public class UserConfiguration : IEntityTypeConfiguration<User>
     }
 }
 
+public class FacebookLeadConfiguration : IEntityTypeConfiguration<FacebookLead>
+{
+    public void Configure(EntityTypeBuilder<FacebookLead> builder)
+    {
+        builder.ToTable("FacebookLeads");
+        builder.HasKey(x => x.Id);
+        builder.Property(x => x.MenuType).IsRequired().HasMaxLength(64);
+        builder.Property(x => x.PageId).IsRequired().HasMaxLength(64);
+        builder.Property(x => x.PageName).HasMaxLength(300);
+        builder.Property(x => x.FormId).HasMaxLength(64);
+        builder.Property(x => x.FormName).HasMaxLength(300);
+        builder.Property(x => x.ExternalLeadId).IsRequired().HasMaxLength(64);
+        builder.Property(x => x.CustomerName).HasMaxLength(300);
+        builder.Property(x => x.Email).HasMaxLength(320);
+        builder.Property(x => x.Phone).HasMaxLength(64);
+        builder.Property(x => x.CampaignId).HasMaxLength(64);
+        builder.Property(x => x.CampaignName).HasMaxLength(300);
+        builder.Property(x => x.AdId).HasMaxLength(64);
+        builder.Property(x => x.AdName).HasMaxLength(300);
+        builder.Property(x => x.FieldDataJson).IsRequired();
+        builder.Property(x => x.Status).IsRequired().HasMaxLength(32);
+        builder.Property(x => x.Source).IsRequired().HasMaxLength(32);
+        builder.HasIndex(x => new { x.UserId, x.MenuType, x.ExternalLeadId }).IsUnique();
+    }
+}
+
 public class AccessTokenConfiguration : IEntityTypeConfiguration<AccessToken>
 {
     public void Configure(EntityTypeBuilder<AccessToken> builder)

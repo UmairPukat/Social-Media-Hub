@@ -48,6 +48,16 @@
         </mat-form-field>
 
         <mat-form-field appearance="outline">
+          <mat-label>Facebook Page</mat-label>
+          <mat-select [ngModel]="pageId()" (ngModelChange)="onPageChange($event)">
+            <mat-option value="">None</mat-option>
+            @for (page of pages(); track page.id) {
+              <mat-option [value]="page.id">{{ page.name }} ({{ page.id }})</mat-option>
+            }
+          </mat-select>
+        </mat-form-field>
+
+        <mat-form-field appearance="outline">
           <mat-label>Objective</mat-label>
           <mat-select [ngModel]="objective()" (ngModelChange)="objective.set($event)">
             @for (obj of objectives; track obj) {

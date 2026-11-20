@@ -54,6 +54,18 @@ public interface IMetaAdsService
         MetaListQuery query,
         CancellationToken cancellationToken = default);
 
+    Task<ApiResponse<MetaAdDto>> CreateAdAsync(
+        Guid userId,
+        string menuType,
+        CreateMetaAdRequest request,
+        CancellationToken cancellationToken = default);
+
+    Task<ApiResponse<MetaAdPreviewDto>> GetAdPreviewAsync(
+        Guid userId,
+        string menuType,
+        string adId,
+        CancellationToken cancellationToken = default);
+
     Task<ApiResponse<MetaAdDto>> UpdateAdAsync(
         Guid userId,
         string menuType,

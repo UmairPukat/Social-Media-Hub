@@ -3,10 +3,11 @@
     <div>
       <p class="eyebrow">{{ moduleLabel() }} · Meta Ads & Commerce</p>
       <h1>Ads</h1>
-      <p class="lede">View ads for a selected ad set. Pause and resume existing ads; creating new ads requires creatives in Meta Ads Manager.</p>
+      <p class="lede">Create and manage ads with an authorized Facebook Page as the ad identity. New ads are saved as PAUSED.</p>
       <div class="meta-badges">
         <span class="permission-badge"><mat-icon>verified_user</mat-icon> ads_read</span>
         <span class="permission-badge"><mat-icon>verified_user</mat-icon> ads_management</span>
+        <span class="permission-badge"><mat-icon>verified_user</mat-icon> pages_manage_ads</span>
       </div>
     </div>
     <button mat-stroked-button type="button" (click)="loadAds()" [disabled]="loading() || !state.selectedAdAccount()">
@@ -43,6 +44,37 @@
       </div>
     }
 
+    <section class="content-panel form-panel">
+      <h3>Create paused ad</h3>
+      <div class="form-grid">
+        <mat-form-field appearance="outline">
+          <mat-label>Facebook Page identity</mat-label>
+          <mat-select [ngModel]="pageId()" (ngModelChange)="onPageChange($event)">
+            @for (page of pages(); track page.id) {
+              <mat-option [value]="page.id">{{ page.name }} ({{ page.id }})</mat-option>
+            }
+          </mat-select>
+        </mat-form-field>
+        <mat-form-field appearance="outline">
+          <mat-label>Ad name</mat-label>
+          <input matInput [ngModel]="adName()" (ngModelChange)="adName.set($event)" />
+        </mat-form-field>
+        <mat-form-field appearance="outline">
+          <mat-label>Message</mat-label>
+          <input matInput [ngModel]="adMessage()" (ngModelChange)="adMessage.set($event)" />
+        </mat-form-field>
+        <mat-form-field appearance="outline">
+          <mat-label>Destination link</mat-label>
+          <input matInput [ngModel]="adLink()" (ngModelChange)="adLink.set($event)" />
+        </mat-form-field>
+      </div>
+      <div class="form-actions">
+        <button mat-flat-button color="primary" type="button" (click)="createAd()" [disabled]="loading() || !selectedAdSetId() || !pageId()">
+          <mat-icon>ads_click</mat-icon> Create paused ad
+        </button>
+      </div>
+    </section>
+
     <section class="content-panel">
       <div class="panel-head">
         <h2>Ad list</h2>
@@ -71,7 +103,7 @@
         <div class="empty-state">
           <mat-icon>ads_click</mat-icon>
           <strong>No ads found</strong>
-          <span>Try another ad set or create ads in Meta Ads Manager.</span>
+          <span>Choose an ad set and Facebook Page, then create a paused ad.</span>
         </div>
       } @else {
         <div class="table-wrap">
@@ -83,6 +115,7 @@
                 <th>Ad Set</th>
                 <th>Campaign</th>
                 <th>Status</th>
+                <th>Facebook Page</th>
                 <th>Creative</th>
                 <th>Actions</th>
               </tr>
@@ -123,8 +156,10 @@
                     }
                   </td>
                   <td>{{ ad.status || '—' }}</td>
+                  <td>{{ pageName(ad.pageId) }}</td>
                   <td>{{ ad.creativeId || '—' }}</td>
                   <td class="actions-cell">
+                    <button mat-button type="button" (click)="preview(ad)">Preview</button>
                     <a mat-button [routerLink]="['../insights']" [queryParams]="{ adId: ad.id, level: 'ad' }">Insights</a>
                     @if (ad.status !== 'PAUSED') {
                       <button mat-button type="button" (click)="updateStatus(ad, 'PAUSED')">Pause</button>
@@ -137,6 +172,11 @@
             </tbody>
           </table>
         </div>
+      }
+
+      @if (previewHtml()) {
+        <div class="preview-frame" [innerHTML]="previewHtml()"></div>
+        <p class="live-note">Preview for ad {{ previewFor() }}.</p>
       }
     </section>
   }

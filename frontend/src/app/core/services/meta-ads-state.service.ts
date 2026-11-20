@@ -19,6 +19,11 @@ export interface SelectedMetaCatalog {
   businessId?: string;
 }
 
+export interface SelectedMetaPage {
+  id: string;
+  name: string;
+}
+
 @Injectable({ providedIn: 'root' })
 export class MetaAdsStateService {
   private readonly router = inject(Router);
@@ -27,6 +32,7 @@ export class MetaAdsStateService {
 
   readonly selectedAdAccount = signal<SelectedMetaAdAccount | null>(null);
   readonly selectedCatalog = signal<SelectedMetaCatalog | null>(null);
+  readonly selectedPage = signal<SelectedMetaPage | null>(null);
 
   constructor() {
     this.syncForCurrentProcess();
@@ -61,10 +67,24 @@ export class MetaAdsStateService {
     }
   }
 
+  selectPage(page: SelectedMetaPage | null, menuType?: ProcessMenuType): void {
+    const scope = menuType ?? this.processRoute.currentMenuType();
+    const key = this.pageKey(scope);
+    if (page) {
+      localStorage.setItem(key, JSON.stringify(page));
+    } else {
+      localStorage.removeItem(key);
+    }
+    if (scope === this.processRoute.currentMenuType()) {
+      this.selectedPage.set(page);
+    }
+  }
+
   syncForCurrentProcess(): void {
     const menuType = this.processRoute.currentMenuType();
     this.selectedAdAccount.set(this.readAdAccount(menuType));
     this.selectedCatalog.set(this.readCatalog(menuType));
+    this.selectedPage.set(this.readPage(menuType));
   }
 
   /**
@@ -94,6 +114,10 @@ export class MetaAdsStateService {
 
   private catalogKey(menuType: ProcessMenuType): string {
     return `meta-ads:${menuType}:catalog`;
+  }
+
+  private pageKey(menuType: ProcessMenuType): string {
+    return `meta-ads:${menuType}:page`;
   }
 
   selectBestAccount(accounts: MetaAdAccount[], menuType?: ProcessMenuType): SelectedMetaAdAccount | null {
@@ -148,6 +172,15 @@ export class MetaAdsStateService {
     try {
       const raw = localStorage.getItem(this.adAccountKey(menuType));
       return raw ? (JSON.parse(raw) as SelectedMetaAdAccount) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  private readPage(menuType: ProcessMenuType): SelectedMetaPage | null {
+    try {
+      const raw = localStorage.getItem(this.pageKey(menuType));
+      return raw ? (JSON.parse(raw) as SelectedMetaPage) : null;
     } catch {
       return null;
     }

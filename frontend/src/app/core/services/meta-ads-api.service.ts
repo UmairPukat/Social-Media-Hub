@@ -4,12 +4,17 @@ import { Observable, tap } from 'rxjs';
 import { environment } from '../../../environments/environment';
 import { PROCESS_MODULE_LIST, ProcessMenuType } from '../config/process.config';
 import {
+  CreateMetaAdRequest,
   CreateMetaAdSetRequest,
   CreateMetaCampaignRequest,
   CreateMetaCatalogRequest,
   CreateMetaProductRequest,
   MetaAd,
   MetaAdAccount,
+  MetaAdPreview,
+  MetaPageOption,
+  MetaLead,
+  MetaLeadForm,
   MetaAdSet,
   MetaApiHealth,
   MetaApiResponse,
@@ -21,6 +26,7 @@ import {
   MetaPagedResult,
   MetaProduct,
   UpdateMetaAdRequest,
+  UpdateMetaLeadRequest,
   UpdateMetaAdSetRequest,
   UpdateMetaCampaignRequest,
   UpdateMetaProductRequest
@@ -98,6 +104,72 @@ export class MetaAdsApiService {
 
   updateAd(menuType: ProcessMenuType, adId: string, body: UpdateMetaAdRequest): Observable<MetaApiResponse<MetaAd>> {
     return this.track(`ads/${adId}`, 'PUT', this.http.put<MetaApiResponse<MetaAd>>(`${this.base(menuType)}/ads/${adId}`, body));
+  }
+
+  createAd(menuType: ProcessMenuType, body: CreateMetaAdRequest): Observable<MetaApiResponse<MetaAd>> {
+    return this.track('ads', 'POST', this.http.post<MetaApiResponse<MetaAd>>(`${this.base(menuType)}/ads`, body));
+  }
+
+  getAdPreview(menuType: ProcessMenuType, adId: string): Observable<MetaApiResponse<MetaAdPreview>> {
+    return this.track(`ads/${adId}/preview`, 'GET', this.http.get<MetaApiResponse<MetaAdPreview>>(
+      `${this.base(menuType)}/ads/${encodeURIComponent(adId)}/preview`
+    ));
+  }
+
+  getPages(menuType: ProcessMenuType): Observable<MetaApiResponse<MetaPageOption[]>> {
+    return this.track('pages', 'GET', this.http.get<MetaApiResponse<MetaPageOption[]>>(`${this.base(menuType)}/pages`));
+  }
+
+  getLeadForms(
+    menuType: ProcessMenuType,
+    pageId: string,
+    after?: string
+  ): Observable<MetaApiResponse<MetaPagedResult<MetaLeadForm>>> {
+    let params = new HttpParams();
+    if (after) params = params.set('after', after);
+    return this.track('leadgen-forms', 'GET', this.http.get<MetaApiResponse<MetaPagedResult<MetaLeadForm>>>(
+      `${this.base(menuType)}/pages/${encodeURIComponent(pageId)}/leadgen-forms`,
+      { params }
+    ));
+  }
+
+  subscribeLeadgen(menuType: ProcessMenuType, pageId: string): Observable<MetaApiResponse<string>> {
+    return this.track('leadgen-subscription', 'POST', this.http.post<MetaApiResponse<string>>(
+      `${this.base(menuType)}/pages/${encodeURIComponent(pageId)}/leadgen-subscription`,
+      {}
+    ));
+  }
+
+  getLeads(
+    menuType: ProcessMenuType,
+    formId: string,
+    pageId: string,
+    formName?: string,
+    after?: string
+  ): Observable<MetaApiResponse<MetaPagedResult<MetaLead>>> {
+    let params = new HttpParams().set('pageId', pageId);
+    if (formName) params = params.set('formName', formName);
+    if (after) params = params.set('after', after);
+    return this.track('leads', 'GET', this.http.get<MetaApiResponse<MetaPagedResult<MetaLead>>>(
+      `${this.base(menuType)}/leadgen-forms/${encodeURIComponent(formId)}/leads`,
+      { params }
+    ));
+  }
+
+  getLead(menuType: ProcessMenuType, leadId: string, pageId?: string): Observable<MetaApiResponse<MetaLead>> {
+    let params = new HttpParams();
+    if (pageId) params = params.set('pageId', pageId);
+    return this.track(`leads/${leadId}`, 'GET', this.http.get<MetaApiResponse<MetaLead>>(
+      `${this.base(menuType)}/leads/${encodeURIComponent(leadId)}`,
+      { params }
+    ));
+  }
+
+  updateLead(menuType: ProcessMenuType, leadId: string, body: UpdateMetaLeadRequest): Observable<MetaApiResponse<MetaLead>> {
+    return this.track(`leads/${leadId}`, 'PUT', this.http.put<MetaApiResponse<MetaLead>>(
+      `${this.base(menuType)}/leads/${encodeURIComponent(leadId)}`,
+      body
+    ));
   }
 
   getInsights(menuType: ProcessMenuType, query: MetaInsightsQuery): Observable<MetaApiResponse<MetaInsightsSummary>> {

@@ -30,6 +30,7 @@ public class MetaCampaignDto
     public string? DailyBudget { get; set; }
     public string? CreatedTime { get; set; }
     public string? UpdatedTime { get; set; }
+    public string? PageId { get; set; }
 }
 
 public class MetaAdSetDto
@@ -43,6 +44,8 @@ public class MetaAdSetDto
     public string? LifetimeBudget { get; set; }
     public string? StartTime { get; set; }
     public string? EndTime { get; set; }
+    public string? TargetingSummary { get; set; }
+    public string? Placements { get; set; }
 }
 
 public class MetaAdDto
@@ -54,6 +57,7 @@ public class MetaAdDto
     public string? Status { get; set; }
     public string? EffectiveStatus { get; set; }
     public string? CreativeId { get; set; }
+    public string? PageId { get; set; }
 }
 
 public class CreateMetaCampaignRequest
@@ -72,6 +76,8 @@ public class CreateMetaCampaignRequest
     public IReadOnlyList<string>? SpecialAdCategories { get; set; }
 
     public IReadOnlyList<string>? SpecialAdCategoryCountries { get; set; }
+
+    public string? PageId { get; set; }
 }
 
 public class UpdateMetaCampaignRequest

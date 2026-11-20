@@ -1,4 +1,5 @@
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
+import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
@@ -9,7 +10,7 @@ import { MatSelectModule } from '@angular/material/select';
 import { MetaAdsApiService } from '../../core/services/meta-ads-api.service';
 import { MetaAdsStateService } from '../../core/services/meta-ads-state.service';
 import { ProcessRouteService } from '../../core/services/process-route.service';
-import { MetaAd, MetaAdSet } from '../../core/models/meta-ads.models';
+import { MetaAd, MetaAdSet, MetaPageOption } from '../../core/models/meta-ads.models';
 import { watchMetaAdsMenu } from './meta-ads-menu.watch';
 import { metaAdsManagerAdSetUrl, metaAdsManagerAdUrl, metaAdsManagerCampaignUrl, metaAdsModuleLabel, metaErrorMessage } from './meta-ads.util';
 
@@ -25,6 +26,7 @@ export class MetaAdsAdsComponent implements OnInit {
   readonly state = inject(MetaAdsStateService);
   private readonly processRoute = inject(ProcessRouteService);
   private readonly route = inject(ActivatedRoute);
+  private readonly sanitizer = inject(DomSanitizer);
   readonly moduleLabel = () => metaAdsModuleLabel(this.processRoute.currentMenuType());
 
   readonly adSets = signal<MetaAdSet[]>([]);
@@ -34,6 +36,13 @@ export class MetaAdsAdsComponent implements OnInit {
   readonly error = signal('');
   readonly banner = signal('');
   readonly search = signal('');
+  readonly pages = signal<MetaPageOption[]>([]);
+  readonly pageId = signal('');
+  readonly adName = signal('App Review Paused Ad');
+  readonly adMessage = signal('SocialHub app review sample');
+  readonly adLink = signal('https://example.com');
+  readonly previewHtml = signal<SafeHtml | null>(null);
+  readonly previewFor = signal('');
 
   readonly filtered = computed(() => {
     const term = this.search().trim().toLowerCase();
@@ -64,6 +73,7 @@ export class MetaAdsAdsComponent implements OnInit {
           if (result.error) this.error.set(result.error);
           return;
         }
+        this.loadPages();
         this.loadAdSets();
         this.loadAds();
       },
@@ -71,6 +81,83 @@ export class MetaAdsAdsComponent implements OnInit {
         this.loading.set(false);
         this.error.set('Unable to load ad accounts.');
       }
+    });
+  }
+
+  loadPages(): void {
+    this.api.getPages(this.processRoute.currentMenuType()).subscribe({
+      next: (res) => {
+        if (!res.success) return;
+        const pages = res.data ?? [];
+        this.pages.set(pages);
+        const saved = this.state.selectedPage()?.id;
+        const match = pages.find(page => page.id === saved) ?? pages[0];
+        if (match) {
+          this.pageId.set(match.id);
+          this.state.selectPage({ id: match.id, name: match.name });
+        }
+      }
+    });
+  }
+
+  onPageChange(pageId: string): void {
+    this.pageId.set(pageId);
+    const page = this.pages().find(item => item.id === pageId);
+    if (page) this.state.selectPage({ id: page.id, name: page.name });
+  }
+
+  pageName(pageId?: string): string {
+    if (!pageId) return '—';
+    return this.pages().find(page => page.id === pageId)?.name ?? pageId;
+  }
+
+  createAd(): void {
+    const adAccount = this.state.selectedAdAccount();
+    const adSetId = this.selectedAdSetId();
+    if (!adAccount || !adSetId || !this.pageId()) {
+      this.error.set('Select an ad account, ad set, and Facebook Page before creating an ad.');
+      return;
+    }
+
+    this.loading.set(true);
+    this.error.set('');
+    this.api.createAd(this.processRoute.currentMenuType(), {
+      adAccountId: adAccount.id,
+      adSetId,
+      name: this.adName().trim(),
+      pageId: this.pageId(),
+      link: this.adLink().trim(),
+      message: this.adMessage().trim()
+    }).subscribe({
+      next: (res) => {
+        this.loading.set(false);
+        if (!res.success || !res.data) {
+          this.error.set(metaErrorMessage(res));
+          return;
+        }
+        const pageLabel = this.pageName(res.data.pageId);
+        this.banner.set(`Paused ad ${res.data.id} uses Facebook Page ${pageLabel}.`);
+        this.loadAds();
+      },
+      error: () => {
+        this.loading.set(false);
+        this.error.set('Unable to create the ad.');
+      }
+    });
+  }
+
+  preview(ad: MetaAd): void {
+    this.previewFor.set(ad.id);
+    this.previewHtml.set(null);
+    this.api.getAdPreview(this.processRoute.currentMenuType(), ad.id).subscribe({
+      next: (res) => {
+        if (!res.success) {
+          this.error.set(metaErrorMessage(res));
+          return;
+        }
+        this.previewHtml.set(res.data?.html ? this.sanitizer.bypassSecurityTrustHtml(res.data.html) : null);
+      },
+      error: () => this.error.set('Unable to load the ad preview.')
     });
   }
 

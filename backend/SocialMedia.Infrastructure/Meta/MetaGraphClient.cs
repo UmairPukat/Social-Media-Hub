@@ -17,7 +17,7 @@ public class MetaGraphClient
     private const string InstagramGraphHost = "https://graph.instagram.com";
 
     /// <summary>Webhook fields subscribed on a Facebook Page: feed carries comments; messages for Messenger.</summary>
-    public const string PageSubscribedFields = "feed,messages,messaging_postbacks";
+    public const string PageSubscribedFields = "feed,messages,messaging_postbacks,leadgen";
 
     /// <summary>
     /// Facebook Page webhook fields for Instagram via Facebook Login.

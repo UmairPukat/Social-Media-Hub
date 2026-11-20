@@ -53,6 +53,7 @@ export class ShellComponent {
     { suffix: 'meta-ads/ad-sets', icon: 'layers', label: 'Ad Sets' },
     { suffix: 'meta-ads/ads', icon: 'ads_click', label: 'Ads' },
     { suffix: 'meta-ads/insights', icon: 'insights', label: 'Insights' },
+    { suffix: 'meta-ads/facebook-leads', icon: 'contact_page', label: 'Facebook Leads' },
     { suffix: 'meta-ads/catalogs', icon: 'inventory_2', label: 'Catalogs' },
     { suffix: 'meta-ads/products', icon: 'shopping_bag', label: 'Products' }
   ];

@@ -3,7 +3,7 @@
     <div>
       <p class="eyebrow">{{ moduleLabel() }} · Meta Ads & Commerce</p>
       <h1>Insights</h1>
-      <p class="lede">Refresh still calls Meta Graph API; the table below shows demo insight rows for App Review.</p>
+      <p class="lede">Refresh loads impressions, reach, clicks, spend, CPC, CPM, and CTR from the Meta insights API.</p>
       <div class="meta-badges">
         <span class="permission-badge"><mat-icon>verified_user</mat-icon> read_insights</span>
       </div>
@@ -68,7 +68,7 @@
 
       <p class="live-note">
         <mat-icon>cloud_sync</mat-icon>
-        Click <strong>Refresh Insights</strong> to call Meta Graph API (<code>act_…/insights</code>). After the call finishes, the table shows demo data.
+        Click <strong>Refresh Insights</strong> to call Meta Graph API (<code>act_…/insights</code>) and show the returned rows.
       </p>
 
       <div class="fields-panel">
@@ -100,8 +100,10 @@
         <div class="summary-grid">
           <div class="summary-card"><small>Spend</small><strong>{{ summary()!.spend }}</strong></div>
           <div class="summary-card"><small>Impressions</small><strong>{{ summary()!.impressions }}</strong></div>
+          <div class="summary-card"><small>Reach</small><strong>{{ summary()!.reach }}</strong></div>
           <div class="summary-card"><small>Clicks</small><strong>{{ summary()!.clicks }}</strong></div>
           <div class="summary-card"><small>CTR</small><strong>{{ summary()!.ctr }}%</strong></div>
+          <div class="summary-card"><small>CPC</small><strong>{{ summary()!.cpc }}</strong></div>
           <div class="summary-card"><small>CPM</small><strong>{{ summary()!.cpm }}</strong></div>
           <div class="summary-card"><small>Results</small><strong>{{ summary()!.results }}</strong></div>
         </div>
@@ -138,7 +140,7 @@
         <div class="empty-state">
           <mat-icon>insights</mat-icon>
           <strong>No insights available</strong>
-          <span>Set filters, then click Refresh Insights to call Meta and load demo rows.</span>
+          <span>Set filters, then click Refresh Insights to load rows from Meta.</span>
         </div>
       }
     </section>

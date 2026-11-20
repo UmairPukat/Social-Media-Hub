@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.DependencyInjection;
 using SocialMedia.Api.Extensions;
 using SocialMedia.Application.DTOs.Meta;
 using SocialMedia.Application.Interfaces;
@@ -28,6 +29,8 @@ public abstract class ProcessMetaAdsControllerBase : ControllerBase
     }
 
     protected abstract string MenuType { get; }
+
+    private IMetaLeadsService Leads => HttpContext.RequestServices.GetRequiredService<IMetaLeadsService>();
 
     /// <summary>Marketing API health metrics for Advanced Access review. Permission: ads_read.</summary>
     [HttpGet("meta-ads/api-health")]
@@ -111,6 +114,24 @@ public abstract class ProcessMetaAdsControllerBase : ControllerBase
         return Ok(response);
     }
 
+    /// <summary>Creates a paused ad whose creative uses an authorized Facebook Page. Permissions: ads_management, pages_manage_ads.</summary>
+    [HttpPost("meta-ads/ads")]
+    public async Task<IActionResult> CreateAd(
+        [FromBody] CreateMetaAdRequest request,
+        CancellationToken cancellationToken)
+    {
+        var response = await _adsService.CreateAdAsync(User.GetUserId(), MenuType, request, cancellationToken);
+        return Ok(response);
+    }
+
+    /// <summary>Loads a Meta ad preview. Permission: ads_read.</summary>
+    [HttpGet("meta-ads/ads/{adId}/preview")]
+    public async Task<IActionResult> GetAdPreview(string adId, CancellationToken cancellationToken)
+    {
+        var response = await _adsService.GetAdPreviewAsync(User.GetUserId(), MenuType, adId, cancellationToken);
+        return Ok(response);
+    }
+
     /// <summary>Updates ad name or status. Permission: ads_management.</summary>
     [HttpPut("meta-ads/ads/{adId}")]
     public async Task<IActionResult> UpdateAd(
@@ -119,6 +140,69 @@ public abstract class ProcessMetaAdsControllerBase : ControllerBase
         CancellationToken cancellationToken)
     {
         var response = await _adsService.UpdateAdAsync(User.GetUserId(), MenuType, adId, request, cancellationToken);
+        return Ok(response);
+    }
+
+    /// <summary>Authorized Facebook pages for this module. Tokens stay on the server. Permission: pages_show_list.</summary>
+    [HttpGet("meta-ads/pages")]
+    public async Task<IActionResult> GetPages(CancellationToken cancellationToken)
+    {
+        var response = await Leads.GetPagesAsync(User.GetUserId(), MenuType, cancellationToken);
+        return Ok(response);
+    }
+
+    /// <summary>Lead Ads forms for one authorized page. Permission: leads_retrieval.</summary>
+    [HttpGet("meta-ads/pages/{pageId}/leadgen-forms")]
+    public async Task<IActionResult> GetLeadForms(
+        string pageId,
+        [FromQuery] string? after,
+        CancellationToken cancellationToken)
+    {
+        var response = await Leads.GetLeadFormsAsync(User.GetUserId(), MenuType, pageId, after, cancellationToken);
+        return Ok(response);
+    }
+
+    /// <summary>Subscribes the page to the leadgen webhook field. Permission: pages_manage_metadata, leads_retrieval.</summary>
+    [HttpPost("meta-ads/pages/{pageId}/leadgen-subscription")]
+    public async Task<IActionResult> SubscribeLeadgen(string pageId, CancellationToken cancellationToken)
+    {
+        var response = await Leads.SubscribeLeadgenAsync(User.GetUserId(), MenuType, pageId, cancellationToken);
+        return Ok(response);
+    }
+
+    /// <summary>Retrieves leads for a form and stores them for this user and module. Permission: leads_retrieval.</summary>
+    [HttpGet("meta-ads/leadgen-forms/{formId}/leads")]
+    public async Task<IActionResult> GetLeads(
+        string formId,
+        [FromQuery] string pageId,
+        [FromQuery] string? formName,
+        [FromQuery] string? after,
+        CancellationToken cancellationToken)
+    {
+        var response = await Leads.GetLeadsAsync(
+            User.GetUserId(), MenuType, formId, pageId, formName, after, cancellationToken);
+        return Ok(response);
+    }
+
+    /// <summary>Loads one lead, including every submitted question. Permission: leads_retrieval.</summary>
+    [HttpGet("meta-ads/leads/{leadId}")]
+    public async Task<IActionResult> GetLead(
+        string leadId,
+        [FromQuery] string? pageId,
+        CancellationToken cancellationToken)
+    {
+        var response = await Leads.GetLeadAsync(User.GetUserId(), MenuType, leadId, pageId, cancellationToken);
+        return Ok(response);
+    }
+
+    /// <summary>Updates the local CRM status and notes for a stored lead.</summary>
+    [HttpPut("meta-ads/leads/{leadId}")]
+    public async Task<IActionResult> UpdateLead(
+        string leadId,
+        [FromBody] UpdateMetaLeadRequest request,
+        CancellationToken cancellationToken)
+    {
+        var response = await Leads.UpdateLeadAsync(User.GetUserId(), MenuType, leadId, request, cancellationToken);
         return Ok(response);
     }
 

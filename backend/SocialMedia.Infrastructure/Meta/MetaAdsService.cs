@@ -7,6 +7,8 @@ namespace SocialMedia.Infrastructure.Meta;
 
 public class MetaAdsService : IMetaAdsService
 {
+    private const string AdFields = "id,name,adset_id,campaign_id,status,effective_status,creative{id,object_story_spec}";
+
     private readonly IMetaGraphApiClient _graph;
 
     public MetaAdsService(IMetaGraphApiClient graph)
@@ -40,7 +42,7 @@ public class MetaAdsService : IMetaAdsService
         {
             var accountId = MetaGraphResponseHelper.NormalizeAdAccountId(query.AdAccountId!);
             var limit = Math.Clamp(query.Limit, 1, 100).ToString();
-            var fields = "id,name,objective,status,effective_status,daily_budget,created_time,updated_time";
+            var fields = "id,name,objective,status,effective_status,daily_budget,created_time,updated_time,promoted_object";
 
             using var doc = await _graph.GetAsync(
                 userId,
@@ -102,6 +104,12 @@ public class MetaAdsService : IMetaAdsService
                 ["is_adset_budget_sharing_enabled"] = "false"
             };
 
+            if (!string.IsNullOrWhiteSpace(request.PageId)
+                && request.Objective.Contains("LEAD", StringComparison.OrdinalIgnoreCase))
+            {
+                payload["promoted_object"] = JsonSerializer.Serialize(new { page_id = request.PageId.Trim() });
+            }
+
             if (categories.Length > 0)
             {
                 var countries = request.SpecialAdCategoryCountries?
@@ -150,7 +158,7 @@ public class MetaAdsService : IMetaAdsService
         {
             var accountId = MetaGraphResponseHelper.NormalizeAdAccountId(query.AdAccountId!);
             var limit = Math.Clamp(query.Limit, 1, 100).ToString();
-            var fields = "id,name,campaign_id,status,effective_status,daily_budget,lifetime_budget,start_time,end_time";
+            var fields = "id,name,campaign_id,status,effective_status,daily_budget,lifetime_budget,start_time,end_time,targeting";
 
             var extra = new List<(string, string)>
             {
@@ -227,7 +235,7 @@ public class MetaAdsService : IMetaAdsService
                 menuType,
                 id,
                 cancellationToken,
-                ("fields", "id,name,campaign_id,status,effective_status,daily_budget,lifetime_budget,start_time,end_time"));
+                ("fields", "id,name,campaign_id,status,effective_status,daily_budget,lifetime_budget,start_time,end_time,targeting"));
 
             return MapAdSet(loaded.RootElement);
         }, "Ad set created.");
@@ -259,7 +267,7 @@ public class MetaAdsService : IMetaAdsService
                 menuType,
                 id,
                 cancellationToken,
-                ("fields", "id,name,campaign_id,status,effective_status,daily_budget,lifetime_budget,start_time,end_time"));
+                ("fields", "id,name,campaign_id,status,effective_status,daily_budget,lifetime_budget,start_time,end_time,targeting"));
 
             return MapAdSet(loaded.RootElement);
         }, "Ad set updated.");
@@ -273,7 +281,7 @@ public class MetaAdsService : IMetaAdsService
         {
             var accountId = MetaGraphResponseHelper.NormalizeAdAccountId(query.AdAccountId!);
             var limit = Math.Clamp(query.Limit, 1, 100).ToString();
-            var fields = "id,name,adset_id,campaign_id,status,effective_status,creative{id}";
+            var fields = AdFields;
 
             var extra = new List<(string, string)>
             {
@@ -338,10 +346,87 @@ public class MetaAdsService : IMetaAdsService
                 menuType,
                 id,
                 cancellationToken,
-                ("fields", "id,name,adset_id,campaign_id,status,effective_status,creative{id}"));
+                ("fields", AdFields));
 
             return MapAd(loaded.RootElement);
         }, "Ad updated.");
+
+    public Task<Application.DTOs.Common.ApiResponse<MetaAdDto>> CreateAdAsync(
+        Guid userId,
+        string menuType,
+        CreateMetaAdRequest request,
+        CancellationToken cancellationToken = default)
+        => MetaApiExecutor.RunAsync(async () =>
+        {
+            if (string.IsNullOrWhiteSpace(request.PageId))
+                throw new MetaGraphApiException("Select an authorized Facebook Page to use as the ad identity.");
+            if (string.IsNullOrWhiteSpace(request.Link))
+                throw new MetaGraphApiException("A destination link is required.");
+
+            var accountId = MetaGraphResponseHelper.NormalizeAdAccountId(request.AdAccountId);
+            var creative = JsonSerializer.Serialize(new
+            {
+                object_story_spec = new
+                {
+                    page_id = request.PageId.Trim(),
+                    link_data = new
+                    {
+                        message = string.IsNullOrWhiteSpace(request.Message) ? request.Name.Trim() : request.Message.Trim(),
+                        link = request.Link.Trim()
+                    }
+                }
+            });
+
+            var payload = new Dictionary<string, string>
+            {
+                ["name"] = request.Name.Trim(),
+                ["adset_id"] = request.AdSetId.Trim(),
+                ["status"] = "PAUSED",
+                ["creative"] = creative
+            };
+
+            using var doc = await _graph.PostFormAsync(userId, menuType, $"{accountId}/ads", payload, cancellationToken);
+            var id = MetaGraphResponseHelper.ReadString(doc.RootElement, "id")
+                ?? throw new MetaGraphApiException("Meta did not return an ad id.");
+
+            using var loaded = await _graph.GetAsync(
+                userId,
+                menuType,
+                id,
+                cancellationToken,
+                ("fields", AdFields));
+
+            var ad = MapAd(loaded.RootElement);
+            if (!string.IsNullOrWhiteSpace(ad.PageId)
+                && !string.Equals(ad.PageId, request.PageId.Trim(), StringComparison.Ordinal))
+                throw new MetaGraphApiException("The ad was created, but the Facebook Page on the creative does not match the page you selected.");
+
+            return ad;
+        }, "Paused ad created with the selected Facebook Page.");
+
+    public Task<Application.DTOs.Common.ApiResponse<MetaAdPreviewDto>> GetAdPreviewAsync(
+        Guid userId,
+        string menuType,
+        string adId,
+        CancellationToken cancellationToken = default)
+        => MetaApiExecutor.RunAsync(async () =>
+        {
+            using var doc = await _graph.GetAsync(
+                userId,
+                menuType,
+                $"{adId}/previews",
+                cancellationToken,
+                ("ad_format", "DESKTOP_FEED_STANDARD"));
+
+            string? html = null;
+            if (doc.RootElement.TryGetProperty("data", out var data) && data.ValueKind == JsonValueKind.Array)
+            {
+                var first = data.EnumerateArray().FirstOrDefault();
+                html = MetaGraphResponseHelper.ReadString(first, "body");
+            }
+
+            return new MetaAdPreviewDto { Html = html };
+        }, "Ad preview loaded.");
 
     private static (string Key, string Value)[] BuildQuery(params (string Key, string? Value)[] items) =>
         items
@@ -444,28 +529,70 @@ public class MetaAdsService : IMetaAdsService
         EffectiveStatus = MetaGraphResponseHelper.ReadString(row, "effective_status"),
         DailyBudget = FormatMinorCurrency(MetaGraphResponseHelper.ReadString(row, "daily_budget")),
         CreatedTime = MetaGraphResponseHelper.ReadString(row, "created_time"),
-        UpdatedTime = MetaGraphResponseHelper.ReadString(row, "updated_time")
+        UpdatedTime = MetaGraphResponseHelper.ReadString(row, "updated_time"),
+        PageId = row.TryGetProperty("promoted_object", out var promoted)
+            ? MetaGraphResponseHelper.ReadString(promoted, "page_id")
+            : null
     };
 
-    private static MetaAdSetDto MapAdSet(JsonElement row) => new()
+    private static MetaAdSetDto MapAdSet(JsonElement row)
     {
-        Id = MetaGraphResponseHelper.ReadString(row, "id") ?? string.Empty,
-        Name = MetaGraphResponseHelper.ReadString(row, "name") ?? string.Empty,
-        CampaignId = MetaGraphResponseHelper.ReadString(row, "campaign_id"),
-        Status = MetaGraphResponseHelper.ReadString(row, "status"),
-        EffectiveStatus = MetaGraphResponseHelper.ReadString(row, "effective_status"),
-        DailyBudget = MetaGraphResponseHelper.ReadString(row, "daily_budget"),
-        LifetimeBudget = MetaGraphResponseHelper.ReadString(row, "lifetime_budget"),
-        StartTime = MetaGraphResponseHelper.ReadString(row, "start_time"),
-        EndTime = MetaGraphResponseHelper.ReadString(row, "end_time")
-    };
+        string? targetingSummary = null;
+        string? placements = null;
+        if (row.TryGetProperty("targeting", out var targeting) && targeting.ValueKind == JsonValueKind.Object)
+        {
+            var ageMin = MetaGraphResponseHelper.ReadString(targeting, "age_min");
+            var ageMax = MetaGraphResponseHelper.ReadString(targeting, "age_max");
+            var countries = string.Empty;
+            if (targeting.TryGetProperty("geo_locations", out var geo)
+                && geo.TryGetProperty("countries", out var countryList)
+                && countryList.ValueKind == JsonValueKind.Array)
+            {
+                countries = string.Join(", ", countryList.EnumerateArray().Select(item => item.ToString()));
+            }
+
+            var parts = new List<string>();
+            if (!string.IsNullOrWhiteSpace(ageMin) || !string.IsNullOrWhiteSpace(ageMax))
+                parts.Add($"Ages {ageMin ?? "—"}-{ageMax ?? "—"}");
+            if (!string.IsNullOrWhiteSpace(countries))
+                parts.Add(countries);
+            targetingSummary = parts.Count == 0 ? null : string.Join("; ", parts);
+
+            if (targeting.TryGetProperty("publisher_platforms", out var platforms)
+                && platforms.ValueKind == JsonValueKind.Array)
+            {
+                placements = string.Join(", ", platforms.EnumerateArray().Select(item => item.ToString()));
+            }
+        }
+
+        return new MetaAdSetDto
+        {
+            Id = MetaGraphResponseHelper.ReadString(row, "id") ?? string.Empty,
+            Name = MetaGraphResponseHelper.ReadString(row, "name") ?? string.Empty,
+            CampaignId = MetaGraphResponseHelper.ReadString(row, "campaign_id"),
+            Status = MetaGraphResponseHelper.ReadString(row, "status"),
+            EffectiveStatus = MetaGraphResponseHelper.ReadString(row, "effective_status"),
+            DailyBudget = MetaGraphResponseHelper.ReadString(row, "daily_budget"),
+            LifetimeBudget = MetaGraphResponseHelper.ReadString(row, "lifetime_budget"),
+            StartTime = MetaGraphResponseHelper.ReadString(row, "start_time"),
+            EndTime = MetaGraphResponseHelper.ReadString(row, "end_time"),
+            TargetingSummary = targetingSummary,
+            Placements = placements
+        };
+    }
 
     private static MetaAdDto MapAd(JsonElement row)
     {
         string? creativeId = null;
-        if (row.TryGetProperty("creative", out var creative) &&
-            creative.TryGetProperty("id", out var creativeIdEl))
-            creativeId = creativeIdEl.ToString();
+        string? pageId = null;
+        if (row.TryGetProperty("creative", out var creative) && creative.ValueKind == JsonValueKind.Object)
+        {
+            if (creative.TryGetProperty("id", out var creativeIdEl))
+                creativeId = creativeIdEl.ToString();
+            if (creative.TryGetProperty("object_story_spec", out var story)
+                && story.ValueKind == JsonValueKind.Object)
+                pageId = MetaGraphResponseHelper.ReadString(story, "page_id");
+        }
 
         return new MetaAdDto
         {
@@ -475,7 +602,8 @@ public class MetaAdsService : IMetaAdsService
             CampaignId = MetaGraphResponseHelper.ReadString(row, "campaign_id"),
             Status = MetaGraphResponseHelper.ReadString(row, "status"),
             EffectiveStatus = MetaGraphResponseHelper.ReadString(row, "effective_status"),
-            CreativeId = creativeId
+            CreativeId = creativeId,
+            PageId = pageId
         };
     }
 }

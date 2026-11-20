@@ -73,6 +73,11 @@ function createMetaAdsRoutes(): Routes {
             import('./features/meta-ads/meta-ads-insights.component').then(m => m.MetaAdsInsightsComponent)
         },
         {
+          path: 'facebook-leads',
+          loadComponent: () =>
+            import('./features/meta-ads/meta-ads-facebook-leads.component').then(m => m.MetaAdsFacebookLeadsComponent)
+        },
+        {
           path: 'catalogs',
           loadComponent: () =>
             import('./features/meta-ads/meta-ads-catalogs.component').then(m => m.MetaAdsCatalogsComponent)

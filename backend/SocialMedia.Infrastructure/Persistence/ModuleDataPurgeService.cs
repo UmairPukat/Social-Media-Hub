@@ -72,7 +72,12 @@ public class ModuleDataPurgeService : IModuleDataPurgeService
 
     private async Task<int> PurgeMenuAsync(string menuType, CancellationToken cancellationToken)
     {
-        return MenuTypes.Normalize(menuType) switch
+        var menu = MenuTypes.Normalize(menuType);
+        var deleted = await _db.FacebookLeads
+            .Where(lead => lead.MenuType == menu)
+            .ExecuteDeleteAsync(cancellationToken);
+
+        deleted += menu switch
         {
             MenuTypes.AppConnection => await PurgeAsync<
                 AppConnectionMessageAttachment, AppConnectionMessage, AppConnectionConversation,
@@ -110,6 +115,7 @@ public class ModuleDataPurgeService : IModuleDataPurgeService
                 IntegrationWebhookLog, IntegrationWebhookEvent,
                 IntegrationSocialAuth, IntegrationSocialProfile, IntegrationSocialAccount>(cancellationToken)
         };
+        return deleted;
     }
 
     private async Task<int> PurgeAsync<TAttachment, TMessage, TConversation, TComment, TMedia, TPost, TSync, TLog, TEvent, TAuth, TProfile, TAccount>(

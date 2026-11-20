@@ -166,7 +166,7 @@ public static class MetaWebhookContentClassifier
             foreach (var change in MetaWebhookPayloadNormalizer.EnumerateChanges(entry))
             {
                 var field = change.TryGetProperty("field", out var fieldElement) ? fieldElement.GetString() : null;
-                if (field is "comments" or "live_comments" or "mentions" or "comment")
+                if (field is "comments" or "live_comments" or "mentions" or "comment" or "leadgen")
                     return true;
 
                 if (field is not ("messages" or "message" or "messaging" or "messaging_postbacks") ||

@@ -9,6 +9,7 @@ import { MatSelectModule } from '@angular/material/select';
 import { MetaAdsApiService } from '../../core/services/meta-ads-api.service';
 import { MetaAdsStateService } from '../../core/services/meta-ads-state.service';
 import { ProcessRouteService } from '../../core/services/process-route.service';
+import { MetaPageOption } from '../../core/models/meta-ads.models';
 import { metaAdsModuleLabel, metaErrorMessage } from './meta-ads.util';
 
 @Component({
@@ -30,6 +31,8 @@ export class MetaAdsCreateCampaignComponent implements OnInit {
   readonly objective = signal('OUTCOME_AWARENESS');
   readonly status = signal('PAUSED');
   readonly specialCategory = signal('');
+  readonly pages = signal<MetaPageOption[]>([]);
+  readonly pageId = signal('');
   readonly preparing = signal(false);
   readonly loading = signal(false);
   readonly error = signal('');
@@ -47,6 +50,7 @@ export class MetaAdsCreateCampaignComponent implements OnInit {
       next: (result) => {
         this.preparing.set(false);
         if (result.error) this.error.set(result.error);
+        this.loadPages();
       },
       error: () => {
         this.preparing.set(false);
@@ -64,6 +68,25 @@ export class MetaAdsCreateCampaignComponent implements OnInit {
     'OUTCOME_APP_PROMOTION'
   ];
 
+  private loadPages(): void {
+    this.api.getPages(this.processRoute.currentMenuType()).subscribe({
+      next: (res) => {
+        if (!res.success) return;
+        const pages = res.data ?? [];
+        this.pages.set(pages);
+        const saved = this.state.selectedPage()?.id;
+        const match = pages.find(page => page.id === saved) ?? pages[0];
+        if (match) this.onPageChange(match.id);
+      }
+    });
+  }
+
+  onPageChange(pageId: string): void {
+    this.pageId.set(pageId);
+    const page = this.pages().find(item => item.id === pageId);
+    if (page) this.state.selectPage({ id: page.id, name: page.name });
+  }
+
   create(): void {
     const adAccount = this.state.selectedAdAccount();
     if (!adAccount) return;
@@ -79,6 +102,7 @@ export class MetaAdsCreateCampaignComponent implements OnInit {
         name: this.name().trim(),
         objective: this.objective(),
         status: this.status(),
+        pageId: this.objective().includes('LEAD') ? this.pageId() : undefined,
         specialAdCategories: special ? [special] : undefined
       })
       .subscribe({

@@ -119,6 +119,7 @@ public static class DbSeeder
 
         await ModuleSchemaEnsurer.EnsureAsync(db, logger);
         await ModuleTableMigration.MigrateAndDropLegacyAsync(db, logger);
+        await EnsureFacebookLeadsTableAsync(db);
         await EnsureMediaUrlLengthAsync(db, logger);
         await EnsureMessageIdLengthAsync(db, logger);
         await EnsureMultiSocialAccountPerPlatformIndexAsync(db, logger);
@@ -328,6 +329,43 @@ public static class DbSeeder
         existing.Code = def.Code;
         existing.Icon = def.Icon;
         existing.IsActive = true;
+    }
+
+    /// <summary>
+    /// EnsureCreated does not add tables to an existing database. Facebook Leads are shared
+    /// by user and module instead of copied into all seven module schemas.
+    /// </summary>
+    private static async Task EnsureFacebookLeadsTableAsync(AppDbContext db)
+    {
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE IF NOT EXISTS "FacebookLeads" (
+                "Id" uuid NOT NULL,
+                "UserId" uuid NOT NULL,
+                "MenuType" character varying(64) NOT NULL,
+                "PageId" character varying(64) NOT NULL,
+                "PageName" character varying(300) NULL,
+                "FormId" character varying(64) NULL,
+                "FormName" character varying(300) NULL,
+                "ExternalLeadId" character varying(64) NOT NULL,
+                "SubmittedAt" timestamp with time zone NULL,
+                "CustomerName" character varying(300) NULL,
+                "Email" character varying(320) NULL,
+                "Phone" character varying(64) NULL,
+                "CampaignId" character varying(64) NULL,
+                "CampaignName" character varying(300) NULL,
+                "AdId" character varying(64) NULL,
+                "AdName" character varying(300) NULL,
+                "FieldDataJson" text NOT NULL DEFAULT '[]',
+                "Status" character varying(32) NOT NULL DEFAULT 'New',
+                "Notes" text NULL,
+                "Source" character varying(32) NOT NULL DEFAULT 'graph',
+                "CreatedAt" timestamp with time zone NOT NULL,
+                "UpdatedAt" timestamp with time zone NULL,
+                CONSTRAINT "PK_FacebookLeads" PRIMARY KEY ("Id")
+            );
+            CREATE UNIQUE INDEX IF NOT EXISTS "IX_FacebookLeads_UserId_MenuType_ExternalLeadId"
+                ON "FacebookLeads" ("UserId", "MenuType", "ExternalLeadId");
+            """);
     }
 
     /// <summary>

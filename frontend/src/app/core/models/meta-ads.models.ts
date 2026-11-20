@@ -23,6 +23,7 @@ export interface MetaCampaign {
   dailyBudget?: string;
   createdTime?: string;
   updatedTime?: string;
+  pageId?: string;
 }
 
 export interface MetaAdSet {
@@ -35,6 +36,8 @@ export interface MetaAdSet {
   lifetimeBudget?: string;
   startTime?: string;
   endTime?: string;
+  targetingSummary?: string;
+  placements?: string;
 }
 
 export interface MetaAd {
@@ -45,6 +48,7 @@ export interface MetaAd {
   status?: string;
   effectiveStatus?: string;
   creativeId?: string;
+  pageId?: string;
 }
 
 export interface MetaInsightRow {
@@ -142,6 +146,7 @@ export interface CreateMetaCampaignRequest {
   objective: string;
   status?: string;
   specialAdCategories?: string[];
+  pageId?: string;
 }
 
 export interface UpdateMetaCampaignRequest {
@@ -208,6 +213,61 @@ export interface UpdateMetaProductRequest {
   url?: string;
   imageUrl?: string;
   description?: string;
+}
+
+export interface MetaPageOption {
+  id: string;
+  name: string;
+}
+
+export interface MetaLeadForm {
+  id: string;
+  name: string;
+  status?: string;
+  createdTime?: string;
+}
+
+export interface MetaLeadField {
+  name: string;
+  value?: string;
+}
+
+export interface MetaLead {
+  id: string;
+  createdTime?: string;
+  formId?: string;
+  formName?: string;
+  pageId?: string;
+  pageName?: string;
+  adId?: string;
+  adName?: string;
+  campaignId?: string;
+  campaignName?: string;
+  customerName?: string;
+  email?: string;
+  phone?: string;
+  status: string;
+  notes?: string;
+  source?: string;
+  fields: MetaLeadField[];
+}
+
+export interface UpdateMetaLeadRequest {
+  status?: string;
+  notes?: string;
+}
+
+export interface CreateMetaAdRequest {
+  adAccountId: string;
+  adSetId: string;
+  name: string;
+  pageId: string;
+  link: string;
+  message?: string;
+}
+
+export interface MetaAdPreview {
+  html?: string;
 }
 
 export interface MetaApiResponse<T> {

@@ -23,6 +23,7 @@ public class FacebookService : IFacebookService
     private IProcessDataStore? _store;
     private string _menuType = string.Empty;
     private readonly IInboxRealtimeNotifier _inboxRealtime;
+    private readonly IMetaLeadsService _leads;
     private readonly ILogger<FacebookService> _logger;
 
     public FacebookService(
@@ -30,12 +31,14 @@ public class FacebookService : IFacebookService
         IOptions<MetaSettings> options,
         IProcessDataStoreFactory processData,
         IInboxRealtimeNotifier inboxRealtime,
+        IMetaLeadsService leads,
         ILogger<FacebookService> logger)
     {
         _graph = graph;
         _settings = options.Value.Facebook;
         _processData = processData;
         _inboxRealtime = inboxRealtime;
+        _leads = leads;
         _logger = logger;
     }
 
@@ -536,6 +539,12 @@ public class FacebookService : IFacebookService
                 continue;
             }
 
+            if (string.Equals(field, "leadgen", StringComparison.OrdinalIgnoreCase))
+            {
+                await ProcessLeadgenAsync(account, entry, value, result, cancellationToken);
+                continue;
+            }
+
             // Messaging can also arrive as a change with field=messages instead of entry.messaging.
             if (field is "messages" or "messaging_postbacks")
             {
@@ -568,6 +577,34 @@ public class FacebookService : IFacebookService
                     break;
             }
         }
+    }
+
+    private async Task ProcessLeadgenAsync(
+        SocialAccountEntityBase account,
+        JsonElement entry,
+        JsonElement value,
+        WebhookProcessResult result,
+        CancellationToken cancellationToken)
+    {
+        var leadId = value.TryGetProperty("leadgen_id", out var leadElement) ? leadElement.ToString() : null;
+        var pageId = value.TryGetProperty("page_id", out var pageElement) ? pageElement.ToString() : null;
+        if (string.IsNullOrWhiteSpace(pageId) && entry.TryGetProperty("id", out var entryId))
+            pageId = entryId.ToString();
+
+        if (string.IsNullOrWhiteSpace(leadId) || string.IsNullOrWhiteSpace(pageId))
+        {
+            result.Skip("Leadgen change is missing leadgen_id or page_id.");
+            return;
+        }
+
+        var stored = await _leads.IngestWebhookLeadAsync(account.UserId, _menuType, pageId, leadId, cancellationToken);
+        if (!stored)
+        {
+            result.Skip($"Lead '{leadId}' was ignored because page '{pageId}' is not authorized in this module.");
+            return;
+        }
+
+        result.Handled++;
     }
 
     private async Task ProcessCommentAsync(

@@ -291,6 +291,8 @@ public static class PlatformCatalog
         "business_management",
         "ads_management",
         "ads_read",
+        "pages_manage_ads",
+        "leads_retrieval",
         "read_insights",
         "catalog_management"
     ];

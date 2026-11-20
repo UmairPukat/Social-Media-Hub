@@ -16,7 +16,18 @@
 --   *AppConfigs (client id / secret so Connect can be used again)
 --
 -- Safe to re-run. Run against your Railway / local Postgres database.
+-- Also removes Facebook Leads stored for the module (status and notes included).
 -- =============================================================================
+
+DELETE FROM "FacebookLeads" WHERE "MenuType" IN (
+    'integration',
+    'app_connection',
+    'developer_app',
+    'social_media_account',
+    'account_connection',
+    'account_management',
+    'account_hub'
+);
 
 BEGIN;
 

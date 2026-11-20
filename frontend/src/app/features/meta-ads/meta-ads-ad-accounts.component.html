@@ -39,6 +39,16 @@
     </div>
   }
 
+  @if (pages().length) {
+    <div class="context-strip">
+      <span class="label">Authorized Facebook Pages</span>
+      @for (page of pages(); track page.id) {
+        <strong>{{ page.name }}</strong>
+        <span class="mono">{{ page.id }}</span>
+      }
+    </div>
+  }
+
   <section class="content-panel">
     @if (loading()) {
       <div class="empty-state">
@@ -59,6 +69,7 @@
               <th>Ad Account ID</th>
               <th>Name</th>
               <th>Status</th>
+              <th>Business</th>
               <th>Amount Spent</th>
               <th>Balance</th>
               <th>Currency</th>
@@ -81,6 +92,7 @@
                   </a>
                 </td>
                 <td>{{ account.accountStatus || '—' }}</td>
+                <td>{{ account.businessName || '—' }}</td>
                 <td>{{ account.amountSpent || '—' }}</td>
                 <td>{{ account.balance || '—' }}</td>
                 <td>{{ account.currency || '—' }}</td>

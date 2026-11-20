@@ -1,0 +1,254 @@
+<section class="page meta-page">
+  <header class="meta-hero">
+    <div>
+      <p class="eyebrow">{{ moduleLabel() }} · Meta Ads & Commerce</p>
+      <h1>Facebook Leads</h1>
+      <p class="lede">Retrieve leads from Lead Ads forms on a Facebook Page already connected in this module.</p>
+      <div class="meta-badges">
+        <span class="permission-badge"><mat-icon>verified_user</mat-icon> leads_retrieval</span>
+        <span class="permission-badge"><mat-icon>verified_user</mat-icon> pages_manage_metadata</span>
+      </div>
+    </div>
+    <div class="hero-actions">
+      <button mat-stroked-button type="button" (click)="exportCsv()" [disabled]="!filtered().length">
+        <mat-icon>download</mat-icon> Export CSV
+      </button>
+      <button mat-flat-button color="primary" type="button" (click)="reload()" [disabled]="loading()">
+        <mat-icon>refresh</mat-icon> Refresh
+      </button>
+    </div>
+  </header>
+
+  @if (banner()) {
+    <div class="notice success">
+      <mat-icon>check_circle</mat-icon>
+      <span>{{ banner() }}</span>
+    </div>
+  }
+
+  @if (error()) {
+    <div class="notice error">
+      <mat-icon>error</mat-icon>
+      <span>{{ error() }}</span>
+    </div>
+  }
+
+  <section class="content-panel">
+    <div class="panel-head">
+      <h2>Page and form</h2>
+      <div class="toolbar">
+        <mat-form-field appearance="outline">
+          <mat-label>Facebook Page</mat-label>
+          <mat-select [ngModel]="selectedPageId()" (ngModelChange)="onPageChange($event)">
+            @for (page of pages(); track page.id) {
+              <mat-option [value]="page.id">{{ page.name }} ({{ page.id }})</mat-option>
+            }
+          </mat-select>
+        </mat-form-field>
+        <mat-form-field appearance="outline">
+          <mat-label>Lead Form</mat-label>
+          <mat-select [ngModel]="selectedFormId()" (ngModelChange)="onFormChange($event)">
+            @for (form of forms(); track form.id) {
+              <mat-option [value]="form.id">{{ form.name }}</mat-option>
+            }
+          </mat-select>
+        </mat-form-field>
+        <button mat-stroked-button type="button" (click)="subscribe(selectedPageId())" [disabled]="!selectedPageId()">
+          Subscribe leadgen
+        </button>
+      </div>
+    </div>
+
+    @if (loading() && !forms().length) {
+      <div class="empty-state">
+        <mat-icon>hourglass_top</mat-icon>
+        <strong>Loading lead forms…</strong>
+      </div>
+    } @else if (!pages().length) {
+      <div class="empty-state">
+        <mat-icon>link_off</mat-icon>
+        <strong>No authorized Facebook Page</strong>
+        <span>Connect Facebook in this module. A second login is not required when the page is already connected.</span>
+      </div>
+    } @else if (!forms().length) {
+      <div class="empty-state">
+        <mat-icon>description</mat-icon>
+        <strong>No lead forms on this page</strong>
+      </div>
+    } @else {
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Form Name</th>
+              <th>Form ID</th>
+              <th>Status</th>
+              <th>Created</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (form of forms(); track form.id) {
+              <tr>
+                <td>{{ form.name }}</td>
+                <td class="mono">{{ form.id }}</td>
+                <td>{{ form.status || '—' }}</td>
+                <td>{{ form.createdTime | date: 'medium' }}</td>
+                <td class="actions-cell">
+                  <button mat-button type="button" (click)="onFormChange(form.id)">View Leads</button>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+      @if (formsCursor()) {
+        <button mat-stroked-button type="button" (click)="loadForms(formsCursor()!)">More forms</button>
+      }
+    }
+  </section>
+
+  <section class="content-panel">
+    <div class="panel-head">
+      <h2>Submitted leads</h2>
+      <div class="toolbar">
+        <mat-form-field appearance="outline">
+          <mat-label>Search</mat-label>
+          <input matInput [ngModel]="search()" (ngModelChange)="search.set($event)" placeholder="Name, email, phone, or ID" />
+        </mat-form-field>
+        <mat-form-field appearance="outline">
+          <mat-label>Status</mat-label>
+          <mat-select [ngModel]="statusFilter()" (ngModelChange)="statusFilter.set($event)">
+            <mat-option value="">All</mat-option>
+            @for (status of statuses; track status) {
+              <mat-option [value]="status">{{ status }}</mat-option>
+            }
+          </mat-select>
+        </mat-form-field>
+        <mat-form-field appearance="outline">
+          <mat-label>From</mat-label>
+          <input matInput type="date" [ngModel]="dateFrom()" (ngModelChange)="dateFrom.set($event)" />
+        </mat-form-field>
+        <mat-form-field appearance="outline">
+          <mat-label>To</mat-label>
+          <input matInput type="date" [ngModel]="dateTo()" (ngModelChange)="dateTo.set($event)" />
+        </mat-form-field>
+      </div>
+    </div>
+
+    @if (loading() && selectedFormId() && !leads().length) {
+      <div class="empty-state">
+        <mat-icon>hourglass_top</mat-icon>
+        <strong>Retrieving leads…</strong>
+      </div>
+    } @else if (!selectedFormId()) {
+      <div class="empty-state">
+        <mat-icon>contact_page</mat-icon>
+        <strong>Select a lead form</strong>
+      </div>
+    } @else if (!filtered().length) {
+      <div class="empty-state">
+        <mat-icon>inbox</mat-icon>
+        <strong>No leads match these filters</strong>
+      </div>
+    } @else {
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Lead ID</th>
+              <th>Customer Name</th>
+              <th>Email</th>
+              <th>Phone Number</th>
+              <th>Form Name</th>
+              <th>Campaign Name</th>
+              <th>Submission Date</th>
+              <th>Status</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (lead of filtered(); track lead.id) {
+              <tr>
+                <td class="mono">{{ lead.id }}</td>
+                <td>{{ lead.customerName || '—' }}</td>
+                <td>{{ lead.email || '—' }}</td>
+                <td>{{ lead.phone || '—' }}</td>
+                <td>{{ lead.formName || '—' }}</td>
+                <td>{{ lead.campaignName || '—' }}</td>
+                <td>{{ lead.createdTime | date: 'medium' }}</td>
+                <td>{{ lead.status }}</td>
+                <td class="actions-cell">
+                  <button mat-button type="button" (click)="openLead(lead)">View</button>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+      @if (leadsCursor()) {
+        <button mat-stroked-button type="button" (click)="loadLeads(leadsCursor()!)">More leads</button>
+      }
+    }
+  </section>
+
+  @if (selectedLead(); as lead) {
+    <section class="content-panel">
+      <div class="panel-head">
+        <h2>Lead details</h2>
+      </div>
+      <div class="summary-grid">
+        <div class="summary-card"><small>Lead ID</small><strong>{{ lead.id }}</strong></div>
+        <div class="summary-card"><small>Facebook Page</small><strong>{{ lead.pageName || lead.pageId || '—' }}</strong></div>
+        <div class="summary-card"><small>Lead Form</small><strong>{{ lead.formName || lead.formId || '—' }}</strong></div>
+        <div class="summary-card"><small>Submission Date</small><strong>{{ lead.createdTime | date: 'medium' }}</strong></div>
+        <div class="summary-card"><small>Customer Name</small><strong>{{ lead.customerName || '—' }}</strong></div>
+        <div class="summary-card"><small>Email</small><strong>{{ lead.email || '—' }}</strong></div>
+        <div class="summary-card"><small>Phone Number</small><strong>{{ lead.phone || '—' }}</strong></div>
+        <div class="summary-card"><small>Campaign</small><strong>{{ lead.campaignName || lead.campaignId || '—' }}</strong></div>
+        <div class="summary-card"><small>Ad</small><strong>{{ lead.adName || lead.adId || '—' }}</strong></div>
+      </div>
+
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Question</th>
+              <th>Answer</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (field of lead.fields; track field.name) {
+              <tr>
+                <td>{{ field.name }}</td>
+                <td>{{ field.value || '—' }}</td>
+              </tr>
+            } @empty {
+              <tr>
+                <td colspan="2">This form did not return field data.</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+
+      <div class="form-grid">
+        <mat-form-field appearance="outline">
+          <mat-label>Status</mat-label>
+          <mat-select [ngModel]="lead.status" (ngModelChange)="saveLead($event)">
+            @for (status of statuses; track status) {
+              <mat-option [value]="status">{{ status }}</mat-option>
+            }
+          </mat-select>
+        </mat-form-field>
+        <mat-form-field appearance="outline">
+          <mat-label>Internal notes</mat-label>
+          <textarea matInput rows="3" [ngModel]="notesDraft()" (ngModelChange)="notesDraft.set($event)"></textarea>
+        </mat-form-field>
+      </div>
+      <div class="form-actions">
+        <button mat-flat-button color="primary" type="button" (click)="saveLead()">Save notes</button>
+      </div>
+    </section>
+  }
+</section>

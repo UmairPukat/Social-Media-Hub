@@ -21,6 +21,7 @@ public class AppDbContext : DbContext
 
     public DbSet<User> Users => Set<User>();
     public DbSet<AccessToken> AccessTokens => Set<AccessToken>();
+    public DbSet<FacebookLead> FacebookLeads => Set<FacebookLead>();
 
     // Integrations module tables
     public DbSet<IntegrationPlatform> IntegrationPlatforms => Set<IntegrationPlatform>();

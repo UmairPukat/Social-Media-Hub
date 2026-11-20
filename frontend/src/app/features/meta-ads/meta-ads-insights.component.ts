@@ -13,7 +13,7 @@ import { MetaRateLimitService } from '../../core/services/meta-rate-limit.servic
 import { ProcessRouteService } from '../../core/services/process-route.service';
 import { MetaInsightRow, MetaInsightsSummary } from '../../core/models/meta-ads.models';
 import { watchMetaAdsMenu } from './meta-ads-menu.watch';
-import { metaAdsModuleLabel } from './meta-ads.util';
+import { metaAdsModuleLabel, metaErrorMessage } from './meta-ads.util';
 
 type InsightLevel = 'account' | 'campaign' | 'adset' | 'ad';
 type DatePreset = 'last_7d' | 'last_30d' | 'last_year';
@@ -21,7 +21,9 @@ type DatePreset = 'last_7d' | 'last_30d' | 'last_year';
 const FIELD_OPTIONS = [
   { id: 'spend', label: 'Spend' },
   { id: 'impressions', label: 'Impressions' },
+  { id: 'reach', label: 'Reach' },
   { id: 'clicks', label: 'Clicks' },
+  { id: 'cpc', label: 'CPC' },
   { id: 'ctr', label: 'CTR' },
   { id: 'cpm', label: 'CPM' },
   { id: 'cpp', label: 'CPP' },
@@ -197,7 +199,7 @@ export class MetaAdsInsightsComponent implements OnInit {
     this.error.set('');
     this.pageApiCallCount.update(n => n + 1);
 
-    const baseFields = ['campaign_name', 'adset_name', 'ad_name', 'date_start', 'date_stop'];
+    const baseFields = ['campaign_name', 'adset_name', 'ad_name', 'date_start', 'date_stop', 'reach', 'cpc'];
     const fields = [...new Set([...baseFields, ...this.selectedFields()])].join(',');
 
     this.api.getInsights(this.processRoute.currentMenuType(), {
@@ -206,202 +208,23 @@ export class MetaAdsInsightsComponent implements OnInit {
       datePreset: this.datePreset(),
       fields
     }).subscribe({
-      next: () => {
+      next: (res) => {
         this.loading.set(false);
+        if (!res.success || !res.data) {
+          this.summary.set(null);
+          this.error.set(metaErrorMessage(res));
+          return;
+        }
         this.error.set('');
-        this.summary.set(this.buildDummyInsights(objectId));
+        this.summary.set(res.data);
         this.lastUpdated.set(new Date());
       },
       error: () => {
         this.loading.set(false);
-        this.error.set('');
-        this.summary.set(this.buildDummyInsights(objectId));
-        this.lastUpdated.set(new Date());
+        this.summary.set(null);
+        this.error.set('Unable to load insights.');
       }
     });
-  }
-
-  /** Demo rows shown after the live Meta insights API call completes. */
-  private buildDummyInsights(objectId: string): MetaInsightsSummary {
-    const level = this.level();
-    const datePreset = this.datePreset();
-    const rows: MetaInsightRow[] =
-      level === 'account'
-        ? [
-            {
-              dateStart: '2026-11-12',
-              dateStop: '2026-11-12',
-              spend: '42.50',
-              impressions: '12840',
-              reach: '9720',
-              clicks: '316',
-              ctr: '2.46',
-              cpc: '0.13',
-              cpm: '3.31',
-              cpp: '4.37',
-              results: '48',
-              purchaseRoas: '2.10'
-            },
-            {
-              dateStart: '2026-11-13',
-              dateStop: '2026-11-13',
-              spend: '51.20',
-              impressions: '15410',
-              reach: '11040',
-              clicks: '392',
-              ctr: '2.54',
-              cpc: '0.13',
-              cpm: '3.32',
-              cpp: '4.64',
-              results: '61',
-              purchaseRoas: '2.35'
-            },
-            {
-              dateStart: '2026-11-14',
-              dateStop: '2026-11-14',
-              spend: '38.75',
-              impressions: '11980',
-              reach: '9010',
-              clicks: '287',
-              ctr: '2.40',
-              cpc: '0.14',
-              cpm: '3.23',
-              cpp: '4.30',
-              results: '44',
-              purchaseRoas: '1.95'
-            }
-          ]
-        : level === 'adset'
-          ? [
-              {
-                campaignName: 'App Review Demo Campaign',
-                adSetName: 'Demo Ad Set — Awareness',
-                spend: '86.40',
-                impressions: '28450',
-                reach: '20110',
-                clicks: '712',
-                ctr: '2.50',
-                cpc: '0.12',
-                cpm: '3.04',
-                cpp: '4.30',
-                results: '98',
-                purchaseRoas: '2.40'
-              },
-              {
-                campaignName: 'App Review Demo Campaign',
-                adSetName: 'Demo Ad Set — Traffic',
-                spend: '64.10',
-                impressions: '19820',
-                reach: '15240',
-                clicks: '541',
-                ctr: '2.73',
-                cpc: '0.12',
-                cpm: '3.23',
-                cpp: '4.21',
-                results: '77',
-                purchaseRoas: '2.15'
-              }
-            ]
-          : level === 'ad'
-            ? [
-                {
-                  campaignName: 'App Review Demo Campaign',
-                  adSetName: 'Demo Ad Set — Awareness',
-                  adName: 'Demo Ad — Brand Story',
-                  spend: '49.80',
-                  impressions: '16220',
-                  reach: '12100',
-                  clicks: '405',
-                  ctr: '2.50',
-                  cpc: '0.12',
-                  cpm: '3.07',
-                  cpp: '4.12',
-                  results: '56',
-                  purchaseRoas: '2.28'
-                },
-                {
-                  campaignName: 'App Review Demo Campaign',
-                  adSetName: 'Demo Ad Set — Traffic',
-                  adName: 'Demo Ad — Product Carousel',
-                  spend: '55.30',
-                  impressions: '17890',
-                  reach: '13450',
-                  clicks: '468',
-                  ctr: '2.62',
-                  cpc: '0.12',
-                  cpm: '3.09',
-                  cpp: '4.11',
-                  results: '63',
-                  purchaseRoas: '2.51'
-                }
-              ]
-            : [
-                {
-                  campaignName: 'App Review Demo Campaign',
-                  spend: '132.45',
-                  impressions: '41200',
-                  reach: '30110',
-                  clicks: '1048',
-                  ctr: '2.54',
-                  cpc: '0.13',
-                  cpm: '3.21',
-                  cpp: '4.26',
-                  results: '152',
-                  purchaseRoas: '2.42'
-                },
-                {
-                  campaignName: 'Holiday Awareness Push',
-                  spend: '97.80',
-                  impressions: '30140',
-                  reach: '24880',
-                  clicks: '812',
-                  ctr: '2.61',
-                  cpc: '0.12',
-                  cpm: '3.14',
-                  cpp: '3.93',
-                  results: '119',
-                  purchaseRoas: '2.18'
-                },
-                {
-                  campaignName: 'Lead Gen — Local Offers',
-                  spend: '74.25',
-                  impressions: '22150',
-                  reach: '17620',
-                  clicks: '593',
-                  ctr: '2.68',
-                  cpc: '0.13',
-                  cpm: '3.35',
-                  cpp: '4.21',
-                  results: '88',
-                  purchaseRoas: '1.97'
-                }
-              ];
-
-    const spend = rows.reduce((sum, row) => sum + Number(row.spend || 0), 0);
-    const impressions = rows.reduce((sum, row) => sum + Number(row.impressions || 0), 0);
-    const reach = rows.reduce((sum, row) => sum + Number(row.reach || 0), 0);
-    const clicks = rows.reduce((sum, row) => sum + Number(row.clicks || 0), 0);
-    const results = rows.reduce((sum, row) => sum + Number(row.results || 0), 0);
-    const ctr = impressions > 0 ? (clicks / impressions) * 100 : 0;
-    const cpc = clicks > 0 ? spend / clicks : 0;
-    const cpm = impressions > 0 ? (spend / impressions) * 1000 : 0;
-    const cpp = reach > 0 ? (spend / reach) * 1000 : 0;
-
-    return {
-      objectId,
-      datePreset,
-      level,
-      spend: spend.toFixed(2),
-      impressions: String(Math.round(impressions)),
-      reach: String(Math.round(reach)),
-      clicks: String(Math.round(clicks)),
-      ctr: ctr.toFixed(2),
-      cpc: cpc.toFixed(2),
-      cpm: cpm.toFixed(2),
-      cpp: cpp.toFixed(2),
-      results: String(Math.round(results)),
-      rows
-    };
   }
 
   /** Uses ad account for breakdown levels; specific ID only when deep-linked from another page. */

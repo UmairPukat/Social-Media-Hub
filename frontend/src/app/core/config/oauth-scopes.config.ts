@@ -64,6 +64,8 @@ export const FACEBOOK_OAUTH_SCOPES = [
   'business_management',
   'ads_management',
   'ads_read',
+  'pages_manage_ads',
+  'leads_retrieval',
   'read_insights',
   'catalog_management'
 ] as const;

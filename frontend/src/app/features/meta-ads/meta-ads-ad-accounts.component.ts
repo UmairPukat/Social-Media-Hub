@@ -7,7 +7,7 @@ import { MetaAdsStateService } from '../../core/services/meta-ads-state.service'
 import { MetaRateLimitService } from '../../core/services/meta-rate-limit.service';
 import { ProcessRouteService } from '../../core/services/process-route.service';
 import { PROCESS_MODULE_LIST } from '../../core/config/process.config';
-import { MetaAdAccount } from '../../core/models/meta-ads.models';
+import { MetaAdAccount, MetaPageOption } from '../../core/models/meta-ads.models';
 import { watchMetaAdsMenu } from './meta-ads-menu.watch';
 import { metaAdsManagerAdAccountUrl, metaErrorMessage } from './meta-ads.util';
 
@@ -25,6 +25,7 @@ export class MetaAdsAdAccountsComponent implements OnInit {
   readonly rateLimit = inject(MetaRateLimitService);
 
   readonly accounts = signal<MetaAdAccount[]>([]);
+  readonly pages = signal<MetaPageOption[]>([]);
   readonly loading = signal(false);
   readonly error = signal('');
   readonly banner = signal('');
@@ -56,6 +57,14 @@ export class MetaAdsAdAccountsComponent implements OnInit {
     this.load();
   }
 
+  private loadPages(): void {
+    this.api.getPages(this.processRoute.currentMenuType()).subscribe({
+      next: (res) => {
+        if (res.success) this.pages.set(res.data ?? []);
+      }
+    });
+  }
+
   load(): void {
     this.loading.set(true);
     this.error.set('');
@@ -69,6 +78,7 @@ export class MetaAdsAdAccountsComponent implements OnInit {
         const rows = res.data ?? [];
         this.accounts.set(rows);
         this.keepOrSelectAccount(rows);
+        this.loadPages();
       },
       error: () => {
         this.loading.set(false);

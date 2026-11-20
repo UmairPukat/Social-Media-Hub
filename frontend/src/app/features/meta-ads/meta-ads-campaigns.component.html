@@ -84,6 +84,7 @@
                 <th>ID</th>
                 <th>Name</th>
                 <th>Objective</th>
+                <th>Facebook Page</th>
                 <th>Status</th>
                 <th>Daily Budget</th>
                 <th>Created</th>
@@ -106,6 +107,7 @@
                     </a>
                   </td>
                   <td>{{ campaign.objective || '—' }}</td>
+                  <td>{{ campaign.pageId || '—' }}</td>
                   <td><span class="status-pill" [class.paused]="campaign.status === 'PAUSED'" [class.active]="campaign.status === 'ACTIVE'">{{ campaign.status || '—' }}</span></td>
                   <td>{{ campaign.dailyBudget || '—' }}</td>
                   <td>{{ campaign.createdTime | date: 'medium' }}</td>

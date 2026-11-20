@@ -62,6 +62,7 @@ public static class DependencyInjection
         services.AddSingleton<IMetaApiCallTracker, MetaApiCallTracker>();
         services.AddScoped<IMetaGraphApiClient, MetaGraphApiClient>();
         services.AddScoped<IMetaAdsService, MetaAdsService>();
+        services.AddScoped<IMetaLeadsService, MetaLeadsService>();
         services.AddScoped<IMetaInsightsService, MetaInsightsService>();
         services.AddScoped<IMetaCatalogService, MetaCatalogService>();
         services.AddScoped<IYouTubeService, YouTubeService>();
