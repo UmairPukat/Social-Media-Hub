@@ -15,6 +15,7 @@ import {
   MetaPageOption,
   MetaLead,
   MetaLeadForm,
+  MetaLeadgenSubscription,
   MetaAdSet,
   MetaApiHealth,
   MetaApiResponse,
@@ -133,10 +134,22 @@ export class MetaAdsApiService {
     ));
   }
 
+  getLeadgenSubscription(menuType: ProcessMenuType, pageId: string): Observable<MetaApiResponse<MetaLeadgenSubscription>> {
+    return this.track('leadgen-subscription', 'GET', this.http.get<MetaApiResponse<MetaLeadgenSubscription>>(
+      `${this.base(menuType)}/pages/${encodeURIComponent(pageId)}/leadgen-subscription`
+    ));
+  }
+
   subscribeLeadgen(menuType: ProcessMenuType, pageId: string): Observable<MetaApiResponse<string>> {
     return this.track('leadgen-subscription', 'POST', this.http.post<MetaApiResponse<string>>(
       `${this.base(menuType)}/pages/${encodeURIComponent(pageId)}/leadgen-subscription`,
       {}
+    ));
+  }
+
+  unsubscribeLeadgen(menuType: ProcessMenuType, pageId: string): Observable<MetaApiResponse<MetaLeadgenSubscription>> {
+    return this.track('leadgen-subscription', 'DELETE', this.http.delete<MetaApiResponse<MetaLeadgenSubscription>>(
+      `${this.base(menuType)}/pages/${encodeURIComponent(pageId)}/leadgen-subscription`
     ));
   }
 

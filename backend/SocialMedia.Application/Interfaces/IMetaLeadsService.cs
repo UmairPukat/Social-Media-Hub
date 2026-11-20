@@ -17,7 +17,19 @@ public interface IMetaLeadsService
         string? after,
         CancellationToken cancellationToken = default);
 
+    Task<ApiResponse<MetaLeadgenSubscriptionDto>> GetLeadgenSubscriptionAsync(
+        Guid userId,
+        string menuType,
+        string pageId,
+        CancellationToken cancellationToken = default);
+
     Task<ApiResponse<string>> SubscribeLeadgenAsync(
+        Guid userId,
+        string menuType,
+        string pageId,
+        CancellationToken cancellationToken = default);
+
+    Task<ApiResponse<MetaLeadgenSubscriptionDto>> UnsubscribeLeadgenAsync(
         Guid userId,
         string menuType,
         string pageId,

@@ -70,6 +70,21 @@ public class MetaLeadsService : IMetaLeadsService
             };
         }, "Lead forms loaded.");
 
+    public Task<Application.DTOs.Common.ApiResponse<MetaLeadgenSubscriptionDto>> GetLeadgenSubscriptionAsync(
+        Guid userId,
+        string menuType,
+        string pageId,
+        CancellationToken cancellationToken = default)
+        => MetaApiExecutor.RunAsync(async () =>
+        {
+            var page = await RequirePageAsync(userId, menuType, pageId, cancellationToken);
+            var fields = await ReadSubscribedFieldsAsync(page, cancellationToken);
+            return new MetaLeadgenSubscriptionDto
+            {
+                Subscribed = fields.Any(field => string.Equals(field, "leadgen", StringComparison.OrdinalIgnoreCase))
+            };
+        }, "Leadgen subscription loaded.");
+
     public Task<Application.DTOs.Common.ApiResponse<string>> SubscribeLeadgenAsync(
         Guid userId,
         string menuType,
@@ -93,6 +108,42 @@ public class MetaLeadsService : IMetaLeadsService
             }
             return MetaGraphClient.LeadgenSubscribedFields;
         }, "Page subscribed to leadgen.");
+
+    public Task<Application.DTOs.Common.ApiResponse<MetaLeadgenSubscriptionDto>> UnsubscribeLeadgenAsync(
+        Guid userId,
+        string menuType,
+        string pageId,
+        CancellationToken cancellationToken = default)
+        => MetaApiExecutor.RunAsync(async () =>
+        {
+            var page = await RequirePageAsync(userId, menuType, pageId, cancellationToken);
+            var remaining = (await ReadSubscribedFieldsAsync(page, cancellationToken))
+                .Where(field => !string.Equals(field, "leadgen", StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            try
+            {
+                if (remaining.Count == 0)
+                {
+                    await _graph.UnsubscribePageAsync(page.Version, page.Id, page.Token, cancellationToken);
+                }
+                else
+                {
+                    await _graph.SubscribePageAsync(
+                        page.Version,
+                        page.Id,
+                        page.Token,
+                        string.Join(",", remaining),
+                        cancellationToken);
+                }
+            }
+            catch (Exception ex) when (ex is not MetaGraphApiException)
+            {
+                throw new MetaGraphApiException(Redact(ex.Message));
+            }
+
+            return new MetaLeadgenSubscriptionDto { Subscribed = false };
+        }, "Page unsubscribed from leadgen.");
 
     public Task<Application.DTOs.Common.ApiResponse<MetaPagedResultDto<MetaLeadDto>>> GetLeadsAsync(
         Guid userId,
@@ -486,6 +537,20 @@ public class MetaLeadsService : IMetaLeadsService
         foreach (var row in data.EnumerateArray())
             items.Add(map(row));
         return items;
+    }
+
+    private async Task<IReadOnlyList<string>> ReadSubscribedFieldsAsync(
+        PageAccess page,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await _graph.GetPageSubscribedFieldsAsync(page.Version, page.Id, page.Token, cancellationToken);
+        }
+        catch (Exception ex) when (ex is not MetaGraphApiException)
+        {
+            throw new MetaGraphApiException(Redact(ex.Message));
+        }
     }
 
     private async Task<JsonDocument> GetGraphAsync(

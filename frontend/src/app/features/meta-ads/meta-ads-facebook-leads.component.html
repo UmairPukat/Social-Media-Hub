@@ -53,9 +53,17 @@
             }
           </mat-select>
         </mat-form-field>
-        <button mat-stroked-button type="button" (click)="subscribe(selectedPageId())" [disabled]="!selectedPageId()">
-          Subscribe leadgen
-        </button>
+        @if (subscriptionLoading()) {
+          <button mat-stroked-button type="button" disabled>Checking subscription…</button>
+        } @else if (leadgenSubscribed()) {
+          <button mat-stroked-button type="button" (click)="unsubscribe(selectedPageId())" [disabled]="!selectedPageId()">
+            Unsubscribe
+          </button>
+        } @else {
+          <button mat-stroked-button type="button" (click)="subscribe(selectedPageId())" [disabled]="!selectedPageId()">
+            Subscribe leadgen
+          </button>
+        }
       </div>
     </div>
 

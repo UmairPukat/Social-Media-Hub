@@ -20,6 +20,11 @@ public class MetaPageOptionDto
     public string Name { get; set; } = string.Empty;
 }
 
+public class MetaLeadgenSubscriptionDto
+{
+    public bool Subscribed { get; set; }
+}
+
 public class MetaLeadFormDto
 {
     public string Id { get; set; } = string.Empty;

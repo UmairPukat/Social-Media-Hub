@@ -162,11 +162,27 @@ public abstract class ProcessMetaAdsControllerBase : ControllerBase
         return Ok(response);
     }
 
+    /// <summary>Whether this page is subscribed to the leadgen webhook field.</summary>
+    [HttpGet("meta-ads/pages/{pageId}/leadgen-subscription")]
+    public async Task<IActionResult> GetLeadgenSubscription(string pageId, CancellationToken cancellationToken)
+    {
+        var response = await Leads.GetLeadgenSubscriptionAsync(User.GetUserId(), MenuType, pageId, cancellationToken);
+        return Ok(response);
+    }
+
     /// <summary>Subscribes the page to the leadgen webhook field. Permission: pages_manage_metadata, leads_retrieval.</summary>
     [HttpPost("meta-ads/pages/{pageId}/leadgen-subscription")]
     public async Task<IActionResult> SubscribeLeadgen(string pageId, CancellationToken cancellationToken)
     {
         var response = await Leads.SubscribeLeadgenAsync(User.GetUserId(), MenuType, pageId, cancellationToken);
+        return Ok(response);
+    }
+
+    /// <summary>Removes only the leadgen webhook field. Other page webhook fields stay subscribed.</summary>
+    [HttpDelete("meta-ads/pages/{pageId}/leadgen-subscription")]
+    public async Task<IActionResult> UnsubscribeLeadgen(string pageId, CancellationToken cancellationToken)
+    {
+        var response = await Leads.UnsubscribeLeadgenAsync(User.GetUserId(), MenuType, pageId, cancellationToken);
         return Ok(response);
     }
 

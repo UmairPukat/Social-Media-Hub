@@ -220,6 +220,10 @@ export interface MetaPageOption {
   name: string;
 }
 
+export interface MetaLeadgenSubscription {
+  subscribed: boolean;
+}
+
 export interface MetaLeadForm {
   id: string;
   name: string;

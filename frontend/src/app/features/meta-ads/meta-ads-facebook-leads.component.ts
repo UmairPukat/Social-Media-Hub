@@ -31,6 +31,8 @@ export class MetaAdsFacebookLeadsComponent implements OnInit {
   readonly forms = signal<MetaLeadForm[]>([]);
   readonly leads = signal<MetaLead[]>([]);
   readonly selectedPageId = signal('');
+  readonly leadgenSubscribed = signal(false);
+  readonly subscriptionLoading = signal(false);
   readonly selectedFormId = signal('');
   readonly formsCursor = signal<string | null>(null);
   readonly leadsCursor = signal<string | null>(null);
@@ -110,20 +112,69 @@ export class MetaAdsFacebookLeadsComponent implements OnInit {
     const page = this.pages().find(item => item.id === pageId);
     if (page) this.state.selectPage({ id: page.id, name: page.name });
     this.banner.set('');
+    this.leadgenSubscribed.set(false);
     if (!pageId) return;
+    this.loadSubscription(pageId);
     this.loadForms();
   }
 
-  subscribe(pageId: string): void {
-    this.api.subscribeLeadgen(this.processRoute.currentMenuType(), pageId).subscribe({
+  loadSubscription(pageId: string): void {
+    this.subscriptionLoading.set(true);
+    this.api.getLeadgenSubscription(this.processRoute.currentMenuType(), pageId).subscribe({
       next: (res) => {
+        this.subscriptionLoading.set(false);
         if (!res.success) {
           this.error.set(metaErrorMessage(res));
           return;
         }
+        this.leadgenSubscribed.set(!!res.data?.subscribed);
+      },
+      error: () => {
+        this.subscriptionLoading.set(false);
+        this.error.set('Unable to check the leadgen subscription.');
+      }
+    });
+  }
+
+  subscribe(pageId: string): void {
+    if (!pageId) return;
+    this.subscriptionLoading.set(true);
+    this.error.set('');
+    this.api.subscribeLeadgen(this.processRoute.currentMenuType(), pageId).subscribe({
+      next: (res) => {
+        this.subscriptionLoading.set(false);
+        if (!res.success) {
+          this.error.set(metaErrorMessage(res));
+          return;
+        }
+        this.leadgenSubscribed.set(true);
         this.banner.set('This page is subscribed to leadgen webhooks.');
       },
-      error: () => this.error.set('Unable to subscribe this page to leadgen.')
+      error: () => {
+        this.subscriptionLoading.set(false);
+        this.error.set('Unable to subscribe this page to leadgen.');
+      }
+    });
+  }
+
+  unsubscribe(pageId: string): void {
+    if (!pageId) return;
+    this.subscriptionLoading.set(true);
+    this.error.set('');
+    this.api.unsubscribeLeadgen(this.processRoute.currentMenuType(), pageId).subscribe({
+      next: (res) => {
+        this.subscriptionLoading.set(false);
+        if (!res.success) {
+          this.error.set(metaErrorMessage(res));
+          return;
+        }
+        this.leadgenSubscribed.set(false);
+        this.banner.set('This page is unsubscribed from leadgen webhooks.');
+      },
+      error: () => {
+        this.subscriptionLoading.set(false);
+        this.error.set('Unable to unsubscribe this page from leadgen.');
+      }
     });
   }
 
