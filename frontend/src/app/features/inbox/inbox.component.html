@@ -112,6 +112,9 @@
                   <strong>{{ conv.authorName }}</strong>
                   <time>{{ conv.lastAt | date: 'dd.MM.yyyy HH:mm' }}</time>
                 </div>
+                @if (conv.phone) {
+                  <p class="wa-phone">{{ conv.phone }}</p>
+                }
                 <p class="snippet">{{ conv.lastContent }}</p>
               </div>
               @if (conv.unreadCount > 0) {
@@ -290,7 +293,7 @@
               <h2>{{ conv.authorName }}</h2>
               <small>
                 <mat-icon>{{ platformIcon(conv.platformCode) }}</mat-icon>
-                {{ conv.platformCode }}
+                {{ conv.phone || conv.platformCode }}
               </small>
             </div>
           </header>

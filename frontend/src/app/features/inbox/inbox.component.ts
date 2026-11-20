@@ -29,6 +29,7 @@ export interface MessageConversation {
   menuType?: string;
   pageId?: string;
   accountId?: string;
+  phone?: string;
 }
 
 export interface CommentPostThread {
@@ -83,7 +84,9 @@ export class InboxComponent implements OnInit, OnDestroy {
 
   private static readonly DEMO_WA_CONVERSATION_ID = 'demo-wa-static';
   private static readonly DEMO_WA_HI_ID = 'demo-wa-hi';
-  private static readonly DEMO_WA_PEER_ID = 'demo-wa-peer';
+  private static readonly DEMO_WA_NAME = 'Umair Khan';
+  private static readonly DEMO_WA_PHONE = '+923462359301';
+  private static readonly DEMO_WA_PEER_ID = '923462359301';
 
   readonly items = signal<InboxItem[]>([]);
   readonly platformCode = signal<string | null>(null);
@@ -155,13 +158,19 @@ export class InboxComponent implements OnInit, OnDestroy {
           items: [item],
           menuType: item.menuType,
           pageId: item.pageId,
-          accountId: item.accountId
+          accountId: item.accountId,
+          phone: item.conversationId === InboxComponent.DEMO_WA_CONVERSATION_ID
+            ? InboxComponent.DEMO_WA_PHONE
+            : undefined
         });
       } else {
         existing.items.push(item);
         if (!item.isOutgoing && item.authorName) {
           existing.authorName = item.authorName;
           existing.authorId = item.authorId;
+        }
+        if (item.conversationId === InboxComponent.DEMO_WA_CONVERSATION_ID) {
+          existing.phone = InboxComponent.DEMO_WA_PHONE;
         }
         if (!item.isRead && !item.isOutgoing) existing.unreadCount += 1;
         if (new Date(item.receivedAt) > new Date(existing.lastAt)) {
@@ -179,6 +188,7 @@ export class InboxComponent implements OnInit, OnDestroy {
       .filter(c =>
         !q ||
         c.authorName.toLowerCase().includes(q) ||
+        (c.phone ?? '').toLowerCase().includes(q) ||
         c.lastContent.toLowerCase().includes(q)
       )
       .sort((a, b) => +new Date(b.lastAt) - +new Date(a.lastAt));
@@ -368,7 +378,7 @@ export class InboxComponent implements OnInit, OnDestroy {
         itemKind: 'message',
         platformCode: 'whatsapp',
         externalId: InboxComponent.DEMO_WA_HI_ID,
-        authorName: 'WhatsApp Customer',
+        authorName: InboxComponent.DEMO_WA_NAME,
         authorId: InboxComponent.DEMO_WA_PEER_ID,
         content: 'Hi',
         isHidden: false,
