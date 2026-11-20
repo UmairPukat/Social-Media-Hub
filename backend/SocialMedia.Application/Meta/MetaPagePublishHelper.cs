@@ -1,5 +1,6 @@
 using System.Text.Json;
 using SocialMedia.Application.Interfaces;
+using SocialMedia.Domain.Enums;
 using SocialMedia.Domain.Modules.Common.Entities;
 
 namespace SocialMedia.Application.Meta;
@@ -50,6 +51,22 @@ public static class MetaPagePublishHelper
             "No Facebook page access token is available. Disconnect Facebook, reconnect, and select your page again.");
     }
 
+    public static HashSet<string> ConnectedFacebookPageIds(SocialAccountEntityBase account)
+    {
+        var ids = new HashSet<string>(StringComparer.Ordinal);
+        AddPageId(ids, ReadJsonString(account.MetadataJson, "selectedPageId"));
+
+        foreach (var profile in ProcessEntityNav.Profiles(account))
+        {
+            if (profile.ProfileType == ProfileType.FacebookPage)
+                AddPageId(ids, profile.ExternalProfileId);
+
+            AddPageId(ids, ReadJsonString(profile.MetadataJson, "pageId"));
+        }
+
+        return ids;
+    }
+
     public static void AlignFacebookProfile(SocialProfileEntityBase profile, string pageId, string? pageName)
     {
         if (!string.Equals(profile.ExternalProfileId, pageId, StringComparison.Ordinal))
@@ -60,6 +77,12 @@ public static class MetaPagePublishHelper
         {
             profile.Name = pageName;
         }
+    }
+
+    private static void AddPageId(HashSet<string> ids, string? pageId)
+    {
+        if (!string.IsNullOrWhiteSpace(pageId))
+            ids.Add(pageId.Trim());
     }
 
     private static string? FirstNonEmpty(params string?[] values)

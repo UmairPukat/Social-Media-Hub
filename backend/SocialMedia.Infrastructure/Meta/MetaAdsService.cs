@@ -2,6 +2,7 @@ using System.Buffers.Binary;
 using System.IO.Compression;
 using System.Text;
 using System.Text.Json;
+using SocialMedia.Application.Catalog;
 using SocialMedia.Application.DTOs.Meta;
 using SocialMedia.Application.Interfaces;
 using SocialMedia.Application.Meta;
@@ -12,11 +13,15 @@ public class MetaAdsService : IMetaAdsService
 {
     private const string AdFields = "id,name,adset_id,campaign_id,status,effective_status,creative{id,object_story_spec}";
 
-    private readonly IMetaGraphApiClient _graph;
+    private const string AdAccountFields = "id,name,currency,account_status,business_name,amount_spent,balance";
 
-    public MetaAdsService(IMetaGraphApiClient graph)
+    private readonly IMetaGraphApiClient _graph;
+    private readonly IProcessDataStoreFactory _processData;
+
+    public MetaAdsService(IMetaGraphApiClient graph, IProcessDataStoreFactory processData)
     {
         _graph = graph;
+        _processData = processData;
     }
 
     public Task<Application.DTOs.Common.ApiResponse<IReadOnlyList<MetaAdAccountDto>>> GetAdAccountsAsync(
@@ -25,15 +30,15 @@ public class MetaAdsService : IMetaAdsService
         CancellationToken cancellationToken = default)
         => MetaApiExecutor.RunAsync(async () =>
         {
-            using var doc = await _graph.GetAsync(
-                userId,
-                menuType,
-                "me/adaccounts",
-                cancellationToken,
-                ("fields", "id,name,currency,account_status,business_name,amount_spent,balance"),
-                ("limit", "100"));
+            var pageIds = await ConnectedFacebookPageIdsAsync(userId, menuType, cancellationToken);
+            if (pageIds.Count == 0)
+                return await ListUserAdAccountsAsync(userId, menuType, cancellationToken);
 
-            return (IReadOnlyList<MetaAdAccountDto>)ReadArray(doc.RootElement, MapAdAccount);
+            var assigned = await ListAssignedAdAccountsAsync(userId, menuType, pageIds, cancellationToken);
+            if (assigned.Count > 0)
+                return (IReadOnlyList<MetaAdAccountDto>)assigned;
+
+            return await ListAdAccountsForPagesAsync(userId, menuType, pageIds, cancellationToken);
         }, "Ad accounts loaded.");
 
     public Task<Application.DTOs.Common.ApiResponse<MetaPagedResultDto<MetaCampaignDto>>> GetCampaignsAsync(
@@ -455,6 +460,154 @@ public class MetaAdsService : IMetaAdsService
             .Where(item => !string.IsNullOrWhiteSpace(item.Value))
             .Select(item => (item.Key, item.Value!))
             .ToArray();
+
+    private async Task<HashSet<string>> ConnectedFacebookPageIdsAsync(
+        Guid userId,
+        string menuType,
+        CancellationToken cancellationToken)
+    {
+        if (!MenuTypes.IsKnown(menuType))
+            return new HashSet<string>(StringComparer.Ordinal);
+
+        var store = _processData.ForMenu(MenuTypes.Normalize(menuType));
+        var platform = await store.GetPlatformByCodeAsync("facebook", cancellationToken);
+        if (platform is null)
+            return new HashSet<string>(StringComparer.Ordinal);
+
+        var account = await store.GetSocialAccountByUserAndPlatformAsync(userId, platform.Id, cancellationToken);
+        return account is null
+            ? new HashSet<string>(StringComparer.Ordinal)
+            : MetaPagePublishHelper.ConnectedFacebookPageIds(account);
+    }
+
+    private async Task<IReadOnlyList<MetaAdAccountDto>> ListUserAdAccountsAsync(
+        Guid userId,
+        string menuType,
+        CancellationToken cancellationToken)
+    {
+        using var doc = await _graph.GetAsync(
+            userId,
+            menuType,
+            "me/adaccounts",
+            cancellationToken,
+            ("fields", AdAccountFields),
+            ("limit", "100"));
+
+        return ReadArray(doc.RootElement, MapAdAccount);
+    }
+
+    private async Task<List<MetaAdAccountDto>> ListAssignedAdAccountsAsync(
+        Guid userId,
+        string menuType,
+        HashSet<string> pageIds,
+        CancellationToken cancellationToken)
+    {
+        var accounts = new List<MetaAdAccountDto>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var pageId in pageIds)
+        {
+            try
+            {
+                using var doc = await _graph.GetAsync(
+                    userId,
+                    menuType,
+                    $"{pageId}/assigned_ad_accounts",
+                    cancellationToken,
+                    ("fields", AdAccountFields),
+                    ("limit", "100"));
+
+                foreach (var account in ReadArray(doc.RootElement, MapAdAccount))
+                {
+                    if (!string.IsNullOrWhiteSpace(account.Id) && seen.Add(account.Id))
+                        accounts.Add(account);
+                }
+            }
+            catch (MetaGraphApiException)
+            {
+                // This page edge is only available for some Business Manager pages.
+            }
+        }
+
+        return accounts;
+    }
+
+    private async Task<IReadOnlyList<MetaAdAccountDto>> ListAdAccountsForPagesAsync(
+        Guid userId,
+        string menuType,
+        HashSet<string> pageIds,
+        CancellationToken cancellationToken)
+    {
+        List<(MetaAdAccountDto Account, HashSet<string> PageIds)> rows;
+        try
+        {
+            using var doc = await _graph.GetAsync(
+                userId,
+                menuType,
+                "me/adaccounts",
+                cancellationToken,
+                ("fields", AdAccountFields + ",promote_pages.limit(100){id}"),
+                ("limit", "100"));
+            rows = ReadArray(doc.RootElement, MapAdAccountPages);
+        }
+        catch (MetaGraphApiException)
+        {
+            var accounts = await ListUserAdAccountsAsync(userId, menuType, cancellationToken);
+            rows = new List<(MetaAdAccountDto Account, HashSet<string> PageIds)>();
+            foreach (var account in accounts)
+            {
+                if (string.IsNullOrWhiteSpace(account.Id))
+                    continue;
+
+                var promoted = new HashSet<string>(StringComparer.Ordinal);
+                try
+                {
+                    using var pages = await _graph.GetAsync(
+                        userId,
+                        menuType,
+                        $"{account.Id}/promote_pages",
+                        cancellationToken,
+                        ("fields", "id"),
+                        ("limit", "100"));
+                    foreach (var pageId in ReadArray(pages.RootElement, row => MetaGraphResponseHelper.ReadString(row, "id")))
+                    {
+                        if (!string.IsNullOrWhiteSpace(pageId))
+                            promoted.Add(pageId);
+                    }
+                }
+                catch (MetaGraphApiException)
+                {
+                    continue;
+                }
+
+                rows.Add((account, promoted));
+            }
+        }
+
+        return rows
+            .Where(row => row.PageIds.Any(pageIds.Contains))
+            .Select(row => row.Account)
+            .ToList();
+    }
+
+    private static (MetaAdAccountDto Account, HashSet<string> PageIds) MapAdAccountPages(JsonElement row)
+    {
+        var pageIds = new HashSet<string>(StringComparer.Ordinal);
+        if (row.TryGetProperty("promote_pages", out var pages)
+            && pages.ValueKind == JsonValueKind.Object
+            && pages.TryGetProperty("data", out var data)
+            && data.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var page in data.EnumerateArray())
+            {
+                var pageId = MetaGraphResponseHelper.ReadString(page, "id");
+                if (!string.IsNullOrWhiteSpace(pageId))
+                    pageIds.Add(pageId);
+            }
+        }
+
+        return (MapAdAccount(row), pageIds);
+    }
 
     private static List<T> ReadArray<T>(JsonElement root, Func<JsonElement, T> map)
     {

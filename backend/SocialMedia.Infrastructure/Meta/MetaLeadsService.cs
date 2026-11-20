@@ -420,6 +420,14 @@ public class MetaLeadsService : IMetaLeadsService
                 context.GraphApiVersion))
             .ToList();
 
+        var connectedIds = MetaPagePublishHelper.ConnectedFacebookPageIds(account);
+        if (connectedIds.Count > 0)
+        {
+            var connected = mapped.Where(page => connectedIds.Contains(page.Id)).ToList();
+            if (connected.Count > 0)
+                mapped = connected;
+        }
+
         return (context.GraphApiVersion, mapped);
     }
 

@@ -3,7 +3,7 @@
     <div>
       <p class="eyebrow">{{ processLabel() }} · Meta Ads & Commerce</p>
       <h1>Ad Accounts</h1>
-      <p class="lede">Choose the ad account used for campaigns, ad sets, ads, and insights. Your Facebook connection from {{ processLabel() }} → Connect is reused automatically.</p>
+      <p class="lede">These are the ad accounts assigned to the Facebook Page connected in {{ processLabel() }}. Campaigns, ad sets, ads, and insights use the account you select here.</p>
       <div class="meta-badges">
         <span class="permission-badge"><mat-icon>verified_user</mat-icon> ads_read</span>
       </div>
@@ -41,7 +41,7 @@
 
   @if (pages().length) {
     <div class="context-strip">
-      <span class="label">Authorized Facebook Pages</span>
+      <span class="label">Connected Facebook Page</span>
       @for (page of pages(); track page.id) {
         <strong>{{ page.name }}</strong>
         <span class="mono">{{ page.id }}</span>
@@ -58,8 +58,8 @@
     } @else if (!accounts().length) {
       <div class="empty-state">
         <mat-icon>account_balance</mat-icon>
-        <strong>No ad accounts found</strong>
-        <span>Ensure your connected Meta user has access to at least one ad account.</span>
+        <strong>No ad accounts for this page</strong>
+        <span>Assign the connected Facebook Page to an ad account in Meta Business Settings, then sync again.</span>
       </div>
     } @else {
       <div class="table-wrap">
