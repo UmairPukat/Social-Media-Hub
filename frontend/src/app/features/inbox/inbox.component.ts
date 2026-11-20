@@ -343,11 +343,9 @@ export class InboxComponent implements OnInit, OnDestroy {
     void this.realtime.stop();
   }
 
-  /** Social Media Accounts · WhatsApp static demo (no API). */
-  private isSmaWhatsAppDemo(): boolean {
-    return this.processRoute.currentMenuType() === 'social_media_account'
-      && this.platformCode() === 'whatsapp'
-      && this.mode() === 'messages';
+  /** WhatsApp static demo in every module: incoming Hi after 10s, replies stay local. */
+  private isWhatsAppDemo(): boolean {
+    return this.platformCode() === 'whatsapp' && this.mode() === 'messages';
   }
 
   private clearWhatsAppHiDemo(): void {
@@ -359,11 +357,11 @@ export class InboxComponent implements OnInit, OnDestroy {
 
   private scheduleWhatsAppHiDemo(): void {
     this.clearWhatsAppHiDemo();
-    if (!this.isSmaWhatsAppDemo()) return;
+    if (!this.isWhatsAppDemo()) return;
 
     this.whatsappHiTimer = setTimeout(() => {
       this.whatsappHiTimer = null;
-      if (!this.isSmaWhatsAppDemo()) return;
+      if (!this.isWhatsAppDemo()) return;
 
       this.upsertItem({
         id: InboxComponent.DEMO_WA_HI_ID,
@@ -378,7 +376,7 @@ export class InboxComponent implements OnInit, OnDestroy {
         isOutgoing: false,
         conversationId: InboxComponent.DEMO_WA_CONVERSATION_ID,
         receivedAt: new Date().toISOString(),
-        menuType: 'social_media_account'
+        menuType: this.processRoute.currentMenuType()
       });
       this.selectedKey.set(`msg:whatsapp:${InboxComponent.DEMO_WA_CONVERSATION_ID}`);
     }, 10_000);
@@ -446,7 +444,7 @@ export class InboxComponent implements OnInit, OnDestroy {
     if (code === 'whatsapp' || code === 'instagram') this.mode.set('messages');
     if (code === 'youtube') this.mode.set('comments');
     this.selectedKey.set(null);
-    if (code === 'whatsapp' && this.processRoute.currentMenuType() === 'social_media_account') {
+    if (code === 'whatsapp') {
       this.scheduleWhatsAppHiDemo();
     } else {
       this.clearWhatsAppHiDemo();
@@ -476,13 +474,13 @@ export class InboxComponent implements OnInit, OnDestroy {
         }
         this.autoSelectFirst();
         this.hydrateInstagramMedia(items);
-        if (this.isSmaWhatsAppDemo()) this.scheduleWhatsAppHiDemo();
+        if (this.isWhatsAppDemo()) this.scheduleWhatsAppHiDemo();
       },
       error: () => {
         this.items.set([]);
         this.banner.set('Inbox API is unavailable. Live Instagram data could not be loaded.');
         this.autoSelectFirst();
-        if (this.isSmaWhatsAppDemo()) this.scheduleWhatsAppHiDemo();
+        if (this.isWhatsAppDemo()) this.scheduleWhatsAppHiDemo();
       }
     });
   }
@@ -688,7 +686,7 @@ export class InboxComponent implements OnInit, OnDestroy {
       const conv = this.selectedMessage();
       if (!conv) return;
 
-      if (this.isSmaWhatsAppDemo()) {
+      if (this.isWhatsAppDemo()) {
         const quoted = this.replyTargetMessage();
         const conversationId = conv.items.find((item) => item.conversationId)?.conversationId
           ?? InboxComponent.DEMO_WA_CONVERSATION_ID;
@@ -709,7 +707,7 @@ export class InboxComponent implements OnInit, OnDestroy {
           replyToId: quoted?.id,
           replyToAuthor: quoted ? (quoted.isOutgoing ? 'You' : quoted.authorName) : undefined,
           replyToContent: quoted?.content,
-          menuType: 'social_media_account'
+          menuType: this.processRoute.currentMenuType()
         });
         this.replyText.set('');
         this.clearMessageReplyTarget();
