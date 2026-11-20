@@ -84,14 +84,14 @@ public class MetaLeadsService : IMetaLeadsService
                     page.Version,
                     page.Id,
                     page.Token,
-                    MetaGraphClient.PageSubscribedFields,
+                    MetaGraphClient.LeadgenSubscribedFields,
                     cancellationToken);
             }
             catch (Exception ex) when (ex is not MetaGraphApiException)
             {
                 throw new MetaGraphApiException(Redact(ex.Message));
             }
-            return MetaGraphClient.PageSubscribedFields;
+            return MetaGraphClient.LeadgenSubscribedFields;
         }, "Page subscribed to leadgen.");
 
     public Task<Application.DTOs.Common.ApiResponse<MetaPagedResultDto<MetaLeadDto>>> GetLeadsAsync(

@@ -109,8 +109,8 @@ export class MetaAdsFacebookLeadsComponent implements OnInit {
     this.formsCursor.set(null);
     const page = this.pages().find(item => item.id === pageId);
     if (page) this.state.selectPage({ id: page.id, name: page.name });
+    this.banner.set('');
     if (!pageId) return;
-    this.subscribe(pageId);
     this.loadForms();
   }
 
