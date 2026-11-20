@@ -364,30 +364,48 @@ public class MetaAdsService : IMetaAdsService
                 throw new MetaGraphApiException("A destination link is required.");
 
             var accountId = MetaGraphResponseHelper.NormalizeAdAccountId(request.AdAccountId);
-            var creative = JsonSerializer.Serialize(new
+            var message = string.IsNullOrWhiteSpace(request.Message) ? request.Name.Trim() : request.Message.Trim();
+            var story = JsonSerializer.Serialize(new
             {
-                object_story_spec = new
+                page_id = request.PageId.Trim(),
+                link_data = new
                 {
-                    page_id = request.PageId.Trim(),
-                    link_data = new
+                    message,
+                    link = request.Link.Trim(),
+                    picture = "https://upload.wikimedia.org/wikipedia/commons/thumb/4/47/PNG_transparency_demonstration_1.png/640px-PNG_transparency_demonstration_1.png",
+                    call_to_action = new
                     {
-                        message = string.IsNullOrWhiteSpace(request.Message) ? request.Name.Trim() : request.Message.Trim(),
-                        link = request.Link.Trim()
+                        type = "LEARN_MORE",
+                        value = new { link = request.Link.Trim() }
                     }
                 }
             });
 
-            var payload = new Dictionary<string, string>
-            {
-                ["name"] = request.Name.Trim(),
-                ["adset_id"] = request.AdSetId.Trim(),
-                ["status"] = "PAUSED",
-                ["creative"] = creative
-            };
+            using var creativeDoc = await _graph.PostFormAsync(
+                userId,
+                menuType,
+                $"{accountId}/adcreatives",
+                new Dictionary<string, string>
+                {
+                    ["name"] = $"{request.Name.Trim()} creative",
+                    ["object_story_spec"] = story
+                },
+                cancellationToken);
+            var creativeId = RequireCreatedId(creativeDoc.RootElement, "ad creative");
 
-            using var doc = await _graph.PostFormAsync(userId, menuType, $"{accountId}/ads", payload, cancellationToken);
-            var id = MetaGraphResponseHelper.ReadString(doc.RootElement, "id")
-                ?? throw new MetaGraphApiException("Meta did not return an ad id.");
+            using var doc = await _graph.PostFormAsync(
+                userId,
+                menuType,
+                $"{accountId}/ads",
+                new Dictionary<string, string>
+                {
+                    ["name"] = request.Name.Trim(),
+                    ["adset_id"] = request.AdSetId.Trim(),
+                    ["status"] = "PAUSED",
+                    ["creative"] = JsonSerializer.Serialize(new { creative_id = creativeId })
+                },
+                cancellationToken);
+            var id = RequireCreatedId(doc.RootElement, "ad");
 
             using var loaded = await _graph.GetAsync(
                 userId,
@@ -579,6 +597,50 @@ public class MetaAdsService : IMetaAdsService
             TargetingSummary = targetingSummary,
             Placements = placements
         };
+    }
+
+    private static string RequireCreatedId(JsonElement root, string label)
+    {
+        if (root.ValueKind == JsonValueKind.Object && root.TryGetProperty("error", out var error))
+        {
+            var message = MetaGraphResponseHelper.ReadString(error, "message");
+            throw new MetaGraphApiException(string.IsNullOrWhiteSpace(message)
+                ? $"Meta rejected the {label}."
+                : message);
+        }
+
+        var id = FirstId(root);
+        if (!string.IsNullOrWhiteSpace(id))
+            return id;
+
+        var body = root.GetRawText();
+        if (body.Length > 500)
+            body = body[..500];
+        throw new MetaGraphApiException($"Meta did not return a {label} id. Response: {body}");
+    }
+
+    private static string? FirstId(JsonElement root)
+    {
+        if (root.ValueKind != JsonValueKind.Object)
+            return null;
+
+        foreach (var name in new[] { "id", "creative_id", "ad_id" })
+        {
+            var value = MetaGraphResponseHelper.ReadString(root, name);
+            if (!string.IsNullOrWhiteSpace(value) && !string.Equals(value, "null", StringComparison.OrdinalIgnoreCase))
+                return value;
+        }
+
+        foreach (var property in root.EnumerateObject())
+        {
+            if (property.Value.ValueKind != JsonValueKind.Object)
+                continue;
+            var nested = FirstId(property.Value);
+            if (!string.IsNullOrWhiteSpace(nested))
+                return nested;
+        }
+
+        return null;
     }
 
     private static MetaAdDto MapAd(JsonElement row)
