@@ -235,6 +235,13 @@ public class InboxService : IInboxService
 
         var platform = await store.GetPlatformByIdAsync(account.PlatformId, cancellationToken);
         var imageUrl = ProcessEntityNav.FirstMediaUrl(post);
+        if (string.Equals(platform?.Code, "facebook", StringComparison.OrdinalIgnoreCase)
+            && !IsLocalInboxMedia(imageUrl))
+        {
+            imageUrl = await CacheFacebookPostImageAsync(store, account, profile, post, postExternalId, cancellationToken)
+                ?? imageUrl;
+        }
+
         if (InstagramConnectionResolver.IsInstagramPlatform(platform?.Code)
             && !ProcessEntityNav.IsBrowserDisplayableUrl(imageUrl))
         {
@@ -355,6 +362,13 @@ public class InboxService : IInboxService
         {
             try
             {
+                if (string.Equals(row.Platform.Code, "facebook", StringComparison.OrdinalIgnoreCase))
+                {
+                    await CacheFacebookPostImageAsync(
+                        store, row.Account, row.Profile, row.Post, row.Post.ExternalPostId!, cancellationToken);
+                    continue;
+                }
+
                 var auth = await store.GetSocialAuthByAccountIdAsync(row.Account.Id, cancellationToken);
                 if (auth is null)
                     continue;
@@ -383,20 +397,6 @@ public class InboxService : IInboxService
                             break;
                     }
                 }
-                else if (string.Equals(row.Platform.Code, "facebook", StringComparison.OrdinalIgnoreCase))
-                {
-                    foreach (var token in tokens)
-                    {
-                        snapshot = await _facebookService.GetPostSnapshotAsync(
-                            token, row.Post.ExternalPostId!, cancellationToken);
-                        if (snapshot is not null
-                            && (!string.IsNullOrWhiteSpace(snapshot.MediaUrl)
-                                || !string.IsNullOrWhiteSpace(snapshot.ThumbnailUrl)
-                                || !string.IsNullOrWhiteSpace(snapshot.Text)))
-                            break;
-                    }
-                }
-
                 await MetaPostMediaWriter.ApplySnapshotAsync(store, row.Post, snapshot, cancellationToken);
             }
             catch (Exception ex)
@@ -518,18 +518,44 @@ public class InboxService : IInboxService
                 if (auth is null)
                     return ApiResponse<object>.Fail("No access token is available. Reconnect Facebook and select the page again.");
 
-                try
+                var ownerPageId = FacebookPageIdFromPost(post.ExternalPostId)
+                    ?? MetaPagePublishHelper.ResolveSelectedPageId(account, profile);
+                var pageTokens = new List<string>();
+                void AddPageToken(string? token)
                 {
-                    var resolved = await MetaPagePublishHelper.ResolveFacebookPublishCredentialsAsync(
-                        _facebookService, account, profile, auth, cancellationToken);
-                    facebookPageToken = resolved.PageAccessToken;
-                    cardPageId = resolved.PageId;
-                    tokens = [facebookPageToken];
+                    if (!string.IsNullOrWhiteSpace(token) && !pageTokens.Contains(token, StringComparer.Ordinal))
+                        pageTokens.Add(token);
                 }
-                catch (InvalidOperationException ex)
+
+                AddPageToken(ReadMetadataString(profile.MetadataJson, "pageAccessToken"));
+                if (!string.Equals(auth.AccessToken, auth.RefreshToken, StringComparison.Ordinal))
+                    AddPageToken(auth.AccessToken);
+
+                if (!string.IsNullOrWhiteSpace(ownerPageId))
+                    AddPageToken(await MetaPagePublishHelper.FindPageAccessTokenAsync(
+                        _facebookService, auth, ownerPageId, cancellationToken));
+
+                if (pageTokens.Count == 0)
                 {
-                    return ApiResponse<object>.Fail(ex.Message);
+                    try
+                    {
+                        var resolved = await MetaPagePublishHelper.ResolveFacebookPublishCredentialsAsync(
+                            _facebookService, account, profile, auth, cancellationToken);
+                        AddPageToken(resolved.PageAccessToken);
+                        ownerPageId ??= resolved.PageId;
+                    }
+                    catch (InvalidOperationException ex)
+                    {
+                        return ApiResponse<object>.Fail(ex.Message);
+                    }
                 }
+
+                if (pageTokens.Count == 0)
+                    return ApiResponse<object>.Fail("No Facebook page access token is available. Reconnect Facebook and select the page again.");
+
+                facebookPageToken = pageTokens[0];
+                cardPageId = ownerPageId;
+                tokens = pageTokens;
             }
 
             if (tokens.Count == 0)
@@ -564,6 +590,9 @@ public class InboxService : IInboxService
             {
                 if (code == "facebook" && IsPageTokenRequiredError(lastError))
                     return ApiResponse<object>.Fail("Facebook comment replies need the Page access token. Reconnect Facebook in this module and select the page again.");
+
+                if (code == "facebook" && IsCommentPermissionError(lastError))
+                    return ApiResponse<object>.Fail("Facebook refused the comment reply. Reconnect Facebook in this module so pages_manage_engagement is granted, then select the page again.");
 
                 return ApiResponse<object>.Fail(lastError.Message);
             }
@@ -1254,6 +1283,104 @@ public class InboxService : IInboxService
         auth.AccessToken = pageToken;
         auth.UpdatedAt = DateTime.UtcNow;
         store.UpdateSocialAuth(auth);
+    }
+
+    private async Task<string?> CacheFacebookPostImageAsync(
+        IProcessDataStore store,
+        SocialAccountEntityBase account,
+        SocialProfileEntityBase profile,
+        PostEntityBase post,
+        string postExternalId,
+        CancellationToken cancellationToken)
+    {
+        if (IsLocalInboxMedia(ProcessEntityNav.FirstMediaUrl(post)))
+            return ProcessEntityNav.FirstMediaUrl(post);
+
+        var auth = ProcessEntityNav.Auth(account)
+            ?? await store.GetSocialAuthByAccountIdAsync(account.Id, cancellationToken);
+        if (auth is null)
+            return null;
+
+        var pageId = FacebookPageIdFromPost(postExternalId)
+            ?? MetaPagePublishHelper.ResolveSelectedPageId(account, profile);
+        var pageToken = ReadMetadataString(profile.MetadataJson, "pageAccessToken");
+        if (string.IsNullOrWhiteSpace(pageToken)
+            && !string.Equals(auth.AccessToken, auth.RefreshToken, StringComparison.Ordinal))
+            pageToken = auth.AccessToken;
+        if (string.IsNullOrWhiteSpace(pageToken) && !string.IsNullOrWhiteSpace(pageId))
+            pageToken = await MetaPagePublishHelper.FindPageAccessTokenAsync(
+                _facebookService, auth, pageId, cancellationToken);
+        pageToken ??= auth.AccessToken;
+        if (string.IsNullOrWhiteSpace(pageToken))
+            return null;
+
+        RemotePostSnapshot? snapshot = null;
+        try
+        {
+            snapshot = await _facebookService.GetPostSnapshotAsync(pageToken, postExternalId, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Could not read Facebook post {PostId}.", postExternalId);
+        }
+
+        string? remoteUrl = null;
+        try
+        {
+            remoteUrl = await _facebookService.GetPostPictureUrlAsync(pageToken, postExternalId, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Could not read Facebook post picture {PostId}.", postExternalId);
+        }
+
+        remoteUrl = FirstNonEmpty(remoteUrl, snapshot?.ThumbnailUrl, snapshot?.MediaUrl);
+        if (string.IsNullOrWhiteSpace(remoteUrl))
+        {
+            await MetaPostMediaWriter.ApplySnapshotAsync(store, post, snapshot, cancellationToken);
+            return ProcessEntityNav.FirstMediaUrl(post);
+        }
+
+        var stored = await _mediaCache.StoreFromRemoteAsync(remoteUrl, cancellationToken);
+        snapshot ??= new RemotePostSnapshot { ExternalId = postExternalId };
+        if (!string.IsNullOrWhiteSpace(stored))
+        {
+            snapshot.ThumbnailUrl = stored;
+            if (!snapshot.IsVideo)
+                snapshot.MediaUrl = stored;
+        }
+        else if (string.IsNullOrWhiteSpace(snapshot.MediaUrl))
+        {
+            snapshot.MediaUrl = remoteUrl;
+        }
+
+        await MetaPostMediaWriter.ApplySnapshotAsync(store, post, snapshot, cancellationToken);
+        return ProcessEntityNav.FirstMediaUrl(post);
+    }
+
+    private static bool IsLocalInboxMedia(string? url)
+        => !string.IsNullOrWhiteSpace(url)
+           && (url.Contains("/publish-cache/", StringComparison.OrdinalIgnoreCase)
+               || url.StartsWith("blob:", StringComparison.OrdinalIgnoreCase));
+
+    private static string? FacebookPageIdFromPost(string? externalPostId)
+    {
+        if (string.IsNullOrWhiteSpace(externalPostId))
+            return null;
+
+        var split = externalPostId.IndexOf('_');
+        if (split <= 0)
+            return null;
+
+        var pageId = externalPostId[..split];
+        return pageId.All(char.IsDigit) ? pageId : null;
+    }
+
+    private static bool IsCommentPermissionError(Exception ex)
+    {
+        var text = ex.Message ?? string.Empty;
+        return text.Contains("(#200)", StringComparison.OrdinalIgnoreCase)
+            || text.Contains("Permissions error", StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool IsPageTokenRequiredError(Exception ex)

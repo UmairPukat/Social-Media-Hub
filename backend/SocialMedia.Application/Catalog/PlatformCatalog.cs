@@ -310,7 +310,7 @@ public static class PlatformCatalog
     public static string EnsurePagePickerScopes(string? scopes)
     {
         var tokens = DistinctScopeTokens(NormalizeFacebookScopes(scopes));
-        foreach (var required in new[] { "pages_show_list", "pages_read_engagement" })
+        foreach (var required in new[] { "pages_show_list", "pages_read_engagement", "pages_manage_engagement" })
         {
             if (!tokens.Exists(token => token.Equals(required, StringComparison.OrdinalIgnoreCase)))
                 tokens.Add(required);

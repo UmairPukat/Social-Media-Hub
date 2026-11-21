@@ -49,6 +49,9 @@ public interface IFacebookService
     /// <summary>Reads one page post so a webhook comment can be stored with its post context.</summary>
     Task<RemotePostSnapshot?> GetPostSnapshotAsync(string pageAccessToken, string postId, CancellationToken cancellationToken = default);
 
+    /// <summary>Fresh signed image URL for a Page post. Facebook CDN links expire and do not render in the inbox.</summary>
+    Task<string?> GetPostPictureUrlAsync(string pageAccessToken, string postId, CancellationToken cancellationToken = default);
+
     /// <summary>Reads one comment so webhook payloads missing text/author/post can still be stored.</summary>
     Task<RemoteCommentSnapshot?> GetCommentSnapshotAsync(string accessToken, string commentId, CancellationToken cancellationToken = default);
 

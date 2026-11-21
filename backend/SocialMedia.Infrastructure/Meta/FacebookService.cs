@@ -419,9 +419,117 @@ public class FacebookService : IFacebookService
 
     public async Task<string?> ReplyCommentAsync(MetaCallContext context, string commentId, string message, CancellationToken cancellationToken = default)
     {
-        using var doc = await _graph.PostAsync(_settings.GraphApiVersion, $"{commentId}/comments", context.AccessToken,
-            new Dictionary<string, string> { ["message"] = message }, cancellationToken);
-        return doc.RootElement.TryGetProperty("id", out var id) ? id.GetString() : null;
+        var targets = await ResolveCommentReplyIdsAsync(context, commentId, cancellationToken);
+        Exception? lastError = null;
+        for (var index = 0; index < targets.Count; index++)
+        {
+            try
+            {
+                using var doc = await _graph.PostAsync(
+                    _settings.GraphApiVersion,
+                    $"{targets[index]}/comments",
+                    context.AccessToken,
+                    new Dictionary<string, string> { ["message"] = message },
+                    cancellationToken);
+                return doc.RootElement.TryGetProperty("id", out var id) ? id.GetString() : null;
+            }
+            catch (InvalidOperationException ex) when (index < targets.Count - 1 && IsRetryableCommentReply(ex))
+            {
+                lastError = ex;
+            }
+        }
+
+        if (lastError is not null)
+            throw lastError;
+
+        throw new InvalidOperationException("Facebook did not accept the comment reply.");
+    }
+
+    public async Task<string?> GetPostPictureUrlAsync(string pageAccessToken, string postId, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(pageAccessToken) || string.IsNullOrWhiteSpace(postId))
+            return null;
+
+        using var doc = await _graph.GetAsync(
+            _settings.GraphApiVersion,
+            $"{postId}/picture",
+            pageAccessToken,
+            cancellationToken,
+            ("redirect", "false"),
+            ("type", "full"));
+
+        if (!doc.RootElement.TryGetProperty("data", out var data))
+            return null;
+
+        return data.TryGetProperty("url", out var url) ? url.GetString() : null;
+    }
+
+    private async Task<List<string>> ResolveCommentReplyIdsAsync(
+        MetaCallContext context,
+        string commentId,
+        CancellationToken cancellationToken)
+    {
+        var targets = new List<string>();
+        void Add(string? value)
+        {
+            var id = value?.Trim();
+            if (!string.IsNullOrWhiteSpace(id) && !targets.Contains(id, StringComparer.Ordinal))
+                targets.Add(id);
+        }
+
+        Add(commentId);
+        var pageId = FirstNonEmpty(context.PageExternalId, context.ProfileExternalId);
+        if (!string.IsNullOrWhiteSpace(pageId))
+        {
+            var shortId = commentId.Contains('_', StringComparison.Ordinal)
+                ? commentId[(commentId.LastIndexOf('_') + 1)..]
+                : commentId;
+            if (!string.IsNullOrWhiteSpace(shortId))
+                Add($"{pageId}_{shortId}");
+        }
+
+        var canonical = new List<string>();
+        foreach (var candidate in targets.ToList())
+        {
+            try
+            {
+                using var doc = await _graph.GetAsync(
+                    _settings.GraphApiVersion,
+                    candidate,
+                    context.AccessToken,
+                    cancellationToken,
+                    ("fields", "id"));
+                if (doc.RootElement.TryGetProperty("id", out var idElement))
+                    AddUnique(canonical, idElement.GetString());
+            }
+            catch
+            {
+                // A webhook comment id is often only the second half. The next shape may resolve.
+            }
+        }
+
+        var ordered = new List<string>();
+        foreach (var id in canonical)
+            AddUnique(ordered, id);
+        foreach (var id in targets)
+            AddUnique(ordered, id);
+        return ordered;
+    }
+
+    private static void AddUnique(List<string> ids, string? value)
+    {
+        var id = value?.Trim();
+        if (!string.IsNullOrWhiteSpace(id) && !ids.Contains(id, StringComparer.Ordinal))
+            ids.Add(id);
+    }
+
+    private static bool IsRetryableCommentReply(Exception ex)
+    {
+        var text = ex.Message ?? string.Empty;
+        return text.Contains("(#200)", StringComparison.OrdinalIgnoreCase)
+            || text.Contains("(#100)", StringComparison.OrdinalIgnoreCase)
+            || text.Contains("does not exist", StringComparison.OrdinalIgnoreCase)
+            || text.Contains("Permissions error", StringComparison.OrdinalIgnoreCase);
     }
 
     public async Task HideCommentAsync(MetaCallContext context, string commentId, bool hide, CancellationToken cancellationToken = default)

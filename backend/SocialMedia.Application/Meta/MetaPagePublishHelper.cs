@@ -49,6 +49,33 @@ public static class MetaPagePublishHelper
             "No Facebook page access token is available. Disconnect Facebook, reconnect, and select your page again.");
     }
 
+    public static async Task<string?> FindPageAccessTokenAsync(
+        IFacebookService facebookService,
+        SocialAuthEntityBase auth,
+        string pageId,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(pageId))
+            return null;
+
+        foreach (var userToken in DistinctTokens(auth.RefreshToken, auth.AccessToken))
+        {
+            try
+            {
+                var pages = await facebookService.ListPagesAsync(userToken, cancellationToken);
+                var page = pages.FirstOrDefault(item => string.Equals(item.PageId, pageId, StringComparison.Ordinal));
+                if (!string.IsNullOrWhiteSpace(page?.PageAccessToken))
+                    return page.PageAccessToken;
+            }
+            catch
+            {
+                // Try the next stored login token.
+            }
+        }
+
+        return null;
+    }
+
     public static HashSet<string> ConnectedFacebookPageIds(SocialAccountEntityBase account)
     {
         var ids = new HashSet<string>(StringComparer.Ordinal);

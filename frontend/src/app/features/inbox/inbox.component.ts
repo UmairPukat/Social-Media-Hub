@@ -483,7 +483,7 @@ export class InboxComponent implements OnInit, OnDestroy {
           this.mode.set('messages');
         }
         this.autoSelectFirst();
-        this.hydrateInstagramMedia(items);
+        this.hydrateCommentMedia(items);
         if (this.isWhatsAppDemo()) this.scheduleWhatsAppHiDemo();
       },
       error: () => {
@@ -495,13 +495,18 @@ export class InboxComponent implements OnInit, OnDestroy {
     });
   }
 
-  private hydrateInstagramMedia(items: InboxItem[]): void {
+  private hydrateCommentMedia(items: InboxItem[]): void {
     const seen = new Set<string>();
     for (const item of items) {
-      if (item.itemKind !== 'comment' || !this.matchesPlatform(item.platformCode, 'instagram') || !item.post?.postId) {
+      const facebook = this.matchesPlatform(item.platformCode, 'facebook');
+      const instagram = this.matchesPlatform(item.platformCode, 'instagram');
+      if (item.itemKind !== 'comment' || (!facebook && !instagram) || !item.post?.postId) {
         continue;
       }
-      if (this.isDisplayableInboxImage(item.post.postImageUrl)) {
+      if (this.isLocalInboxImage(item.post.postImageUrl)) {
+        continue;
+      }
+      if (!facebook && this.isDisplayableInboxImage(item.post.postImageUrl)) {
         continue;
       }
 
@@ -531,6 +536,11 @@ export class InboxComponent implements OnInit, OnDestroy {
       },
       error: () => undefined
     });
+  }
+
+  private isLocalInboxImage(url?: string | null): boolean {
+    if (!url) return false;
+    return url.startsWith('blob:') || url.startsWith('/publish-cache/') || url.includes('/publish-cache/');
   }
 
   private isDisplayableInboxImage(url?: string | null): boolean {
