@@ -512,6 +512,26 @@ public class InboxService : IInboxService
                 : code == "youtube"
                     ? (auth is null ? [] : CandidateYouTubeTokens(auth))
                     : ProcessCardAuthResolver.CollectTokens(auth, account, code);
+            string? facebookPageToken = null;
+            if (code == "facebook")
+            {
+                if (auth is null)
+                    return ApiResponse<object>.Fail("No access token is available. Reconnect Facebook and select the page again.");
+
+                try
+                {
+                    var resolved = await MetaPagePublishHelper.ResolveFacebookPublishCredentialsAsync(
+                        _facebookService, account, profile, auth, cancellationToken);
+                    facebookPageToken = resolved.PageAccessToken;
+                    cardPageId = resolved.PageId;
+                    tokens = [facebookPageToken];
+                }
+                catch (InvalidOperationException ex)
+                {
+                    return ApiResponse<object>.Fail(ex.Message);
+                }
+            }
+
             if (tokens.Count == 0)
                 return ApiResponse<object>.Fail("No access token is available. Reconnect the account.");
 
@@ -541,7 +561,15 @@ public class InboxService : IInboxService
             }
 
             if (lastError is not null)
+            {
+                if (code == "facebook" && IsPageTokenRequiredError(lastError))
+                    return ApiResponse<object>.Fail("Facebook comment replies need the Page access token. Reconnect Facebook in this module and select the page again.");
+
                 return ApiResponse<object>.Fail(lastError.Message);
+            }
+
+            if (!string.IsNullOrWhiteSpace(facebookPageToken) && auth is not null)
+                RememberFacebookPageToken(store, auth, facebookPageToken);
 
             var externalId = string.IsNullOrWhiteSpace(remoteCommentId)
                 ? $"local_reply_{Guid.NewGuid():N}"
@@ -1210,6 +1238,28 @@ public class InboxService : IInboxService
             tokens.Add(auth.AccessToken);
         return tokens;
     }
+
+    private static void RememberFacebookPageToken(
+        IProcessDataStore store,
+        SocialAuthEntityBase auth,
+        string pageToken)
+    {
+        if (string.Equals(auth.AccessToken, pageToken, StringComparison.Ordinal))
+            return;
+
+        if (string.IsNullOrWhiteSpace(auth.RefreshToken)
+            && !string.IsNullOrWhiteSpace(auth.AccessToken))
+            auth.RefreshToken = auth.AccessToken;
+
+        auth.AccessToken = pageToken;
+        auth.UpdatedAt = DateTime.UtcNow;
+        store.UpdateSocialAuth(auth);
+    }
+
+    private static bool IsPageTokenRequiredError(Exception ex)
+        => (ex.Message ?? string.Empty).Contains(
+            "only available for page access tokens",
+            StringComparison.OrdinalIgnoreCase);
 
     private static bool IsOAuthTokenError(Exception ex)
     {

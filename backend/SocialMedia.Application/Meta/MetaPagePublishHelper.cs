@@ -26,9 +26,7 @@ public static class MetaPagePublishHelper
             ?? throw new InvalidOperationException("No Facebook page is selected. Reconnect Facebook and choose a page.");
 
         var cachedPageToken = ReadJsonString(profile.MetadataJson, "pageAccessToken");
-        var userToken = auth.RefreshToken;
-
-        if (!string.IsNullOrWhiteSpace(userToken))
+        foreach (var userToken in DistinctTokens(auth.RefreshToken, auth.AccessToken))
         {
             try
             {
@@ -39,11 +37,11 @@ public static class MetaPagePublishHelper
             }
             catch
             {
-                // Fall back to stored tokens below.
+                // Try the next stored token, then the cached page token.
             }
         }
 
-        var storedToken = FirstNonEmpty(auth.AccessToken, cachedPageToken);
+        var storedToken = FirstNonEmpty(cachedPageToken, auth.AccessToken);
         if (!string.IsNullOrWhiteSpace(storedToken))
             return (pageId, storedToken);
 
@@ -76,6 +74,16 @@ public static class MetaPagePublishHelper
             && !string.Equals(profile.Name, pageName, StringComparison.Ordinal))
         {
             profile.Name = pageName;
+        }
+    }
+
+    private static IEnumerable<string> DistinctTokens(params string?[] tokens)
+    {
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var token in tokens)
+        {
+            if (!string.IsNullOrWhiteSpace(token) && seen.Add(token))
+                yield return token;
         }
     }
 
