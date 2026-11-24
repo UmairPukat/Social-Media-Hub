@@ -1,6 +1,5 @@
-import { DatePipe, DecimalPipe } from '@angular/common';
+import { DatePipe } from '@angular/common';
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
-import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { PROCESS_MODULE_LIST } from '../../core/config/process.config';
 import { ReadInsightPoint, ReadInsightsReport } from '../../core/models/api.models';
@@ -24,7 +23,7 @@ interface ChartPoint {
 }
 
 const SERIES: SeriesDef[] = [
-  { key: 'reach', label: 'Reach', color: '#1877f2' },
+  { key: 'reach', label: 'Reach', color: '#2563eb' },
   { key: 'impressions', label: 'Impressions', color: '#0f766e' },
   { key: 'engagement', label: 'Engagement', color: '#d97706' },
   { key: 'pageViews', label: 'Page views', color: '#7c3aed' },
@@ -34,7 +33,7 @@ const SERIES: SeriesDef[] = [
 @Component({
   selector: 'app-read-insights',
   standalone: true,
-  imports: [DatePipe, DecimalPipe, MatButtonModule, MatIconModule],
+  imports: [DatePipe, MatIconModule],
   templateUrl: './read-insights.component.html',
   styleUrl: './read-insights.component.scss'
 })
@@ -65,6 +64,11 @@ export class ReadInsightsComponent implements OnInit {
   });
 
   readonly chart = computed(() => this.buildChart(this.report()?.trend ?? [], this.activeSeries(), false));
+  readonly engagementRate = computed(() => {
+    const report = this.report();
+    if (!report?.reachSupported || !report.reach || report.engagement == null) return null;
+    return Math.round((report.engagement / report.reach) * 1000) / 10;
+  });
   readonly followerChart = computed(() => {
     const report = this.report();
     if (!report?.followersSupported) return null;
@@ -102,6 +106,26 @@ export class ReadInsightsComponent implements OnInit {
   metricValue(value: number | null | undefined, supported: boolean): string {
     if (!supported || value === null || value === undefined) return 'Not supported';
     return new Intl.NumberFormat().format(value);
+  }
+
+  compact(value: number | null | undefined): string {
+    if (value === null || value === undefined) return '—';
+    return new Intl.NumberFormat(undefined, { notation: 'compact', maximumFractionDigits: 1 }).format(value);
+  }
+
+  spark(key: SeriesKey): number[] {
+    const trend = this.report()?.trend ?? [];
+    const values = trend.map(point => Number(point[key] ?? 0));
+    const peak = Math.max(1, ...values, 1);
+    const slice = values.slice(-14);
+    if (!slice.length) return [];
+    return slice.map(value => Math.max(8, Math.round((value / peak) * 100)));
+  }
+
+  postShare(engagement: number): number {
+    const posts = this.report()?.posts ?? [];
+    const peak = Math.max(1, ...posts.map(post => post.engagement));
+    return Math.round((engagement / peak) * 100);
   }
 
   growthLabel(value: number | null | undefined): string {
@@ -165,15 +189,21 @@ export class ReadInsightsComponent implements OnInit {
           label: point.date
         };
       });
-      return {
-        ...item,
-        points: plotted,
-        path: plotted.map((point, index) => `${index ? 'L' : 'M'} ${point.x.toFixed(1)} ${point.y.toFixed(1)}`).join(' ')
-      };
+      const path = plotted.map((point, index) => `${index ? 'L' : 'M'} ${point.x.toFixed(1)} ${point.y.toFixed(1)}`).join(' ');
+      const area = `${path} L ${width} ${height} L 0 ${height} Z`;
+      return { ...item, points: plotted, path, area };
     });
 
-    const ticks = [0, Math.round(peak / 2), peak];
-    return { width, height, scale, lines, ticks, labels: this.axisLabels(points) };
+    const ticks = [peak, Math.round(peak / 2), 0];
+    return {
+      width,
+      height,
+      scale,
+      lines,
+      ticks,
+      tickLabels: ticks.map(tick => this.compact(tick)),
+      labels: this.axisLabels(points)
+    };
   }
 
   private axisLabels(points: ReadInsightPoint[]): string[] {

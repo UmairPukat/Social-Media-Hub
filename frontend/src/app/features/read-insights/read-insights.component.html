@@ -1,28 +1,32 @@
-<section class="insights-page">
-  <header class="hero">
+<section class="page insights-page">
+  <header class="insights-hero">
     <div>
-      <p class="eyebrow">{{ processLabel() }} · read_insights</p>
+      <div class="hero-labels">
+        <p class="eyebrow">{{ processLabel() }}</p>
+        <span class="live-badge"><i></i>Live Meta insights</span>
+      </div>
       <h1>Read Insights</h1>
       <p class="lede">
-        Page and audience metrics for the account connected in this module.
         @if (report(); as data) {
           {{ platformLabel(data.platform) }} · {{ data.accountName }}
+        } @else {
+          Page views, reach, engagement, and post performance for the account connected in this module.
         }
       </p>
     </div>
     <div class="hero-actions">
       @if ((report()?.availablePlatforms?.length ?? 0) > 1) {
-        <div class="segment">
+        <div class="range-control" aria-label="Insight source">
           @for (code of report()!.availablePlatforms; track code) {
-            <button type="button" [class.on]="platform() === code" (click)="setPlatform(code)">
+            <button type="button" [class.active]="platform() === code" (click)="setPlatform(code)">
               {{ platformLabel(code) }}
             </button>
           }
         </div>
       }
-      <div class="segment">
+      <div class="range-control" aria-label="Insight date range">
         @for (range of ranges; track range.value) {
-          <button type="button" [class.on]="days() === range.value" (click)="setDays(range.value)">
+          <button type="button" [class.active]="days() === range.value" (click)="setDays(range.value)">
             {{ range.label }}
           </button>
         }
@@ -31,58 +35,127 @@
   </header>
 
   @if (error()) {
-    <div class="notice">{{ error() }}</div>
+    <div class="notice error">
+      <mat-icon>error</mat-icon>
+      <span>{{ error() }}</span>
+    </div>
   }
 
   @if (loading()) {
-    <div class="notice">Loading insights from Meta…</div>
-  }
-  @if (!loading() && report(); as data) {
-    <div class="metric-grid">
-      <article class="metric">
-        <span>Page Views</span>
-        <strong>{{ metricValue(data.pageViews, data.pageViewsSupported) }}</strong>
-        <small>Profile or Page visits in this period</small>
-      </article>
-      <article class="metric">
-        <span>Reach</span>
-        <strong>{{ metricValue(data.reach, data.reachSupported) }}</strong>
-        <small>Unique people reached</small>
-      </article>
-      <article class="metric">
-        <span>Impressions / Views</span>
-        <strong>{{ metricValue(data.impressions, data.impressionsSupported) }}</strong>
-        <small>Content exposure or views</small>
-      </article>
-      <article class="metric">
-        <span>Engagement</span>
-        <strong>{{ metricValue(data.engagement, data.engagementSupported) }}</strong>
-        <small>Reactions, comments, shares, interactions</small>
-      </article>
-      <article class="metric">
-        <span>Followers</span>
-        <strong>{{ metricValue(data.followers, data.followersSupported) }}</strong>
-        <small>{{ data.followersSupported ? growthLabel(data.followerGrowth) : 'Follower history is not available' }}</small>
-      </article>
+    <div class="skeleton-grid" aria-hidden="true">
+      @for (card of [1, 2, 3, 4, 5]; track card) {
+        <div class="skeleton-card"></div>
+      }
     </div>
+    <div class="skeleton-panel"></div>
+  }
+
+  @if (!loading() && report(); as data) {
+    <section class="kpi-grid" aria-label="Insight summary">
+      <article class="kpi" data-tone="violet">
+        <div class="kpi-top">
+          <span class="kpi-icon"><mat-icon>visibility</mat-icon></span>
+        </div>
+        <span class="kpi-label">Page views</span>
+        <strong>{{ data.pageViewsSupported ? compact(data.pageViews) : '—' }}</strong>
+        <p>{{ data.pageViewsSupported ? 'Profile or Page visits' : 'Not supported for this account' }}</p>
+        @if (data.pageViewsSupported && spark('pageViews').length) {
+          <div class="spark-bars" aria-hidden="true">
+            @for (height of spark('pageViews'); track $index) {
+              <i [style.height.%]="height"></i>
+            }
+          </div>
+        }
+      </article>
+
+      <article class="kpi" data-tone="blue">
+        <div class="kpi-top">
+          <span class="kpi-icon"><mat-icon>groups</mat-icon></span>
+        </div>
+        <span class="kpi-label">Reach</span>
+        <strong>{{ data.reachSupported ? compact(data.reach) : '—' }}</strong>
+        <p>{{ data.reachSupported ? 'Unique people reached' : 'Not supported for this account' }}</p>
+        @if (data.reachSupported && spark('reach').length) {
+          <div class="spark-bars" aria-hidden="true">
+            @for (height of spark('reach'); track $index) {
+              <i [style.height.%]="height"></i>
+            }
+          </div>
+        }
+      </article>
+
+      <article class="kpi" data-tone="teal">
+        <div class="kpi-top">
+          <span class="kpi-icon"><mat-icon>preview</mat-icon></span>
+        </div>
+        <span class="kpi-label">Impressions</span>
+        <strong>{{ data.impressionsSupported ? compact(data.impressions) : '—' }}</strong>
+        <p>{{ data.impressionsSupported ? 'Content exposure or views' : 'Not supported for this account' }}</p>
+        @if (data.impressionsSupported && spark('impressions').length) {
+          <div class="spark-bars" aria-hidden="true">
+            @for (height of spark('impressions'); track $index) {
+              <i [style.height.%]="height"></i>
+            }
+          </div>
+        }
+      </article>
+
+      <article class="kpi" data-tone="amber">
+        <div class="kpi-top">
+          <span class="kpi-icon"><mat-icon>favorite</mat-icon></span>
+          @if (engagementRate() !== null) {
+            <span class="trend up">{{ engagementRate() }}%</span>
+          }
+        </div>
+        <span class="kpi-label">Engagement</span>
+        <strong>{{ data.engagementSupported ? compact(data.engagement) : '—' }}</strong>
+        <p>{{ data.engagementSupported ? 'Reactions, comments, shares' : 'Not supported for this account' }}</p>
+        @if (engagementRate() !== null) {
+          <div class="progress-line"><i [style.width.%]="engagementRate() || 0"></i></div>
+        }
+      </article>
+
+      <article class="kpi" data-tone="rose">
+        <div class="kpi-top">
+          <span class="kpi-icon"><mat-icon>group_add</mat-icon></span>
+          @if (data.followerGrowth !== null && data.followerGrowth !== undefined) {
+            <span class="trend" [class.up]="data.followerGrowth >= 0" [class.down]="data.followerGrowth < 0">
+              <mat-icon>{{ data.followerGrowth < 0 ? 'south_east' : 'north_east' }}</mat-icon>
+              {{ compact(data.followerGrowth) }}
+            </span>
+          }
+        </div>
+        <span class="kpi-label">Followers</span>
+        <strong>{{ data.followersSupported ? compact(data.followers) : '—' }}</strong>
+        <p>{{ data.followersSupported ? (growthLabel(data.followerGrowth) || 'Current audience') : 'Not supported for this account' }}</p>
+      </article>
+    </section>
 
     @if (data.notes.length) {
-      <ul class="notes">
+      <div class="note-row">
         @for (note of data.notes; track note) {
-          <li>{{ note }}</li>
+          <span><mat-icon>info</mat-icon>{{ note }}</span>
         }
-      </ul>
+      </div>
     }
 
-    <section class="panel">
-      <div class="panel-head">
-        <div>
-          <h2>Audience trends</h2>
-          <p>Growth and performance over the last {{ data.days }} days.</p>
-        </div>
+    <div class="insight-grid">
+      <section class="panel chart-panel">
+        <header class="panel-head">
+          <div>
+            <p class="section-kicker">Audience trends</p>
+            <h2>Performance over {{ data.days }} days</h2>
+            <span>Daily reach, impressions, engagement, and page views</span>
+          </div>
+          <div class="chart-total">
+            <small>Selected period</small>
+            <strong>{{ data.days }} days</strong>
+          </div>
+        </header>
+
         <div class="legend">
           @for (series of [
-            { key: 'reach', label: 'Reach', color: '#1877f2' },
+            { key: 'reach', label: 'Reach', color: '#2563eb' },
             { key: 'impressions', label: 'Impressions', color: '#0f766e' },
             { key: 'engagement', label: 'Engagement', color: '#d97706' },
             { key: 'pageViews', label: 'Page views', color: '#7c3aed' }
@@ -92,101 +165,105 @@
             </button>
           }
         </div>
-      </div>
 
-      @if (chart(); as graph) {
-        <svg [attr.viewBox]="'0 0 ' + graph.width + ' ' + (graph.height + 28)" role="img" aria-label="Audience trend chart">
-          @for (tick of graph.ticks; track tick) {
-            <line
-              [attr.x1]="0"
-              [attr.x2]="graph.width"
-              [attr.y1]="graph.height - (tick / graph.scale) * graph.height"
-              [attr.y2]="graph.height - (tick / graph.scale) * graph.height"
-              class="grid" />
-          }
-          @for (line of graph.lines; track line.key) {
-            <path [attr.d]="line.path" fill="none" [attr.stroke]="line.color" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" />
-            @for (point of line.points; track $index) {
-              <circle [attr.cx]="point.x" [attr.cy]="point.y" r="3.2" [attr.fill]="line.color">
-                <title>{{ line.label }} · {{ point.label }} · {{ point.value | number }}</title>
-              </circle>
-            }
-          }
-        </svg>
-        <div class="axis">
-          @for (label of graph.labels; track label) {
-            <span>{{ label }}</span>
-          }
-        </div>
-      } @else {
-        <p class="empty">Audience trend data is not available for this account and period.</p>
-      }
-    </section>
-
-    @if (followerChart(); as followers) {
-      <section class="panel">
-        <div class="panel-head">
-          <div>
-            <h2>Follower trend</h2>
-            <p>Audience size across the selected period.</p>
+        @if (chart(); as graph) {
+          <div class="line-chart">
+            <div class="y-axis" aria-hidden="true">
+              @for (label of graph.tickLabels; track label) {
+                <span>{{ label }}</span>
+              }
+            </div>
+            <div class="chart-plot">
+              <svg [attr.viewBox]="'0 0 ' + graph.width + ' ' + graph.height" preserveAspectRatio="none" role="img" aria-label="Audience trend chart">
+                <defs>
+                  <linearGradient id="insightArea" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" [attr.stop-color]="graph.lines[0].color" stop-opacity=".28" />
+                    <stop offset="100%" [attr.stop-color]="graph.lines[0].color" stop-opacity="0" />
+                  </linearGradient>
+                </defs>
+                @for (tick of graph.ticks; track tick) {
+                  <line class="grid" x1="0" [attr.x2]="graph.width" [attr.y1]="graph.height - (tick / graph.scale) * graph.height" [attr.y2]="graph.height - (tick / graph.scale) * graph.height" />
+                }
+                <path class="area" [attr.d]="graph.lines[0].area" />
+                @for (line of graph.lines; track line.key) {
+                  <path class="series" [attr.d]="line.path" fill="none" [attr.stroke]="line.color" />
+                }
+              </svg>
+              <div class="x-axis">
+                @for (label of graph.labels; track label) {
+                  <span>{{ label }}</span>
+                }
+              </div>
+            </div>
           </div>
-        </div>
-        <svg [attr.viewBox]="'0 0 ' + followers.width + ' ' + (followers.height + 8)" role="img" aria-label="Follower trend chart">
-          @for (line of followers.lines; track line.key) {
-            <path [attr.d]="line.path" fill="none" [attr.stroke]="line.color" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" />
-          }
-        </svg>
-        <div class="axis">
-          @for (label of followers.labels; track label) {
-            <span>{{ label }}</span>
-          }
-        </div>
+        } @else {
+          <p class="empty">Audience trend data is not available for this account and period.</p>
+        }
       </section>
-    }
+
+      <aside class="panel side-panel">
+        <p class="section-kicker">Account</p>
+        <h2>{{ data.accountName }}</h2>
+        <p class="side-id">{{ platformLabel(data.platform) }} · {{ data.accountId }}</p>
+        @if (followerChart(); as followers) {
+          <div class="mini-chart">
+            <div class="mini-head">
+              <span>Follower trend</span>
+              <strong [class.up]="(data.followerGrowth ?? 0) >= 0" [class.down]="(data.followerGrowth ?? 0) < 0">
+                {{ growthLabel(data.followerGrowth) || compact(data.followers) }}
+              </strong>
+            </div>
+            <svg [attr.viewBox]="'0 0 ' + followers.width + ' ' + followers.height" preserveAspectRatio="none" role="img" aria-label="Follower trend">
+              <path [attr.d]="followers.lines[0].area" fill="rgba(190, 18, 60, .12)" />
+              <path [attr.d]="followers.lines[0].path" fill="none" stroke="#be123c" stroke-width="3" />
+            </svg>
+          </div>
+        } @else {
+          <p class="empty">Follower history is not available for this account.</p>
+        }
+        <ul class="side-stats">
+          <li><span>Reach</span><b>{{ data.reachSupported ? compact(data.reach) : '—' }}</b></li>
+          <li><span>Impressions</span><b>{{ data.impressionsSupported ? compact(data.impressions) : '—' }}</b></li>
+          <li><span>Engagement</span><b>{{ data.engagementSupported ? compact(data.engagement) : '—' }}</b></li>
+        </ul>
+      </aside>
+    </div>
 
     <section class="panel">
-      <div class="panel-head">
+      <header class="panel-head">
         <div>
+          <p class="section-kicker">Content</p>
           <h2>Post performance</h2>
-          <p>Recent posts with reach, exposure, and interactions.</p>
+          <span>Recent posts ranked by interactions</span>
         </div>
-      </div>
+      </header>
+
       @if (data.posts.length) {
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Post</th>
-                <th>Impressions</th>
-                <th>Reach</th>
-                <th>Reactions</th>
-                <th>Comments</th>
-                <th>Shares</th>
-                <th>Engagement</th>
-              </tr>
-            </thead>
-            <tbody>
-              @for (post of data.posts; track post.id) {
-                <tr>
-                  <td class="post-cell">
-                    @if (post.pictureUrl) {
-                      <img [src]="post.pictureUrl" alt="" referrerpolicy="no-referrer" />
-                    }
-                    <div>
-                      <strong>{{ post.message }}</strong>
-                      <small>{{ post.createdTime | date: 'd MMM y' }}</small>
-                    </div>
-                  </td>
-                  <td>{{ post.impressions === null || post.impressions === undefined ? '—' : (post.impressions | number) }}</td>
-                  <td>{{ post.reach === null || post.reach === undefined ? '—' : (post.reach | number) }}</td>
-                  <td>{{ post.reactions | number }}</td>
-                  <td>{{ post.comments | number }}</td>
-                  <td>{{ data.platform === 'instagram' ? '—' : (post.shares | number) }}</td>
-                  <td>{{ post.engagement | number }}</td>
-                </tr>
-              }
-            </tbody>
-          </table>
+        <div class="post-list">
+          @for (post of data.posts; track post.id) {
+            <article class="post-card">
+              <div class="thumb">
+                @if (post.pictureUrl) {
+                  <img [src]="post.pictureUrl" alt="" referrerpolicy="no-referrer" />
+                } @else {
+                  <mat-icon>image</mat-icon>
+                }
+              </div>
+              <div class="post-copy">
+                <strong>{{ post.message }}</strong>
+                <small>{{ post.createdTime | date: 'd MMM y' }}</small>
+                <div class="performance-track" aria-hidden="true"><i [style.width.%]="postShare(post.engagement)"></i></div>
+              </div>
+              <div class="post-metrics">
+                <div><span>Impressions</span><b>{{ post.impressions == null ? '—' : compact(post.impressions) }}</b></div>
+                <div><span>Reach</span><b>{{ post.reach == null ? '—' : compact(post.reach) }}</b></div>
+                <div><span>Reactions</span><b>{{ compact(post.reactions) }}</b></div>
+                <div><span>Comments</span><b>{{ compact(post.comments) }}</b></div>
+                <div><span>Shares</span><b>{{ data.platform === 'instagram' ? '—' : compact(post.shares) }}</b></div>
+                <div><span>Engagement</span><b>{{ compact(post.engagement) }}</b></div>
+              </div>
+            </article>
+          }
         </div>
       } @else {
         <p class="empty">No recent posts were returned for this account.</p>
