@@ -7,10 +7,12 @@ namespace SocialMedia.Api.Controllers.Common;
 public abstract class ProcessAnalyticsControllerBase : ControllerBase
 {
     private readonly IDashboardService _dashboardService;
+    private readonly IReadInsightsService _readInsights;
 
-    protected ProcessAnalyticsControllerBase(IDashboardService dashboardService)
+    protected ProcessAnalyticsControllerBase(IDashboardService dashboardService, IReadInsightsService readInsights)
     {
         _dashboardService = dashboardService;
+        _readInsights = readInsights;
     }
 
     protected abstract string MenuType { get; }
@@ -19,6 +21,16 @@ public abstract class ProcessAnalyticsControllerBase : ControllerBase
     public async Task<IActionResult> GetSummary()
     {
         var response = await _dashboardService.GetSummaryForProcessAsync(User.GetUserId(), MenuType);
+        return Ok(response);
+    }
+
+    [HttpGet("read-insights")]
+    public async Task<IActionResult> GetReadInsights(
+        [FromQuery] int days = 28,
+        [FromQuery] string? platform = null,
+        CancellationToken cancellationToken = default)
+    {
+        var response = await _readInsights.GetAsync(User.GetUserId(), MenuType, days, platform, cancellationToken);
         return Ok(response);
     }
 }

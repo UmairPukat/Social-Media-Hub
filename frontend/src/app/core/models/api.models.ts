@@ -255,6 +255,50 @@ export interface DashboardSummary {
   totalMessagesCount: number;
 }
 
+export interface ReadInsightPoint {
+  date: string;
+  pageViews?: number | null;
+  reach?: number | null;
+  impressions?: number | null;
+  engagement?: number | null;
+  followers?: number | null;
+}
+
+export interface ReadInsightPost {
+  id: string;
+  message: string;
+  createdTime?: string | null;
+  pictureUrl?: string | null;
+  impressions?: number | null;
+  reach?: number | null;
+  reactions: number;
+  comments: number;
+  shares: number;
+  engagement: number;
+}
+
+export interface ReadInsightsReport {
+  platform: string;
+  accountName: string;
+  accountId: string;
+  days: number;
+  availablePlatforms: string[];
+  pageViewsSupported: boolean;
+  pageViews?: number | null;
+  reachSupported: boolean;
+  reach?: number | null;
+  impressionsSupported: boolean;
+  impressions?: number | null;
+  engagementSupported: boolean;
+  engagement?: number | null;
+  followersSupported: boolean;
+  followers?: number | null;
+  followerGrowth?: number | null;
+  trend: ReadInsightPoint[];
+  posts: ReadInsightPost[];
+  notes: string[];
+}
+
 export const PLATFORM_COLORS: Record<string, string> = {
   facebook: '#1877F2',
   instagram: '#E4405F',

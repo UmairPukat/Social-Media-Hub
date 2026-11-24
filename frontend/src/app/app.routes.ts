@@ -27,6 +27,10 @@ const processChildren = (connectComponent: () => Promise<{ default?: never } & i
     loadComponent: () => import('./features/analytics/analytics.component').then(m => m.AnalyticsComponent)
   },
   {
+    path: 'read-insights',
+    loadComponent: () => import('./features/read-insights/read-insights.component').then(m => m.ReadInsightsComponent)
+  },
+  {
     path: 'accounts',
     loadComponent: () => import('./features/accounts/accounts.component').then(m => m.AccountsComponent)
   },

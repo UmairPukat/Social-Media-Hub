@@ -64,6 +64,7 @@ public static class DependencyInjection
         services.AddScoped<IMetaAdsService, MetaAdsService>();
         services.AddScoped<IMetaLeadsService, MetaLeadsService>();
         services.AddScoped<IMetaInsightsService, MetaInsightsService>();
+        services.AddScoped<IReadInsightsService, ReadInsightsService>();
         services.AddScoped<IMetaCatalogService, MetaCatalogService>();
         services.AddScoped<IYouTubeService, YouTubeService>();
         services.AddScoped<ITikTokService, TikTokService>();

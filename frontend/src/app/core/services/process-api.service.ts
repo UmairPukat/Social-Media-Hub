@@ -6,6 +6,7 @@ import {
   ApiResponse,
   ConnectionDetails,
   DashboardSummary,
+  ReadInsightsReport,
   InboxItem,
   MetaPage,
   PlatformCard,
@@ -152,6 +153,12 @@ export class ProcessApiService {
 
   getDashboardSummary(menuType: ProcessMenuType): Observable<ApiResponse<DashboardSummary>> {
     return this.http.get<ApiResponse<DashboardSummary>>(`${this.base(menuType)}/analytics/summary`);
+  }
+
+  getReadInsights(menuType: ProcessMenuType, days: number, platform?: string): Observable<ApiResponse<ReadInsightsReport>> {
+    const params = new URLSearchParams({ days: String(days) });
+    if (platform) params.set('platform', platform);
+    return this.http.get<ApiResponse<ReadInsightsReport>>(`${this.base(menuType)}/read-insights?${params}`);
   }
 
   syncYouTubePosts(menuType: ProcessMenuType, platformCode = 'youtube'): Observable<ApiResponse<YouTubeSyncResult>> {

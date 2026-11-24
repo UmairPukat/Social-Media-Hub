@@ -90,7 +90,7 @@ public class WhatsAppWebhooksController : ProcessWebhooksControllerBase
 [ApiController]
 public class AnalyticsController : ProcessAnalyticsControllerBase
 {
-    public AnalyticsController(IDashboardService dashboardService) : base(dashboardService) { }
+    public AnalyticsController(IDashboardService dashboardService, IReadInsightsService readInsights) : base(dashboardService, readInsights) { }
 
     protected override string MenuType => ProcessModules.AccountHub.MenuType;
 }
